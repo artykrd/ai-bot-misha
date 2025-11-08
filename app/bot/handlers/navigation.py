@@ -145,6 +145,8 @@ async def show_models(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("bot.start_chatgpt_dialog_"))
 async def start_dialog(callback: CallbackQuery, user: User):
     """Start or continue a dialog with specific model."""
+    from app.bot.handlers.dialog_context import set_active_dialog
+
     # Parse callback data
     callback_parts = callback.data.split("#")
     dialog_part = callback_parts[0]
@@ -169,6 +171,9 @@ async def start_dialog(callback: CallbackQuery, user: User):
         current_value = callback_parts[1] == "bi_1"
         show_costs = not current_value  # Toggle to opposite
         set_dialog_state(user.telegram_id, dialog_id, show_costs=show_costs)
+
+    # Set active dialog in context
+    set_active_dialog(user.telegram_id, dialog_id, history_enabled, show_costs)
 
     # Get model info
     model_name, model_id = MODEL_NAMES.get(dialog_id, ("Unknown Model", "unknown"))
