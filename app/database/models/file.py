@@ -1,7 +1,7 @@
 """
 File model for managing uploaded and generated files.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import BigInteger, String, Text, Boolean, ForeignKey, DateTime
@@ -91,4 +91,4 @@ class File(Base, BaseModel, TimestampMixin):
     @property
     def is_expired(self) -> bool:
         """Check if file has expired."""
-        return self.expires_at < datetime.utcnow()
+        return self.expires_at < datetime.now(timezone.utc)

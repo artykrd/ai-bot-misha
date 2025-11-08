@@ -1,7 +1,7 @@
 """
 Promocode models for discount and bonus system.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, List, Optional
 
 from sqlalchemy import BigInteger, String, Integer, Boolean, DateTime, ForeignKey
@@ -84,7 +84,7 @@ class Promocode(Base, BaseModel, TimestampMixin):
         if not self.is_active:
             return False
 
-        if self.expires_at and self.expires_at < datetime.utcnow():
+        if self.expires_at and self.expires_at < datetime.now(timezone.utc):
             return False
 
         if self.max_uses and self.current_uses >= self.max_uses:

@@ -2,7 +2,7 @@
 User repository for database operations.
 """
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,7 +39,7 @@ class UserRepository(BaseRepository[User]):
             first_name=first_name,
             last_name=last_name,
             language_code=language_code,
-            last_activity=datetime.utcnow()
+            last_activity=datetime.now(timezone.utc)
         )
         self.session.add(user)
         await self.session.commit()
@@ -48,7 +48,7 @@ class UserRepository(BaseRepository[User]):
 
     async def update_last_activity(self, user_id: int) -> None:
         """Update user's last activity timestamp."""
-        await self.update(user_id, last_activity=datetime.utcnow())
+        await self.update(user_id, last_activity=datetime.now(timezone.utc))
 
     async def ban_user(self, user_id: int, reason: str) -> Optional[User]:
         """Ban a user."""

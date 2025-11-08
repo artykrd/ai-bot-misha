@@ -2,7 +2,7 @@
 System models for configuration and logging.
 """
 from typing import TYPE_CHECKING, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import BigInteger, String, Text, Boolean, Integer, JSON, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
@@ -150,7 +150,7 @@ class AICache(Base, BaseModel, TimestampMixin):
     @property
     def is_expired(self) -> bool:
         """Check if cache has expired."""
-        return self.expires_at < datetime.utcnow()
+        return self.expires_at < datetime.now(timezone.utc)
 
 
 class SystemSetting(Base, BaseModel, TimestampMixin):

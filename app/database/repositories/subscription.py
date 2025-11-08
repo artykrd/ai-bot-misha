@@ -2,7 +2,7 @@
 Subscription repository for database operations.
 """
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,7 +29,7 @@ class SubscriptionRepository(BaseRepository[Subscription]):
             query = query.where(
                 Subscription.is_active .is_(True),
                 (Subscription.expires_at.is_(None)) |
-                (Subscription.expires_at > datetime.utcnow())
+                (Subscription.expires_at > datetime.now(timezone.utc))
             )
 
         result = await self.session.execute(query)
@@ -54,7 +54,7 @@ class SubscriptionRepository(BaseRepository[Subscription]):
         duration_days: Optional[int] = None
     ) -> Subscription:
         """Create new subscription."""
-        started_at = datetime.utcnow()
+        started_at = datetime.now(timezone.utc)
         expires_at = None
 
         if duration_days:
@@ -106,7 +106,7 @@ class SubscriptionRepository(BaseRepository[Subscription]):
             .where(
                 Subscription.is_active .is_(True),
                 Subscription.expires_at.isnot(None),
-                Subscription.expires_at < datetime.utcnow()
+                Subscription.expires_at < datetime.now(timezone.utc)
             )
             .values(is_active=False)
         )
