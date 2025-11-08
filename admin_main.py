@@ -8,6 +8,8 @@ from aiogram import Bot, Dispatcher, Router, F
 from aiogram.filters import Command
 from aiogram.types import Message
 from aiogram.fsm.storage.redis import RedisStorage
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
 
 from app.core.config import settings
 from app.core.logger import get_logger
@@ -18,7 +20,10 @@ logger = get_logger(__name__)
 
 
 # Initialize admin bot
-admin_bot = Bot(token=settings.telegram_admin_bot_token, parse_mode="Markdown")
+admin_bot = Bot(
+    token=settings.telegram_admin_bot_token,
+    default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN)
+)
 
 
 # Router

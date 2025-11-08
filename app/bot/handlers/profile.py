@@ -33,11 +33,13 @@ async def show_profile(callback: CallbackQuery, user: User):
     else:
         sub_info = "Нет активной подписки"
 
+    username_display = f"@{user.username}" if user.username else "не указан"
+
     profile_text = f"""👤 **Ваш профиль**
 
 **ID:** `{user.telegram_id}`
 **Имя:** {user.full_name}
-**Username:** @{user.username or 'не указан'}
+**Username:** {username_display}
 
 💰 **Баланс:** {total_tokens:,} токенов
 📦 **Подписка:** {sub_info}
@@ -47,6 +49,7 @@ async def show_profile(callback: CallbackQuery, user: User):
 
     await callback.message.edit_text(
         profile_text,
-        reply_markup=back_to_main_keyboard()
+        reply_markup=back_to_main_keyboard(),
+        parse_mode="Markdown"
     )
     await callback.answer()

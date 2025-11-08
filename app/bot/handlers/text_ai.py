@@ -10,7 +10,6 @@ from app.bot.states.dialog import AIGenerationStates
 from app.database.models.user import User
 from app.database.database import async_session_maker
 from app.services.subscription.subscription_service import SubscriptionService
-from app.services.ai.openai_service import OpenAIService
 from app.core.logger import get_logger
 from app.core.exceptions import InsufficientTokensError
 
@@ -128,24 +127,32 @@ async def process_ai_request(message: Message, user: User, state: FSMContext):
             await state.clear()
             return
 
-    # Process with AI
+    # Process with AI using factory
     processing_msg = await message.answer("⏳ Обрабатываю запрос...")
 
     try:
-        ai_service = OpenAIService()
-        response = await ai_service.generate_text(
-            prompt=message.text,
-            model=ai_model
+        from app.services.ai.ai_factory import AIServiceFactory
+
+        # Factory will auto-detect if API keys are available or use mock
+        response = await AIServiceFactory.generate_text(
+            model=ai_model,
+            prompt=message.text
         )
 
         if response.success:
-            await processing_msg.edit_text(response.content)
+            # Add note if using mock service
+            content = response.content
+            if response.metadata.get("mock"):
+                content += "\n\n⚠️ _Используется тестовый режим (API ключи не настроены)_"
+
+            await processing_msg.edit_text(content)
 
             logger.info(
                 "ai_request_completed",
                 user_id=user.id,
                 model=ai_model,
-                tokens=tokens_cost
+                tokens=tokens_cost,
+                is_mock=response.metadata.get("mock", False)
             )
         else:
             await processing_msg.edit_text(

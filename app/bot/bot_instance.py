@@ -3,6 +3,8 @@ Main bot instance initialization.
 """
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.redis import RedisStorage
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
 
 from app.core.config import settings
 from app.core.logger import get_logger
@@ -11,7 +13,10 @@ logger = get_logger(__name__)
 
 
 # Initialize bot instance
-bot = Bot(token=settings.telegram_bot_token, parse_mode="Markdown")
+bot = Bot(
+    token=settings.telegram_bot_token,
+    default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN)
+)
 
 
 async def setup_bot() -> Dispatcher:

@@ -51,7 +51,8 @@ class Settings(BaseSettings):
     # =====================================
     openai_api_key: Optional[str] = Field(None, description="OpenAI API key")
     anthropic_api_key: Optional[str] = Field(None, description="Anthropic API key")
-    google_api_key: Optional[str] = Field(None, description="Google AI API key")
+    google_ai_api_key: Optional[str] = Field(None, description="Google AI API key")
+    deepseek_api_key: Optional[str] = Field(None, description="DeepSeek API key")
     stability_api_key: Optional[str] = Field(None, description="Stability AI API key")
     midjourney_api_key: Optional[str] = Field(None, description="Midjourney API key")
     replicate_api_key: Optional[str] = Field(None, description="Replicate API key")
