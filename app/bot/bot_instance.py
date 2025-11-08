@@ -39,15 +39,15 @@ async def setup_bot() -> Dispatcher:
     # Register handlers
     from app.bot.handlers import (
         start,
+        navigation,
         profile,
-        subscription,
         text_ai,
         common
     )
 
     dp.include_router(start.router)
+    dp.include_router(navigation.router)
     dp.include_router(profile.router)
-    dp.include_router(subscription.router)
     dp.include_router(text_ai.router)
     dp.include_router(common.router)
 
