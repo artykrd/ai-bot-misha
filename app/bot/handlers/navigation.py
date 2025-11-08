@@ -25,6 +25,11 @@ from app.database.models.user import User
 router = Router(name="navigation")
 
 
+# TODO: Move to database - Dialog states storage
+# Format: {user_id: {dialog_id: {"history": bool, "show_costs": bool}}}
+DIALOG_STATES = {}
+
+
 # Model names mapping
 MODEL_NAMES = {
     324: ("4️⃣ GPT 4.1 Mini", "gpt-4.1-mini"),
@@ -33,15 +38,33 @@ MODEL_NAMES = {
     327: ("🐳 Deepseek Чат", "deepseek-chat"),
     328: ("🐳 Deepseek R1", "deepseek-r1"),
     329: ("⚡ Gemini Flash 2.0", "gemini-flash-2.0"),
-    330: ("🛡 Gemini Pro 2.5", "gemini-pro-2.5"),
-    331: ("🌐 Sonar с поиском", "sonar-search"),
-    332: ("💻 Sonar Pro", "sonar-pro"),
-    333: ("📔 Claude 3.7", "claude-3.7"),
-    334: ("📘 Claude 3.5", "claude-3.5"),
+    330: ("🛡 Gemini Pro 2.5", "google/gemini-2.5-pro-preview"),
+    331: ("🌐 Sonar с поиском", "perplexity/sonar-search"),
+    332: ("💻 Sonar Pro", "perplexity/sonar-pro"),
+    333: ("📔 Claude 3.7", "anthropic/claude-3.7"),
+    334: ("📘 Claude 3.5", "anthropic/claude-3.5"),
     335: ("🔍 Анализ текста", "gpt-4-mini-analysis"),
     336: ("🌆 Генератор промптов", "gpt-4-mini-prompts"),
     337: ("🔥 GPT 5 Mini", "gpt-5-mini"),
 }
+
+
+def get_dialog_state(user_id: int, dialog_id: int) -> dict:
+    """Get dialog state for user."""
+    if user_id not in DIALOG_STATES:
+        DIALOG_STATES[user_id] = {}
+    if dialog_id not in DIALOG_STATES[user_id]:
+        DIALOG_STATES[user_id][dialog_id] = {"history": False, "show_costs": False}
+    return DIALOG_STATES[user_id][dialog_id]
+
+
+def set_dialog_state(user_id: int, dialog_id: int, history: bool = None, show_costs: bool = None):
+    """Set dialog state for user."""
+    state = get_dialog_state(user_id, dialog_id)
+    if history is not None:
+        state["history"] = history
+    if show_costs is not None:
+        state["show_costs"] = show_costs
 
 
 # Main navigation
@@ -130,23 +153,28 @@ async def start_dialog(callback: CallbackQuery, user: User):
     # Check if coming from home
     from_home = len(callback_parts) > 1 and callback_parts[1] == "home"
 
-    # Get dialog state (from database in production)
-    # For now, default to history disabled
-    history_enabled = False
-    show_costs = False
+    # Get current dialog state
+    state = get_dialog_state(user.telegram_id, dialog_id)
+    history_enabled = state["history"]
+    show_costs = state["show_costs"]
 
     # Check for state changes in callback
     if len(callback_parts) > 1 and callback_parts[1].startswith("sh_"):
         # Toggle history
-        history_enabled = callback_parts[1] == "sh_0"  # Toggle opposite
-        # Save to database
+        current_value = callback_parts[1] == "sh_1"
+        history_enabled = not current_value  # Toggle to opposite
+        set_dialog_state(user.telegram_id, dialog_id, history=history_enabled)
     elif len(callback_parts) > 1 and callback_parts[1].startswith("bi_"):
         # Toggle show costs
-        show_costs = callback_parts[1] == "bi_0"  # Toggle opposite
-        # Save to database
+        current_value = callback_parts[1] == "bi_1"
+        show_costs = not current_value  # Toggle to opposite
+        set_dialog_state(user.telegram_id, dialog_id, show_costs=show_costs)
 
     # Get model info
     model_name, model_id = MODEL_NAMES.get(dialog_id, ("Unknown Model", "unknown"))
+
+    # Build history status text
+    history_status = "сохраняется (📈)" if history_enabled else "не сохраняется"
 
     text = f"""💬 **Диалог начался**
 
@@ -158,8 +186,10 @@ async def start_dialog(callback: CallbackQuery, user: User):
 
 **Название:** {model_name}
 **Модель:** {model_id}
+**История:** {history_status}
 
-⚠️ Отправьте текстовое сообщение для начала диалога"""
+/end — завершит этот диалог
+/clear — очистит историю в этом диалоге"""
 
     await callback.message.edit_text(
         text,
@@ -332,29 +362,38 @@ __ℹ️ Выберите нейросеть для работы с аудио �
 ]))
 async def service_not_implemented(callback: CallbackQuery):
     """Handler for services not yet implemented."""
-    service_names = {
-        "bot.gpt_image": "💥 GPT Image",
-        "bot.midjourney": "🌆 Midjourney",
-        "bot_stable_diffusion": "🖌 Stable Diffusion",
-        "bot.recraft": "🎨 Recraft",
-        "bot.faceswap": "🎭 Замена лиц",
-        "bot.sora": "☁️ Sora 2",
-        "bot.veo": "🌊 Veo 3.1",
-        "bot.mjvideo": "🗾 Midjourney Video",
-        "bot.hailuo": "🎥 Hailuo",
-        "bot.luma": "📹 Luma Dream Machine",
-        "bot.kling": "🎞 Kling",
-        "bot.kling_effects": "🧙 Kling Эффекты",
-        "bot.suno": "🎧 Suno",
-        "bot.whisper": "🎙 Whisper",
-        "bot.whisper_tts": "🗣 TTS"
+    service_info = {
+        "bot.gpt_image": ("💥 GPT Image", "Генерация изображений от OpenAI"),
+        "bot.midjourney": ("🌆 Midjourney", "Создание изображений с помощью Midjourney"),
+        "bot_stable_diffusion": ("🖌 Stable Diffusion", "Генерация изображений с помощью Stable Diffusion"),
+        "bot.recraft": ("🎨 Recraft", "Создание дизайнов и иллюстраций"),
+        "bot.faceswap": ("🎭 Замена лиц", "Замена лиц на фотографиях"),
+        "bot.sora": ("☁️ Sora 2", "Создание видео с помощью Sora"),
+        "bot.veo": ("🌊 Veo 3.1", "Генерация видео от Google"),
+        "bot.mjvideo": ("🗾 Midjourney Video", "Создание видео с Midjourney"),
+        "bot.hailuo": ("🎥 Hailuo", "Генерация видео"),
+        "bot.luma": ("📹 Luma", "Создание видео с Luma Dream Machine"),
+        "bot.kling": ("🎞 Kling", "Генерация видео с Kling"),
+        "bot.kling_effects": ("🧙 Kling Эффекты", "Видеоэффекты от Kling"),
+        "bot.suno": ("🎧 Suno", "Создание музыки и песен"),
+        "bot.whisper": ("🎙 Whisper", "Расшифровка голосовых сообщений"),
+        "bot.whisper_tts": ("🗣 TTS", "Озвучка текста")
     }
-    service_name = service_names.get(callback.data, "Сервис")
+    service_name, service_desc = service_info.get(callback.data, ("Сервис", "Описание"))
 
-    await callback.answer(
-        f"⚠️ {service_name} будет доступно в следующей версии",
-        show_alert=True
+    text = f"""⚠️ **{service_name}**
+
+{service_desc}
+
+🔧 **Статус:** В разработке
+
+Этот функционал будет доступен в следующей версии бота. Следите за обновлениями!"""
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=back_to_main_keyboard()
     )
+    await callback.answer()
 
 
 # Subscription
@@ -419,33 +458,108 @@ async def activate_promocode(callback: CallbackQuery):
 # Profile and Referral
 @router.callback_query(F.data == "bot.refferal_program")
 async def show_referral(callback: CallbackQuery, user: User):
-    """Show referral program."""
+    """Show referral program with real statistics."""
+    from app.database.database import async_session_maker
+    from sqlalchemy import select, func
+    from app.database.models.referral import Referral
+
+    async with async_session_maker() as session:
+        # Count referrals
+        referral_count_result = await session.execute(
+            select(func.count(Referral.id)).where(
+                Referral.referrer_id == user.id,
+                Referral.is_active == True
+            )
+        )
+        referral_count = referral_count_result.scalar() or 0
+
+        # Sum tokens earned
+        tokens_earned_result = await session.execute(
+            select(func.sum(Referral.tokens_earned)).where(
+                Referral.referrer_id == user.id,
+                Referral.is_active == True
+            )
+        )
+        tokens_earned = tokens_earned_result.scalar() or 0
+
+        # Sum money earned
+        money_earned_result = await session.execute(
+            select(func.sum(Referral.money_earned)).where(
+                Referral.referrer_id == user.id,
+                Referral.is_active == True
+            )
+        )
+        money_earned = float(money_earned_result.scalar() or 0)
+
+    # Build referral link for bot
+    # TODO: Get bot username from config
+    bot_username = "GPTchatneiroseti_BOT"
+    referral_link = f"https://t.me/{bot_username}?start=ref{user.telegram_id}"
+
     text = f"""🔹 **Реферальная программа**
 
-Получайте **1 токенов** за приглашенного пользователя и **10%** деньгами от каждой его покупки в боте.
+Получайте **100 токенов** за приглашенного пользователя и **10%** деньгами от каждой его покупки в боте.
 
-👥 Приглашено пользователей: **0**
-🔶 Получено: **0 токенов**
+👥 Приглашено пользователей: **{referral_count}**
+🔶 Получено: **{tokens_earned:,} токенов**
 💸 Минимальная сумма вывода: **500 руб.**
-💰 Доступно для вывода: **0 руб.**
+💰 Доступно для вывода: **{money_earned:.2f} руб.**
 
 Ваша реферальная ссылка:
-`https://t.me/GPTchatneiroseti_BOT?start=ref{user.telegram_id}`"""
+`{referral_link}`
+
+Поделитесь этой ссылкой с друзьями и получайте бонусы!"""
 
     await callback.message.edit_text(
         text,
-        reply_markup=referral_keyboard()
+        reply_markup=referral_keyboard(user.telegram_id)
     )
     await callback.answer()
 
 
 @router.callback_query(F.data == "bot.refferal_withdraw")
-async def referral_withdraw(callback: CallbackQuery):
+async def referral_withdraw(callback: CallbackQuery, user: User):
     """Withdraw referral earnings."""
-    await callback.answer(
-        "⚠️ Вывод средств будет доступен в следующей версии",
-        show_alert=True
-    )
+    from app.database.database import async_session_maker
+    from sqlalchemy import select, func
+    from app.database.models.referral import Referral
+
+    async with async_session_maker() as session:
+        # Sum money earned
+        money_earned_result = await session.execute(
+            select(func.sum(Referral.money_earned)).where(
+                Referral.referrer_id == user.id,
+                Referral.is_active == True
+            )
+        )
+        money_earned = float(money_earned_result.scalar() or 0)
+
+    min_withdrawal = 500.0
+
+    if money_earned < min_withdrawal:
+        await callback.answer(
+            f"⚠️ Недостаточно средств для вывода\n\n"
+            f"Минимум: {min_withdrawal:.0f} руб.\n"
+            f"Доступно: {money_earned:.2f} руб.",
+            show_alert=True
+        )
+    else:
+        text = f"""💰 **Вывод средств**
+
+Доступно для вывода: **{money_earned:.2f} руб.**
+
+Для вывода средств обратитесь в поддержку: @gigavidacha
+
+Укажите:
+• Ваш Telegram ID: `{user.telegram_id}`
+• Сумму для вывода
+• Реквизиты для перевода"""
+
+        await callback.message.edit_text(
+            text,
+            reply_markup=back_to_main_keyboard()
+        )
+        await callback.answer()
 
 
 @router.callback_query(F.data.in_(["bot.change_language", "bot.profile_payments"]))

@@ -399,19 +399,26 @@ def profile_keyboard() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def referral_keyboard() -> InlineKeyboardMarkup:
+def referral_keyboard(user_telegram_id: int = None) -> InlineKeyboardMarkup:
     """Referral program keyboard."""
     builder = InlineKeyboardBuilder()
 
     builder.row(
         InlineKeyboardButton(text="🏦 Вывести средства", callback_data="bot.refferal_withdraw")
     )
-    builder.row(
-        InlineKeyboardButton(
-            text="🔗 Поделиться ссылкой",
-            url="https://t.me/share/url?url=https://t.me/GPTchatneiroseti_BOT?start=ref"
+
+    # Share button with dynamic referral link
+    if user_telegram_id:
+        bot_username = "GPTchatneiroseti_BOT"  # TODO: Get from config
+        referral_link = f"https://t.me/{bot_username}?start=ref{user_telegram_id}"
+        share_url = f"https://t.me/share/url?url={referral_link}"
+        builder.row(
+            InlineKeyboardButton(
+                text="🔗 Поделиться ссылкой",
+                url=share_url
+            )
         )
-    )
+
     builder.row(
         InlineKeyboardButton(text="⬅️ Назад", callback_data="bot.profile")
     )
