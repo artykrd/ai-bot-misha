@@ -4,17 +4,33 @@ Anthropic Claude service.
 import time
 from typing import Optional, List, Dict
 
-try:
-    from anthropic import AsyncAnthropic
-    ANTHROPIC_AVAILABLE = True
-except ImportError:
-    ANTHROPIC_AVAILABLE = False
-
 from app.core.config import settings
 from app.core.logger import get_logger
 from app.services.ai.base import BaseAIProvider, AIResponse
 
 logger = get_logger(__name__)
+
+# Lazy import
+_AsyncAnthropic = None
+_ANTHROPIC_CHECKED = False
+
+
+def _get_anthropic():
+    """Lazy import of anthropic."""
+    global _AsyncAnthropic, _ANTHROPIC_CHECKED
+
+    if _ANTHROPIC_CHECKED:
+        return _AsyncAnthropic
+
+    _ANTHROPIC_CHECKED = True
+    try:
+        from anthropic import AsyncAnthropic
+        _AsyncAnthropic = AsyncAnthropic
+        return _AsyncAnthropic
+    except Exception as e:
+        logger.warning("anthropic_import_failed", error=str(e))
+        _AsyncAnthropic = None
+        return None
 
 
 class AnthropicService(BaseAIProvider):
@@ -22,12 +38,12 @@ class AnthropicService(BaseAIProvider):
 
     def __init__(self, api_key: Optional[str] = None):
         super().__init__(api_key or settings.anthropic_api_key)
+        self.client = None
 
-        if not ANTHROPIC_AVAILABLE:
-            logger.warning("anthropic_not_installed")
-            self.client = None
-        else:
-            self.client = AsyncAnthropic(api_key=self.api_key) if self.api_key else None
+        if self.api_key:
+            AsyncAnthropic = _get_anthropic()
+            if AsyncAnthropic:
+                self.client = AsyncAnthropic(api_key=self.api_key)
 
     async def generate_text(
         self,

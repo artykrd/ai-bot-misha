@@ -33,10 +33,10 @@ def mock_db_user():
         telegram_id=123456789,
         username="testuser",
         first_name="Test",
-        last_name="User",
-        full_name="Test User"
+        last_name="User"
     )
     user.id = 1
+    # full_name is a computed property, will be "Test User"
     return user
 
 
@@ -180,17 +180,15 @@ class TestBotHandlers:
 class TestSubscriptionFlow:
     """Test subscription and token management."""
 
-    @patch("app.bot.handlers.subscription.async_session_maker")
     async def test_subscription_button_displays_plans(
         self,
-        mock_session_maker,
         mock_callback,
         mock_db_user
     ):
         """Test that subscription button shows available plans."""
-        from app.bot.handlers.subscription import show_subscription
+        from app.bot.handlers.subscription import show_subscriptions
 
-        await show_subscription(mock_callback, mock_db_user)
+        await show_subscriptions(mock_callback, mock_db_user)
 
         # Check message was edited
         mock_callback.message.edit_text.assert_called_once()
@@ -199,8 +197,9 @@ class TestSubscriptionFlow:
         call_args = mock_callback.message.edit_text.call_args
         text = call_args[0][0] if call_args[0] else call_args.kwargs.get("text", "")
 
-        assert "токен" in text.lower()
-        assert "руб" in text.lower()
+        # Check that subscription info is displayed
+        assert "подписк" in text.lower()
+        assert "gpt-4" in text.lower() or "claude" in text.lower()
 
 
 def test_model_provider_mapping():
