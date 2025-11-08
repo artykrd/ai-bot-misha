@@ -2,13 +2,7 @@
 Google Gemini service.
 """
 import time
-from typing import Optional, List, Dict
-
-try:
-    import google.generativeai as genai
-    GEMINI_AVAILABLE = True
-except ImportError:
-    GEMINI_AVAILABLE = False
+from typing import Optional, List, Dict, TYPE_CHECKING
 
 from app.core.config import settings
 from app.core.logger import get_logger
@@ -16,22 +10,43 @@ from app.services.ai.base import BaseAIProvider, AIResponse
 
 logger = get_logger(__name__)
 
+# Lazy import - only import when actually used
+_genai = None
+_GEMINI_CHECKED = False
+
+
+def _get_genai():
+    """Lazy import of google.generativeai."""
+    global _genai, _GEMINI_CHECKED
+
+    if _GEMINI_CHECKED:
+        return _genai
+
+    _GEMINI_CHECKED = True
+    try:
+        import google.generativeai as genai
+        _genai = genai
+        return _genai
+    except Exception as e:
+        logger.warning("google_generativeai_import_failed", error=str(e))
+        _genai = None
+        return None
+
 
 class GoogleService(BaseAIProvider):
     """Google Gemini API integration."""
 
     def __init__(self, api_key: Optional[str] = None):
         super().__init__(api_key or settings.google_ai_api_key)
+        self.client = None
+        self._genai = None
 
-        if not GEMINI_AVAILABLE:
-            logger.warning("google_generativeai_not_installed")
-            self.client = None
-        else:
-            if self.api_key:
-                genai.configure(api_key=self.api_key)
+        # Don't import on init, wait until first use
+        if self.api_key:
+            self._genai = _get_genai()
+            if self._genai:
+                self._genai.configure(api_key=self.api_key)
                 self.client = True
-            else:
-                self.client = None
 
     async def generate_text(
         self,
@@ -52,7 +67,17 @@ class GoogleService(BaseAIProvider):
             )
 
         try:
-            model_instance = genai.GenerativeModel(model)
+            if not self._genai:
+                self._genai = _get_genai()
+
+            if not self._genai:
+                return AIResponse(
+                    success=False,
+                    error="Google Gemini library not available",
+                    processing_time=time.time() - start_time
+                )
+
+            model_instance = self._genai.GenerativeModel(model)
 
             # Combine system prompt with user prompt if provided
             full_prompt = prompt
