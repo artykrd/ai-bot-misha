@@ -1,7 +1,7 @@
 """
 Referral model for managing referral program.
 """
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 from decimal import Decimal
 
 from sqlalchemy import BigInteger, String, Boolean, Numeric, ForeignKey

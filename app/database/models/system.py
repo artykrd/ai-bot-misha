@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Optional
 from datetime import datetime
 
 from sqlalchemy import BigInteger, String, Text, Boolean, Integer, JSON, DateTime, ForeignKey
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.database import Base
 from app.database.models.base import BaseModel, TimestampMixin

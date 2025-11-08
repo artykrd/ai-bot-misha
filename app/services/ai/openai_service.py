@@ -3,7 +3,7 @@ OpenAI service for GPT, DALL-E, Whisper, TTS.
 """
 import time
 from typing import Optional, List, Dict
-import openai
+
 from openai import AsyncOpenAI
 
 from app.core.config import settings
