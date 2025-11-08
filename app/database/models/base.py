@@ -1,7 +1,7 @@
 """
 Base model with common fields for all database models.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import DateTime, func

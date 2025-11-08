@@ -1,7 +1,7 @@
 """
 User model for storing Telegram user data.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, List, Optional
 
 from sqlalchemy import BigInteger, Boolean, String, Text, DateTime
@@ -92,7 +92,7 @@ class User(Base, BaseModel, TimestampMixin):
     def get_active_subscription(self) -> Optional["Subscription"]:
         """Get currently active subscription if exists."""
         for sub in self.subscriptions:
-            if sub.is_active and (sub.expires_at is None or sub.expires_at > datetime.utcnow()):
+            if sub.is_active and (sub.expires_at is None or sub.expires_at > datetime.now(timezone.utc)):
                 return sub
         return None
 

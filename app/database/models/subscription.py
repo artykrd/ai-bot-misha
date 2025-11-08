@@ -1,7 +1,7 @@
 """
 Subscription model for managing user subscriptions and tokens.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import BigInteger, Boolean, String, Numeric, DateTime, ForeignKey
@@ -73,7 +73,7 @@ class Subscription(Base, BaseModel, TimestampMixin):
         """Check if subscription is expired."""
         if self.expires_at is None:
             return False  # Eternal subscription
-        return self.expires_at < datetime.utcnow()
+        return self.expires_at < datetime.now(timezone.utc)
 
     @property
     def is_unlimited(self) -> bool:
