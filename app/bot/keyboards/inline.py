@@ -158,3 +158,23 @@ def ai_models_keyboard() -> InlineKeyboardMarkup:
     )
 
     return builder.as_markup()
+
+
+def profile_keyboard() -> InlineKeyboardMarkup:
+    """Profile keyboard with additional options."""
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(text="💳 Мои платежи", callback_data="my_payments")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🤝🏼 Партнерство", callback_data="referral")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🆘 Помощь", callback_data="help")
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ В главное меню", callback_data="main_menu")
+    )
+
+    return builder.as_markup()

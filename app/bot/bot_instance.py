@@ -51,6 +51,10 @@ async def setup_bot() -> Dispatcher:
     dp.include_router(text_ai.router)
     dp.include_router(common.router)
 
+    # Setup bot commands menu
+    from app.bot.commands import setup_bot_commands
+    await setup_bot_commands(bot)
+
     logger.info("bot_setup_completed")
 
     return dp
