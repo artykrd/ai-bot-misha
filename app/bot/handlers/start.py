@@ -13,7 +13,52 @@ router = Router(name="start")
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, user: User):
-    """Handle /start command."""
+    """Handle /start command with optional referral code."""
+    from app.database.database import async_session_maker
+    from app.database.models.referral import Referral
+    from sqlalchemy import select
+
+    # Check for referral code in command args
+    if message.text and len(message.text.split()) > 1:
+        args = message.text.split()[1]  # Get argument after /start
+        if args.startswith("ref"):
+            try:
+                referrer_telegram_id = int(args[3:])  # Extract ID from "ref123456789"
+
+                # Check if user already has a referral
+                async with async_session_maker() as session:
+                    # Find referrer
+                    referrer_result = await session.execute(
+                        select(User).where(User.telegram_id == referrer_telegram_id)
+                    )
+                    referrer = referrer_result.scalar_one_or_none()
+
+                    # Check if already has referral
+                    existing_referral = await session.execute(
+                        select(Referral).where(Referral.referred_id == user.id)
+                    )
+                    has_referral = existing_referral.scalar_one_or_none()
+
+                    if referrer and not has_referral and referrer.id != user.id:
+                        # Create referral relationship
+                        new_referral = Referral(
+                            referrer_id=referrer.id,
+                            referred_id=user.id,
+                            referral_code=args,
+                            referral_type="user",
+                            tokens_earned=0,
+                            money_earned=0,
+                            is_active=True
+                        )
+                        session.add(new_referral)
+                        await session.commit()
+
+                        await message.answer(
+                            f"🎉 Вы были приглашены пользователем {referrer.full_name}!\n"
+                            f"Вам начислено 100 бонусных токенов!"
+                        )
+            except (ValueError, IndexError):
+                pass  # Invalid referral code format
 
     total_tokens = user.get_total_tokens()
 

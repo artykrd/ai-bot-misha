@@ -6,7 +6,7 @@ from aiogram.types import CallbackQuery, Message
 from aiogram.filters import Command
 from aiogram.enums import ParseMode
 
-from app.bot.keyboards.inline import back_to_main_keyboard, main_menu_keyboard
+from app.bot.keyboards.inline import back_to_main_keyboard, main_menu_keyboard, subscription_keyboard
 
 router = Router(name="common")
 
@@ -15,12 +15,16 @@ router = Router(name="common")
 @router.message(Command("shop"))
 async def cmd_shop(message: Message):
     """Shop command - show subscription."""
-    from app.bot.handlers.subscription import show_subscriptions
-    from app.database.models.user import User
-    # Get user from middleware or create placeholder
+    text = """💎 **Оформить подписку**
+
+🤩 **Наш бот предоставляет вам лучший сервис** без каких либо ограничений и продолжает это делать ежедневно 24/7. **Подписка позволит вам получить больше возможностей**, чем если использовать бот бесплатно.
+
+**Выберите подходящий тариф:**"""
+
     await message.answer(
-        "💎 Перейдите в раздел подписки через главное меню",
-        reply_markup=main_menu_keyboard()
+        text,
+        reply_markup=subscription_keyboard(),
+        parse_mode=ParseMode.MARKDOWN
     )
 
 
