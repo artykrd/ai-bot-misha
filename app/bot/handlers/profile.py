@@ -126,7 +126,7 @@ def calculate_service_availability(total_tokens: int) -> str:
     return "\n".join(lines)
 
 
-@router.callback_query(F.data == "profile")
+@router.callback_query(F.data == "bot.profile")
 @router.message(Command("profile"))
 async def show_profile(event, user: User):
     """Show user profile with detailed token breakdown."""

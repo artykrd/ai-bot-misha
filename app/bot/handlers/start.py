@@ -45,17 +45,37 @@ async def cmd_start(message: Message, user: User):
     )
 
 
-@router.callback_query(F.data == "main_menu")
+@router.callback_query(F.data.in_(["main_menu", "bot.back"]))
 async def show_main_menu(callback: CallbackQuery, user: User):
-    """Show main menu."""
+    """Show main menu. Handles both legacy 'main_menu' and new 'bot.back' callbacks."""
+    from app.database.database import async_session_maker
+    from app.services.subscription.subscription_service import SubscriptionService
 
-    total_tokens = user.get_total_tokens()
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+        total_tokens = await sub_service.get_user_total_tokens(user.id)
 
-    welcome_text = f"""👋🏻 **Главное меню**
+    welcome_text = f"""👋🏻 **Привет!** У тебя на балансе **{total_tokens:,} токенов** ** **– используй их для запросов к нейросетям.
 
-💰 Баланс: **{total_tokens:,} токенов**
+💬 **Языковые модели:**
+– **ChatGPT:** работает с текстом, голосом, может принимать до 10 картинок и документы любого формата;
+– **Claude** и **Gemini:** отлично работают с текстом и документами;
+– **DeepSeek:** отличная альтернатива для сложных задач;
+– **Sonar:** модели с доступом к поиску в интернете.
 
-Выбери нужный раздел ниже! 👇"""
+🌄 **Создание изображений:**
+– **Midjourney, DALL·E, Stable Diffusion, Recraft** – генерация изображений по описанию;
+– **Nano Banana** – создаёт фото по промпту и вашим изображениям;
+– **GPT Image** – генерация от OpenAI.
+
+🎬 **Создание видео:**
+– **Sora 2, Veo 3.1** – новейшие модели видеогенерации;
+– **Midjourney Video, Hailuo, Luma, Kling** – создание видео по описанию.
+
+🎙 **Работа с аудио:**
+– **Suno** – создание музыки и песен;
+– **Whisper** – расшифровка голосовых сообщений;
+– **TTS** – озвучка текста."""
 
     await callback.message.edit_text(
         welcome_text,
