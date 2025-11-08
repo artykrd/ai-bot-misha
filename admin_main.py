@@ -21,14 +21,6 @@ logger = get_logger(__name__)
 admin_bot = Bot(token=settings.telegram_admin_bot_token, parse_mode="Markdown")
 
 
-# FSM storage
-storage = RedisStorage(redis=redis_client.fsm_client)
-
-
-# Dispatcher
-admin_dp = Dispatcher(storage=storage)
-
-
 # Router
 admin_router = Router(name="admin")
 
@@ -125,36 +117,28 @@ async def list_users(message: Message):
     await message.answer(text)
 
 
-# Register router
-admin_dp.include_router(admin_router)
-
-
-async def on_startup():
-    """Startup tasks."""
-    logger.info("admin_bot_starting")
-
-    await init_db()
-    await redis_client.connect()
-
-    logger.info("admin_bot_started")
-
-
-async def on_shutdown():
-    """Shutdown tasks."""
-    logger.info("admin_bot_shutting_down")
-
-    await redis_client.disconnect()
-    await close_db()
-    await admin_bot.session.close()
-
-    logger.info("admin_bot_shutdown_complete")
-
-
 async def main():
     """Main admin bot loop."""
+    admin_dp = None
     try:
-        await on_startup()
+        logger.info("admin_bot_starting")
 
+        # Initialize database
+        await init_db()
+
+        # Connect to Redis
+        await redis_client.connect()
+
+        # Create dispatcher with Redis storage
+        storage = RedisStorage(redis=redis_client.fsm_client)
+        admin_dp = Dispatcher(storage=storage)
+
+        # Register router
+        admin_dp.include_router(admin_router)
+
+        logger.info("admin_bot_started")
+
+        # Start polling
         await admin_dp.start_polling(
             admin_bot,
             allowed_updates=admin_dp.resolve_used_update_types()
@@ -164,7 +148,18 @@ async def main():
         logger.error("admin_bot_error", error=str(e))
         raise
     finally:
-        await on_shutdown()
+        logger.info("admin_bot_shutting_down")
+
+        # Close connections
+        await redis_client.disconnect()
+        await close_db()
+        await admin_bot.session.close()
+
+        # Close dispatcher storage
+        if admin_dp:
+            await admin_dp.storage.close()
+
+        logger.info("admin_bot_shutdown_complete")
 
 
 if __name__ == "__main__":

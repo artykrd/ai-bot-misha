@@ -12,67 +12,43 @@ from app.core.logger import get_logger
 from app.core.redis_client import redis_client
 from app.core.scheduler import scheduler
 from app.database.database import init_db, close_db
-from app.bot.bot_instance import dp, bot, setup_bot, shutdown_bot
+from app.bot.bot_instance import bot, setup_bot, shutdown_bot
 
 logger = get_logger(__name__)
 
 
-async def on_startup() -> None:
-    """Actions on bot startup."""
-    logger.info("bot_starting", environment=settings.environment)
-
-    # Initialize database
-    await init_db()
-
-    # Connect to Redis
-    await redis_client.connect()
-
-    # Setup bot (middlewares, handlers)
-    await setup_bot()
-
-    # Start background scheduler
-    scheduler.start()
-
-    # Register background tasks
-    from app.services.subscription.subscription_service import SubscriptionService
-    from app.database.database import async_session_maker
-
-    async def cleanup_expired_subscriptions():
-        """Background task to deactivate expired subscriptions."""
-        async with async_session_maker() as session:
-            service = SubscriptionService(session)
-            await service.deactivate_expired_subscriptions()
-
-    # Run every hour
-    scheduler.add_interval_job(cleanup_expired_subscriptions, hours=1)
-
-    logger.info("bot_started_successfully")
-
-
-async def on_shutdown() -> None:
-    """Actions on bot shutdown."""
-    logger.info("bot_shutting_down")
-
-    # Shutdown scheduler
-    scheduler.shutdown()
-
-    # Close Redis
-    await redis_client.disconnect()
-
-    # Close database
-    await close_db()
-
-    # Shutdown bot
-    await shutdown_bot()
-
-    logger.info("bot_shutdown_complete")
-
-
 async def main() -> None:
     """Main bot loop."""
+    dp = None
     try:
-        # Run startup tasks
-        await on_startup()
+        logger.info("bot_starting", environment=settings.environment)
+
+        # Initialize database
+        await init_db()
+
+        # Connect to Redis
+        await redis_client.connect()
+
+        # Setup bot (middlewares, handlers) and get dispatcher
+        dp = await setup_bot()
+
+        # Start background scheduler
+        scheduler.start()
+
+        # Register background tasks
+        from app.services.subscription.subscription_service import SubscriptionService
+        from app.database.database import async_session_maker
+
+        async def cleanup_expired_subscriptions():
+            """Background task to deactivate expired subscriptions."""
+            async with async_session_maker() as session:
+                service = SubscriptionService(session)
+                await service.deactivate_expired_subscriptions()
+
+        # Run every hour
+        scheduler.add_interval_job(cleanup_expired_subscriptions, hours=1)
+
+        logger.info("bot_started_successfully")
 
         # Start polling
         await dp.start_polling(
@@ -84,7 +60,22 @@ async def main() -> None:
         logger.error("bot_fatal_error", error=str(e))
         raise
     finally:
-        await on_shutdown()
+        logger.info("bot_shutting_down")
+
+        # Shutdown scheduler
+        scheduler.shutdown()
+
+        # Close Redis
+        await redis_client.disconnect()
+
+        # Close database
+        await close_db()
+
+        # Shutdown bot
+        if dp:
+            await shutdown_bot(dp)
+
+        logger.info("bot_shutdown_complete")
 
 
 if __name__ == "__main__":
