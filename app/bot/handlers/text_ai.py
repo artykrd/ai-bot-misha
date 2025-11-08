@@ -6,7 +6,7 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 
 from app.bot.keyboards.inline import ai_models_keyboard, back_to_main_keyboard
-from app.bot.states.dialog import DialogStates, AIGenerationStates
+from app.bot.states.dialog import AIGenerationStates
 from app.database.models.user import User
 from app.database.database import async_session_maker
 from app.services.subscription.subscription_service import SubscriptionService

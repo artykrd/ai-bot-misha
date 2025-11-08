@@ -2,8 +2,9 @@
 Base AI provider interface.
 """
 from abc import ABC, abstractmethod
-from typing import Optional, Any
+from typing import Optional
 from dataclasses import dataclass
+
 
 @dataclass
 class AIResponse:

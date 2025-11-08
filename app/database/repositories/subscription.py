@@ -27,7 +27,7 @@ class SubscriptionRepository(BaseRepository[Subscription]):
 
         if active_only:
             query = query.where(
-                Subscription.is_active == True,
+                Subscription.is_active .is_(True),
                 (Subscription.expires_at.is_(None)) |
                 (Subscription.expires_at > datetime.utcnow())
             )
@@ -104,7 +104,7 @@ class SubscriptionRepository(BaseRepository[Subscription]):
         result = await self.session.execute(
             update(Subscription)
             .where(
-                Subscription.is_active == True,
+                Subscription.is_active .is_(True),
                 Subscription.expires_at.isnot(None),
                 Subscription.expires_at < datetime.utcnow()
             )

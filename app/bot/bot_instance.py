@@ -3,9 +3,9 @@ Main bot instance initialization.
 """
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.redis import RedisStorage
+from aiogram.fsm.storage.memory import MemoryStorage
 
 from app.core.config import settings
-from app.core.redis_client import redis_client
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -15,16 +15,19 @@ logger = get_logger(__name__)
 bot = Bot(token=settings.telegram_bot_token, parse_mode="Markdown")
 
 
-# Initialize FSM storage with Redis
-storage = RedisStorage(redis=redis_client.fsm_client)
-
-
-# Initialize dispatcher
-dp = Dispatcher(storage=storage)
+# Initialize dispatcher with temporary storage
+# Will be replaced with Redis storage in setup_bot()
+dp = Dispatcher(storage=MemoryStorage())
 
 
 async def setup_bot() -> None:
     """Setup bot (middlewares, handlers, etc.)."""
+    from app.core.redis_client import redis_client
+
+    # Replace memory storage with Redis storage
+    redis_storage = RedisStorage(redis=redis_client.fsm_client)
+    dp.storage = redis_storage
+
     from app.bot.middlewares.auth import AuthMiddleware
     from app.bot.middlewares.logging import LoggingMiddleware
 

@@ -2,7 +2,6 @@
 User service for business logic.
 """
 from typing import Optional, Tuple
-from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
