@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Media handlers for video, audio, and image generation.
 from aiogram.fsm.context import FSMContext

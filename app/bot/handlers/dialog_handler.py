@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Universal message handler for active dialogs.
 """
