@@ -26,9 +26,18 @@ class AIServiceFactory:
         "gpt-3.5-turbo": "openai",
         "claude": "anthropic",
         "claude-3-5-sonnet": "anthropic",
+        "claude-sonnet-4": "anthropic",
+        "claude-3.7": "anthropic",
+        "claude-3.5": "anthropic",
         "claude-3-opus": "anthropic",
+        "anthropic/claude-3.7": "anthropic",
+        "anthropic/claude-3.5": "anthropic",
         "gemini": "google",
         "gemini-pro": "google",
+        "gemini-flash-2.0": "google",
+        "gemini-2.0-flash-001": "google",
+        "gemini-1.5-flash-002": "google",
+        "google/gemini-2.5-pro-preview": "google",
         "deepseek": "deepseek",
         "deepseek-chat": "deepseek",
     }
@@ -41,14 +50,24 @@ class AIServiceFactory:
 
     # Anthropic model name mapping
     ANTHROPIC_MODEL_NAMES = {
-        "claude": "claude-3-5-sonnet-20241022",
-        "claude-3-5-sonnet": "claude-3-5-sonnet-20241022",
+        "claude": "claude-sonnet-4-20250514",
+        "claude-3-5-sonnet": "claude-sonnet-4-20250514",
+        "claude-sonnet-4": "claude-sonnet-4-20250514",
+        "claude-sonnet-4-20250514": "claude-sonnet-4-20250514",
+        "claude-3.7": "claude-sonnet-4-20250514",
+        "claude-3.5": "claude-3-5-sonnet-20241022",
+        "anthropic/claude-3.7": "claude-sonnet-4-20250514",
+        "anthropic/claude-3.5": "claude-3-5-sonnet-20241022",
     }
 
     # Google model name mapping
     GOOGLE_MODEL_NAMES = {
-        "gemini": "gemini-pro",
-        "gemini-pro": "gemini-pro",
+        "gemini": "gemini-2.0-flash-exp",
+        "gemini-pro": "gemini-2.0-flash-exp",
+        "gemini-flash-2.0": "gemini-2.0-flash-exp",
+        "gemini-2.0-flash-001": "gemini-2.0-flash-exp",
+        "gemini-1.5-flash-002": "gemini-1.5-flash-002",
+        "google/gemini-2.5-pro-preview": "gemini-2.0-flash-exp",
     }
 
     # DeepSeek model name mapping

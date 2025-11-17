@@ -48,7 +48,7 @@ class AnthropicService(BaseAIProvider):
     async def generate_text(
         self,
         prompt: str,
-        model: str = "claude-3-5-sonnet-20241022",
+        model: str = "claude-sonnet-4-20250514",
         system_prompt: Optional[str] = None,
         history: Optional[List[Dict]] = None,
         max_tokens: int = 4096,

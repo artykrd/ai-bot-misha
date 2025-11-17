@@ -51,7 +51,7 @@ class GoogleService(BaseAIProvider):
     async def generate_text(
         self,
         prompt: str,
-        model: str = "gemini-pro",
+        model: str = "gemini-2.0-flash-exp",
         system_prompt: Optional[str] = None,
         history: Optional[List[Dict]] = None,
         **kwargs
@@ -77,26 +77,43 @@ class GoogleService(BaseAIProvider):
                     processing_time=time.time() - start_time
                 )
 
-            model_instance = self._genai.GenerativeModel(model)
+            # Configure generation settings
+            generation_config = {
+                "temperature": kwargs.get("temperature", 0.7),
+                "top_p": kwargs.get("top_p", 0.95),
+                "top_k": kwargs.get("top_k", 40),
+                "max_output_tokens": kwargs.get("max_tokens", 8192),
+            }
 
-            # Combine system prompt with user prompt if provided
-            full_prompt = prompt
-            if system_prompt:
-                full_prompt = f"{system_prompt}\n\n{prompt}"
+            # Build system instruction if provided
+            system_instruction = system_prompt if system_prompt else None
 
-            # Gemini uses generate_content (sync) but we can wrap it
-            # For true async, need to use the async client
-            response = model_instance.generate_content(full_prompt)
+            # Create model instance with system instruction
+            model_instance = self._genai.GenerativeModel(
+                model_name=model,
+                generation_config=generation_config,
+                system_instruction=system_instruction
+            )
+
+            # Generate content
+            response = model_instance.generate_content(prompt)
 
             content = response.text
-            # Gemini doesn't provide token count in the same way
-            tokens_used = 0  # Placeholder
+
+            # Get token usage if available
+            tokens_used = 0
+            if hasattr(response, 'usage_metadata'):
+                tokens_used = (
+                    getattr(response.usage_metadata, 'prompt_token_count', 0) +
+                    getattr(response.usage_metadata, 'candidates_token_count', 0)
+                )
 
             processing_time = time.time() - start_time
 
             logger.info(
                 "google_text_generated",
                 model=model,
+                tokens=tokens_used,
                 time=processing_time
             )
 
@@ -109,10 +126,11 @@ class GoogleService(BaseAIProvider):
             )
 
         except Exception as e:
-            logger.error("google_text_generation_failed", error=str(e))
+            error_msg = str(e)
+            logger.error("google_text_generation_failed", error=error_msg, model=model)
             return AIResponse(
                 success=False,
-                error=str(e),
+                error=error_msg,
                 processing_time=time.time() - start_time
             )
 
