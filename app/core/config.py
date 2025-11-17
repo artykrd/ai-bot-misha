@@ -62,6 +62,12 @@ class Settings(BaseSettings):
     removebg_api_key: Optional[str] = Field(None, description="Remove.bg API key")
 
     # =====================================
+    # GOOGLE CLOUD / VERTEX AI
+    # =====================================
+    google_cloud_project: Optional[str] = Field(None, description="Google Cloud Project ID for Vertex AI")
+    google_application_credentials: Optional[str] = Field(None, description="Path to Google Cloud credentials JSON file")
+
+    # =====================================
     # PAYMENT CONFIGURATION
     # =====================================
     yukassa_shop_id: Optional[str] = Field(None, description="ЮKassa shop ID")
