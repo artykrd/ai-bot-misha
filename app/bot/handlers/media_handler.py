@@ -14,10 +14,12 @@ from pathlib import Path
 
 from app.bot.keyboards.inline import back_to_main_keyboard
 from app.database.models.user import User
+from app.database.database import async_session_maker
 from app.core.logger import get_logger
+from app.core.exceptions import InsufficientTokensError
 from app.services.video import VeoService
 from app.services.image import DalleService, GeminiImageService, StabilityService, RemoveBgService
-from app.services.token import TokenService
+from app.services.subscription.subscription_service import SubscriptionService
 
 logger = get_logger(__name__)
 
@@ -302,19 +304,23 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
     """Process Veo video generation."""
     prompt = message.text
 
-    # Check tokens
-    token_service = TokenService()
+    # Check and use tokens
     estimated_tokens = 15000  # Veo is expensive
 
-    has_tokens = await token_service.check_tokens(user.id, estimated_tokens)
-    if not has_tokens:
-        await message.answer(
-            f"❌ Недостаточно токенов для генерации видео.\n\n"
-            f"Необходимо: {estimated_tokens:,} токенов\n"
-            f"У вас: {user.tokens_balance:,} токенов"
-        )
-        await state.clear()
-        return
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+
+        try:
+            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+        except InsufficientTokensError as e:
+            await message.answer(
+                f"❌ Недостаточно токенов для генерации видео!\n\n"
+                f"Требуется: {estimated_tokens:,} токенов\n"
+                f"Доступно: {e.details['available']:,} токенов\n\n"
+                f"Купите подписку: /start → 💎 Подписка"
+            )
+            await state.clear()
+            return
 
     # Send progress message
     progress_msg = await message.answer("🎬 Инициализация Veo 3.1...")
@@ -338,12 +344,6 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
     )
 
     if result.success:
-        # Deduct tokens
-        await token_service.deduct_tokens(
-            user_id=user.id,
-            amount=result.tokens_used,
-            reason=f"Veo video: {prompt[:50]}"
-        )
 
         # Send video
         video_file = FSInputFile(result.video_path)
@@ -394,19 +394,23 @@ async def process_dalle_image(message: Message, user: User, state: FSMContext):
     """Process DALL-E image generation."""
     prompt = message.text
 
-    # Check tokens
-    token_service = TokenService()
+    # Check and use tokens
     estimated_tokens = 4000  # DALL-E 3 standard
 
-    has_tokens = await token_service.check_tokens(user.id, estimated_tokens)
-    if not has_tokens:
-        await message.answer(
-            f"❌ Недостаточно токенов для генерации изображения.\n\n"
-            f"Необходимо: {estimated_tokens:,} токенов\n"
-            f"У вас: {user.tokens_balance:,} токенов"
-        )
-        await state.clear()
-        return
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+
+        try:
+            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+        except InsufficientTokensError as e:
+            await message.answer(
+                f"❌ Недостаточно токенов для генерации изображения!\n\n"
+                f"Требуется: {estimated_tokens:,} токенов\n"
+                f"Доступно: {e.details['available']:,} токенов\n\n"
+                f"Купите подписку: /start → 💎 Подписка"
+            )
+            await state.clear()
+            return
 
     # Send progress message
     progress_msg = await message.answer("🎨 Генерирую изображение...")
@@ -433,13 +437,6 @@ async def process_dalle_image(message: Message, user: User, state: FSMContext):
 
     if result.success:
         tokens_used = result.metadata.get("tokens_used", estimated_tokens)
-
-        # Deduct tokens
-        await token_service.deduct_tokens(
-            user_id=user.id,
-            amount=tokens_used,
-            reason=f"DALL-E 3: {prompt[:50]}"
-        )
 
         # Send image
         image_file = FSInputFile(result.image_path)
@@ -469,19 +466,23 @@ async def process_gemini_image(message: Message, user: User, state: FSMContext):
     """Process Gemini/Imagen image generation."""
     prompt = message.text
 
-    # Check tokens
-    token_service = TokenService()
+    # Check and use tokens
     estimated_tokens = 3000  # Imagen 3
 
-    has_tokens = await token_service.check_tokens(user.id, estimated_tokens)
-    if not has_tokens:
-        await message.answer(
-            f"❌ Недостаточно токенов для генерации изображения.\n\n"
-            f"Необходимо: {estimated_tokens:,} токенов\n"
-            f"У вас: {user.tokens_balance:,} токенов"
-        )
-        await state.clear()
-        return
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+
+        try:
+            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+        except InsufficientTokensError as e:
+            await message.answer(
+                f"❌ Недостаточно токенов для генерации изображения!\n\n"
+                f"Требуется: {estimated_tokens:,} токенов\n"
+                f"Доступно: {e.details['available']:,} токенов\n\n"
+                f"Купите подписку: /start → 💎 Подписка"
+            )
+            await state.clear()
+            return
 
     # Send progress message
     progress_msg = await message.answer("🎨 Генерирую изображение...")
@@ -505,13 +506,6 @@ async def process_gemini_image(message: Message, user: User, state: FSMContext):
 
     if result.success:
         tokens_used = result.metadata.get("tokens_used", estimated_tokens)
-
-        # Deduct tokens
-        await token_service.deduct_tokens(
-            user_id=user.id,
-            amount=tokens_used,
-            reason=f"Imagen 3: {prompt[:50]}"
-        )
 
         # Send image
         image_file = FSInputFile(result.image_path)
@@ -585,19 +579,23 @@ async def process_upscale(message: Message, state: FSMContext, user: User):
     # Get the largest photo
     photo = message.photo[-1]
 
-    # Check tokens
-    token_service = TokenService()
+    # Check and use tokens
     estimated_tokens = 2000
 
-    has_tokens = await token_service.check_tokens(user.id, estimated_tokens)
-    if not has_tokens:
-        await message.answer(
-            f"❌ Недостаточно токенов для улучшения изображения.\n\n"
-            f"Необходимо: {estimated_tokens:,} токенов\n"
-            f"У вас: {user.tokens_balance:,} токенов"
-        )
-        await state.clear()
-        return
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+
+        try:
+            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+        except InsufficientTokensError as e:
+            await message.answer(
+                f"❌ Недостаточно токенов для улучшения изображения!\n\n"
+                f"Требуется: {estimated_tokens:,} токенов\n"
+                f"Доступно: {e.details['available']:,} токенов\n\n"
+                f"Купите подписку: /start → 💎 Подписка"
+            )
+            await state.clear()
+            return
 
     # Send progress message
     progress_msg = await message.answer("📥 Загружаю изображение...")
@@ -636,12 +634,6 @@ async def process_upscale(message: Message, state: FSMContext, user: User):
         pass
 
     if result.success:
-        # Deduct tokens
-        await token_service.deduct_tokens(
-            user_id=user.id,
-            amount=estimated_tokens,
-            reason="Image upscale"
-        )
 
         # Send upscaled image
         upscaled_file = FSInputFile(result.image_path)
