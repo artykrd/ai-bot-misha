@@ -2,10 +2,6 @@
 # coding: utf-8
 """
 Media handlers for video, audio, and image generation.
-Includes FSM state handlers for processing user messages.
-"""
-from aiogram import Router, F
-from aiogram.types import CallbackQuery, Message, FSInputFile
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
@@ -36,8 +32,6 @@ class MediaState(StatesGroup):
     waiting_for_upscale_image = State()
 
 
-# ===== VIDEO GENERATION BUTTONS =====
-
 @router.callback_query(F.data == "bot.sora")
 async def start_sora(callback: CallbackQuery, state: FSMContext, user: User):
     """Start Sora video generation."""
@@ -57,6 +51,7 @@ async def start_sora(callback: CallbackQuery, state: FSMContext, user: User):
         reply_markup=back_to_main_keyboard()
     )
     await callback.answer()
+
 
 
 @router.callback_query(F.data == "bot.luma")
@@ -143,24 +138,6 @@ async def start_kling_effects(callback: CallbackQuery, state: FSMContext, user: 
     await callback.answer()
 
 
-@router.callback_query(F.data.in_(["bot.veo", "bot.mjvideo"]))
-async def service_not_configured(callback: CallbackQuery):
-    """Handler for services requiring additional configuration."""
-    service_names = {
-        "bot.veo": "Veo 3.1",
-        "bot.mjvideo": "Midjourney Video"
-    }
-    service = service_names.get(callback.data, "Сервис")
-
-    await callback.answer(
-        f"⚠️ {service} требует дополнительной настройки.\n\n"
-        "Обратитесь к администратору: @gigavidacha",
-        show_alert=True
-    )
-
-
-# ===== AUDIO GENERATION BUTTONS =====
-
 @router.callback_query(F.data == "bot.suno")
 async def start_suno(callback: CallbackQuery, state: FSMContext, user: User):
     """Start Suno music generation."""
@@ -185,6 +162,7 @@ async def start_suno(callback: CallbackQuery, state: FSMContext, user: User):
         reply_markup=back_to_main_keyboard()
     )
     await callback.answer()
+
 
 
 @router.callback_query(F.data == "bot.whisper_tts")
@@ -215,29 +193,6 @@ async def start_tts(callback: CallbackQuery, state: FSMContext, user: User):
     )
     await callback.answer()
 
-
-@router.callback_query(F.data == "bot.whisper")
-async def start_whisper(callback: CallbackQuery, state: FSMContext, user: User):
-    """Start Whisper transcription."""
-    text = """🎙 **Whisper – Speech to Text**
-
-🗣 Whisper расшифрует ваше голосовое сообщение в текст.
-
-**Стоимость:** ~100 токенов за минуту
-
-📱 Отправьте голосовое сообщение или аудиофайл."""
-
-    await state.set_state(MediaState.waiting_for_image)  # Reusing state
-    await state.update_data(service="whisper")
-
-    await callback.message.edit_text(
-        text,
-        reply_markup=back_to_main_keyboard()
-    )
-    await callback.answer()
-
-
-# ===== IMAGE PROCESSING BUTTONS =====
 
 @router.callback_query(F.data == "bot.pi_upscale")
 async def start_upscale(callback: CallbackQuery, state: FSMContext, user: User):
@@ -303,11 +258,6 @@ async def start_replace_bg(callback: CallbackQuery, state: FSMContext, user: Use
     await callback.answer()
 
 
-@router.callback_query(F.data.in_(["bot.pi_vect", "bot.gpt_image", "bot.midjourney", "bot_stable_diffusion", "bot.recraft", "bot.faceswap"]))
-async def image_generation_not_implemented(callback: CallbackQuery):
-    """Placeholder for image generation services."""
-    service_names = {
-        "bot.pi_vect": "Векторизация",
         "bot.gpt_image": "GPT Image",
         "bot.midjourney": "Midjourney",
         "bot_stable_diffusion": "Stable Diffusion",
@@ -320,7 +270,6 @@ async def image_generation_not_implemented(callback: CallbackQuery):
         f"⚠️ {service} будет доступен в следующей версии",
         show_alert=True
     )
-
 
 # ===== MESSAGE HANDLERS FOR FSM STATES =====
 
@@ -397,3 +346,5 @@ async def process_upscale(message: Message, state: FSMContext, user: User):
         f"Скоро эта функция будет доступна!"
     )
     await state.clear()
+=======
+main

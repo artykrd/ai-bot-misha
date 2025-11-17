@@ -362,46 +362,8 @@ __ℹ️ Выберите нейросеть для работы с аудио �
     await callback.answer()
 
 
-# Service handlers (all return "in development" message)
-@router.callback_query(F.data.in_([
-    "bot.gpt_image", "bot.midjourney", "bot_stable_diffusion", "bot.recraft", "bot.faceswap",
-    "bot.sora", "bot.veo", "bot.mjvideo", "bot.hailuo", "bot.luma", "bot.kling", "bot.kling_effects",
-    "bot.suno", "bot.whisper", "bot.whisper_tts"
-]))
-async def service_not_implemented(callback: CallbackQuery):
-    """Handler for services not yet implemented."""
-    service_info = {
-        "bot.gpt_image": ("💥 GPT Image", "Генерация изображений от OpenAI"),
-        "bot.midjourney": ("🌆 Midjourney", "Создание изображений с помощью Midjourney"),
-        "bot_stable_diffusion": ("🖌 Stable Diffusion", "Генерация изображений с помощью Stable Diffusion"),
-        "bot.recraft": ("🎨 Recraft", "Создание дизайнов и иллюстраций"),
-        "bot.faceswap": ("🎭 Замена лиц", "Замена лиц на фотографиях"),
-        "bot.sora": ("☁️ Sora 2", "Создание видео с помощью Sora"),
-        "bot.veo": ("🌊 Veo 3.1", "Генерация видео от Google"),
-        "bot.mjvideo": ("🗾 Midjourney Video", "Создание видео с Midjourney"),
-        "bot.hailuo": ("🎥 Hailuo", "Генерация видео"),
-        "bot.luma": ("📹 Luma", "Создание видео с Luma Dream Machine"),
-        "bot.kling": ("🎞 Kling", "Генерация видео с Kling"),
-        "bot.kling_effects": ("🧙 Kling Эффекты", "Видеоэффекты от Kling"),
-        "bot.suno": ("🎧 Suno", "Создание музыки и песен"),
-        "bot.whisper": ("🎙 Whisper", "Расшифровка голосовых сообщений"),
-        "bot.whisper_tts": ("🗣 TTS", "Озвучка текста")
-    }
-    service_name, service_desc = service_info.get(callback.data, ("Сервис", "Описание"))
-
-    text = f"""⚠️ **{service_name}**
-
-{service_desc}
-
-🔧 **Статус:** В разработке
-
-Этот функционал будет доступен в следующей версии бота. Следите за обновлениями!"""
-
-    await callback.message.edit_text(
-        text,
-        reply_markup=back_to_main_keyboard()
-    )
-    await callback.answer()
+# Media service handlers moved to media_handler.py
+# All video, audio, and image processing handlers are now implemented there
 
 
 # Subscription
