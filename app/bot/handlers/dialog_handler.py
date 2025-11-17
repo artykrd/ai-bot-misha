@@ -328,10 +328,10 @@ async def process_google_message(
     system_prompt: str = None
 ) -> dict:
     """Process message with Google Gemini models."""
-    from app.services.ai.google_service import GoogleAIService
+    from app.services.ai.google_service import GoogleService
 
     try:
-        service = GoogleAIService()
+        service = GoogleService()
 
         if message_type == "text":
             result = await service.generate_text(
