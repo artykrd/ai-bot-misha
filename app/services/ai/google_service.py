@@ -85,18 +85,19 @@ class GoogleService(BaseAIProvider):
                 "max_output_tokens": kwargs.get("max_tokens", 8192),
             }
 
-            # Build system instruction if provided
-            system_instruction = system_prompt if system_prompt else None
-
-            # Create model instance with system instruction
+            # Create model instance
             model_instance = self._genai.GenerativeModel(
                 model_name=model,
-                generation_config=generation_config,
-                system_instruction=system_instruction
+                generation_config=generation_config
             )
 
+            # Combine system prompt with user prompt if provided
+            full_prompt = prompt
+            if system_prompt:
+                full_prompt = f"{system_prompt}\n\n{prompt}"
+
             # Generate content
-            response = model_instance.generate_content(prompt)
+            response = model_instance.generate_content(full_prompt)
 
             content = response.text
 
