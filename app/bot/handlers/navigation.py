@@ -1,4 +1,5 @@
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
+# coding: utf-8
 """
 Navigation handlers for all menu buttons.
 """

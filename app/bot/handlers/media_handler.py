@@ -1,4 +1,5 @@
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
+# coding: utf-8
 """
 Media handlers for video, audio, and image generation.
 from aiogram.fsm.context import FSMContext
@@ -6,14 +7,17 @@ from aiogram.fsm.state import State, StatesGroup
 
 from app.bot.keyboards.inline import back_to_main_keyboard
 from app.database.models.user import User
-from app.services.video.sora_service import SoraService
-from app.services.video.luma_service import LumaService
-from app.services.video.replicate_service import ReplicateService
-from app.services.audio.suno_service import SunoService
-from app.services.audio.openai_audio_service import OpenAIAudioService
-from app.services.image.removebg_service import RemoveBgService
-from app.services.image.stability_service import StabilityService
+# TODO: Create these services
+# from app.services.video.sora_service import SoraService
+# from app.services.video.luma_service import LumaService
+# from app.services.video.replicate_service import ReplicateService
+# from app.services.audio.suno_service import SunoService
+# from app.services.audio.openai_audio_service import OpenAIAudioService
+# from app.services.image.removebg_service import RemoveBgService
+# from app.services.image.stability_service import StabilityService
 from app.core.logger import get_logger
+import tempfile
+import os
 
 logger = get_logger(__name__)
 
@@ -267,3 +271,80 @@ async def start_replace_bg(callback: CallbackQuery, state: FSMContext, user: Use
         show_alert=True
     )
 
+# ===== MESSAGE HANDLERS FOR FSM STATES =====
+
+@router.message(MediaState.waiting_for_video_prompt, F.text)
+async def process_video_prompt(message: Message, state: FSMContext, user: User):
+    """Process video generation prompt - TEMPORARY STUB."""
+    data = await state.get_data()
+    service_name = data.get("service", "sora")
+
+    service_names = {
+        "sora": "Sora 2",
+        "luma": "Luma Dream Machine",
+        "hailuo": "Hailuo",
+        "kling": "Kling AI",
+        "kling_effects": "Kling Effects"
+    }
+    service_display = service_names.get(service_name, service_name)
+
+    await message.answer(
+        f"⚠️ Функция генерации видео ({service_display}) находится в разработке.\n\n"
+        f"📝 Ваш запрос получен: {message.text[:100]}...\n\n"
+        f"Скоро эта функция будет доступна!"
+    )
+    await state.clear()
+
+
+@router.message(MediaState.waiting_for_audio_prompt, F.text)
+async def process_audio_prompt(message: Message, state: FSMContext, user: User):
+    """Process audio generation prompt - TEMPORARY STUB."""
+    data = await state.get_data()
+    service_name = data.get("service", "suno")
+
+    service_names = {
+        "suno": "Suno AI (музыка)",
+        "tts": "OpenAI TTS (озвучка)"
+    }
+    service_display = service_names.get(service_name, service_name)
+
+    await message.answer(
+        f"⚠️ Функция генерации аудио ({service_display}) находится в разработке.\n\n"
+        f"📝 Ваш запрос получен: {message.text[:100]}...\n\n"
+        f"Скоро эта функция будет доступна!"
+    )
+    await state.clear()
+
+
+@router.message(MediaState.waiting_for_image, F.photo)
+async def process_image(message: Message, state: FSMContext, user: User):
+    """Process image for background removal/replacement - TEMPORARY STUB."""
+    data = await state.get_data()
+    service_name = data.get("service", "remove_bg")
+
+    service_names = {
+        "remove_bg": "Удаление фона",
+        "replace_bg": "Замена фона",
+        "whisper": "Whisper STT"
+    }
+    service_display = service_names.get(service_name, service_name)
+
+    await message.answer(
+        f"⚠️ Функция обработки изображений ({service_display}) находится в разработке.\n\n"
+        f"📸 Изображение получено!\n\n"
+        f"Скоро эта функция будет доступна!"
+    )
+    await state.clear()
+
+
+@router.message(MediaState.waiting_for_upscale_image, F.photo)
+async def process_upscale(message: Message, state: FSMContext, user: User):
+    """Process image upscaling - TEMPORARY STUB."""
+    await message.answer(
+        f"⚠️ Функция улучшения изображений находится в разработке.\n\n"
+        f"📸 Изображение получено!\n\n"
+        f"Скоро эта функция будет доступна!"
+    )
+    await state.clear()
+=======
+main
