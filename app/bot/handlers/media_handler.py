@@ -1,4 +1,5 @@
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
+# coding: utf-8
 """
 Media handlers for video, audio, and image generation.
 Includes FSM state handlers for processing user messages.
