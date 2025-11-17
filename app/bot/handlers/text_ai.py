@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Text AI handlers (ChatGPT, Claude, etc.).
 """

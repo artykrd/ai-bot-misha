@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Navigation handlers for all menu buttons.
 """
