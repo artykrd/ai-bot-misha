@@ -95,7 +95,7 @@ MODEL_MAPPINGS = {
         "supports_files": False
     },
     333: {
-        "name": "Claude Sonnet 4.5",
+        "name": "Claude 4",
         "provider": "anthropic",
         "model_id": "claude-sonnet-4-20250514",
         "cost_per_request": 1200,
@@ -104,12 +104,21 @@ MODEL_MAPPINGS = {
         "supports_files": True
     },
     334: {
-        "name": "Claude Haiku 3.5",
+        "name": "Claude 3.5 Haiku",
         "provider": "anthropic",
         "model_id": "claude-3-5-haiku-20241022",
         "cost_per_request": 600,
         "supports_vision": True,
         "supports_voice": False,
+        "supports_files": True
+    },
+    338: {
+        "name": "GPT 4o-mini",
+        "provider": "openai",
+        "model_id": "gpt-4o-mini",
+        "cost_per_request": 250,
+        "supports_vision": True,
+        "supports_voice": True,
         "supports_files": True
     },
     335: {
