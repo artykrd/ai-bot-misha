@@ -36,7 +36,6 @@ class AIServiceFactory:
         "gemini-pro": "google",
         "gemini-flash-2.0": "google",
         "gemini-2.0-flash-001": "google",
-        "gemini-1.5-flash-002": "google",
         "google/gemini-2.5-pro-preview": "google",
         "deepseek": "deepseek",
         "deepseek-chat": "deepseek",
@@ -66,7 +65,6 @@ class AIServiceFactory:
         "gemini-pro": "gemini-2.0-flash-exp",
         "gemini-flash-2.0": "gemini-2.0-flash-exp",
         "gemini-2.0-flash-001": "gemini-2.0-flash-exp",
-        "gemini-1.5-flash-002": "gemini-1.5-flash-002",
         "google/gemini-2.5-pro-preview": "gemini-2.0-flash-exp",
     }
 

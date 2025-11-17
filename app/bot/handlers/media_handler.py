@@ -1,8 +1,5 @@
 """
 Media handlers for video, audio, and image generation.
-"""
-from aiogram import Router, F
-from aiogram.types import CallbackQuery, FSInputFile
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
@@ -30,8 +27,6 @@ class MediaState(StatesGroup):
     waiting_for_upscale_image = State()
 
 
-# ===== VIDEO GENERATION =====
-
 @router.callback_query(F.data == "bot.sora")
 async def start_sora(callback: CallbackQuery, state: FSMContext, user: User):
     """Start Sora video generation."""
@@ -52,45 +47,6 @@ async def start_sora(callback: CallbackQuery, state: FSMContext, user: User):
     )
     await callback.answer()
 
-
-@router.callback_query(F.data == "bot.veo")
-async def start_veo(callback: CallbackQuery, state: FSMContext, user: User):
-    """Start Veo video generation."""
-    text = """🌊 **Veo 3.1 – Video Generation**
-
-🎬 Veo 3.1 от Google – новейшая модель для создания видео высокого качества.
-
-**Стоимость:** ~12,000 токенов за видео
-
-⚠️ **Примечание:** Для использования Veo требуется настройка Google Cloud. Подробнее: /veo_setup
-
-📝 Отправьте текстовое описание видео."""
-
-    await callback.answer(
-        "⚠️ Veo 3.1 требует настройки Google Cloud API.\n\n"
-        "Обратитесь к администратору для активации: @gigavidacha",
-        show_alert=True
-    )
-
-
-@router.callback_query(F.data == "bot.mjvideo")
-async def start_mjvideo(callback: CallbackQuery, state: FSMContext, user: User):
-    """Start Midjourney video generation."""
-    text = """🗾 **Midjourney Video**
-
-🎬 Создание видео с помощью Midjourney.
-
-**Стоимость:** ~10,000 токенов за видео
-
-⚠️ **Примечание:** Для использования Midjourney Video требуется API ключ.
-
-Обратитесь к администратору: @gigavidacha"""
-
-    await callback.answer(
-        "⚠️ Midjourney Video требует настройки API.\n\n"
-        "Обратитесь к администратору: @gigavidacha",
-        show_alert=True
-    )
 
 
 @router.callback_query(F.data == "bot.luma")
@@ -177,8 +133,6 @@ async def start_kling_effects(callback: CallbackQuery, state: FSMContext, user: 
     await callback.answer()
 
 
-# ===== AUDIO GENERATION =====
-
 @router.callback_query(F.data == "bot.suno")
 async def start_suno(callback: CallbackQuery, state: FSMContext, user: User):
     """Start Suno music generation."""
@@ -204,26 +158,6 @@ async def start_suno(callback: CallbackQuery, state: FSMContext, user: User):
     )
     await callback.answer()
 
-
-@router.callback_query(F.data == "bot.whisper")
-async def start_whisper(callback: CallbackQuery, state: FSMContext, user: User):
-    """Start Whisper transcription."""
-    text = """🎙 **Whisper – Speech to Text**
-
-🗣 Whisper расшифрует ваше голосовое сообщение в текст.
-
-**Стоимость:** ~100 токенов за минуту
-
-📱 Отправьте голосовое сообщение или аудиофайл."""
-
-    await state.set_state(MediaState.waiting_for_image)  # Reusing state
-    await state.update_data(service="whisper")
-
-    await callback.message.edit_text(
-        text,
-        reply_markup=back_to_main_keyboard()
-    )
-    await callback.answer()
 
 
 @router.callback_query(F.data == "bot.whisper_tts")
@@ -254,8 +188,6 @@ async def start_tts(callback: CallbackQuery, state: FSMContext, user: User):
     )
     await callback.answer()
 
-
-# ===== IMAGE PROCESSING =====
 
 @router.callback_query(F.data == "bot.pi_upscale")
 async def start_upscale(callback: CallbackQuery, state: FSMContext, user: User):
@@ -321,22 +253,6 @@ async def start_replace_bg(callback: CallbackQuery, state: FSMContext, user: Use
     await callback.answer()
 
 
-@router.callback_query(F.data == "bot.pi_vect")
-async def start_vectorize(callback: CallbackQuery, state: FSMContext, user: User):
-    """Start vectorization."""
-    await callback.answer(
-        "⚠️ Векторизация временно недоступна.\n\n"
-        "Функционал будет добавлен в следующей версии.",
-        show_alert=True
-    )
-
-
-# ===== IMAGE GENERATION (PLACEHOLDER) =====
-
-@router.callback_query(F.data.in_(["bot.gpt_image", "bot.midjourney", "bot_stable_diffusion", "bot.recraft", "bot.faceswap"]))
-async def image_generation_not_implemented(callback: CallbackQuery):
-    """Placeholder for image generation services."""
-    service_names = {
         "bot.gpt_image": "GPT Image",
         "bot.midjourney": "Midjourney",
         "bot_stable_diffusion": "Stable Diffusion",
@@ -349,3 +265,4 @@ async def image_generation_not_implemented(callback: CallbackQuery):
         f"⚠️ {service} будет доступен в следующей версии",
         show_alert=True
     )
+
