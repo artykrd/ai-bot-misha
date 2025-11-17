@@ -11,14 +11,17 @@ from aiogram.fsm.state import State, StatesGroup
 
 from app.bot.keyboards.inline import back_to_main_keyboard
 from app.database.models.user import User
-from app.services.video.sora_service import SoraService
-from app.services.video.luma_service import LumaService
-from app.services.video.replicate_service import ReplicateService
-from app.services.audio.suno_service import SunoService
-from app.services.audio.openai_audio_service import OpenAIAudioService
-from app.services.image.removebg_service import RemoveBgService
-from app.services.image.stability_service import StabilityService
+# TODO: Create these services
+# from app.services.video.sora_service import SoraService
+# from app.services.video.luma_service import LumaService
+# from app.services.video.replicate_service import ReplicateService
+# from app.services.audio.suno_service import SunoService
+# from app.services.audio.openai_audio_service import OpenAIAudioService
+# from app.services.image.removebg_service import RemoveBgService
+# from app.services.image.stability_service import StabilityService
 from app.core.logger import get_logger
+import tempfile
+import os
 
 logger = get_logger(__name__)
 
@@ -323,218 +326,74 @@ async def image_generation_not_implemented(callback: CallbackQuery):
 
 @router.message(MediaState.waiting_for_video_prompt, F.text)
 async def process_video_prompt(message: Message, state: FSMContext, user: User):
-    """Process video generation prompt."""
+    """Process video generation prompt - TEMPORARY STUB."""
     data = await state.get_data()
     service_name = data.get("service", "sora")
-    prompt = message.text
 
-    # Create progress callback
-    async def progress_callback(status: str):
-        try:
-            await message.answer(status)
-        except Exception as e:
-            logger.error("progress_callback_failed", error=str(e))
+    service_names = {
+        "sora": "Sora 2",
+        "luma": "Luma Dream Machine",
+        "hailuo": "Hailuo",
+        "kling": "Kling AI",
+        "kling_effects": "Kling Effects"
+    }
+    service_display = service_names.get(service_name, service_name)
 
-    # Send initial message
-    status_msg = await message.answer("⏳ Начинаю генерацию видео...")
-
-    try:
-        # Select appropriate service
-        if service_name == "sora":
-            service = SoraService()
-            result = await service.generate_video(prompt, progress_callback=progress_callback)
-        elif service_name == "luma":
-            service = LumaService()
-            result = await service.generate_video(prompt, progress_callback=progress_callback)
-        elif service_name in ["hailuo", "kling", "kling_effects"]:
-            service = ReplicateService()
-            result = await service.generate_video(prompt, model=service_name, progress_callback=progress_callback)
-        else:
-            await message.answer("❌ Неизвестный сервис")
-            await state.clear()
-            return
-
-        # Send result
-        if result.success and result.video_path:
-            video = FSInputFile(result.video_path)
-            await message.answer_video(
-                video,
-                caption=f"✅ Видео создано!\n⏱ Время: {result.processing_time:.1f}с"
-            )
-        else:
-            await message.answer(f"❌ Ошибка: {result.error}")
-
-    except Exception as e:
-        logger.error("video_generation_error", error=str(e), service=service_name)
-        await message.answer(f"❌ Произошла ошибка: {str(e)}")
-
-    finally:
-        await state.clear()
+    await message.answer(
+        f"⚠️ Функция генерации видео ({service_display}) находится в разработке.\n\n"
+        f"📝 Ваш запрос получен: {message.text[:100]}...\n\n"
+        f"Скоро эта функция будет доступна!"
+    )
+    await state.clear()
 
 
 @router.message(MediaState.waiting_for_audio_prompt, F.text)
 async def process_audio_prompt(message: Message, state: FSMContext, user: User):
-    """Process audio generation prompt."""
+    """Process audio generation prompt - TEMPORARY STUB."""
     data = await state.get_data()
     service_name = data.get("service", "suno")
-    prompt = message.text
 
-    # Create progress callback
-    async def progress_callback(status: str):
-        try:
-            await message.answer(status)
-        except Exception as e:
-            logger.error("progress_callback_failed", error=str(e))
+    service_names = {
+        "suno": "Suno AI (музыка)",
+        "tts": "OpenAI TTS (озвучка)"
+    }
+    service_display = service_names.get(service_name, service_name)
 
-    # Send initial message
-    status_msg = await message.answer("⏳ Начинаю генерацию аудио...")
-
-    try:
-        if service_name == "suno":
-            service = SunoService()
-            result = await service.generate_audio(prompt, progress_callback=progress_callback)
-
-            if result.success and result.audio_path:
-                audio = FSInputFile(result.audio_path)
-                await message.answer_audio(
-                    audio,
-                    caption=f"✅ Музыка создана!\n⏱ Время: {result.processing_time:.1f}с"
-                )
-            else:
-                await message.answer(f"❌ Ошибка: {result.error}")
-
-        elif service_name == "tts":
-            service = OpenAIAudioService()
-            voice = "alloy"  # Default voice
-            result = await service.generate_audio(prompt, voice=voice, progress_callback=progress_callback)
-
-            if result.success and result.audio_path:
-                audio = FSInputFile(result.audio_path)
-                await message.answer_audio(
-                    audio,
-                    caption=f"✅ Речь создана!\n⏱ Время: {result.processing_time:.1f}с"
-                )
-            else:
-                await message.answer(f"❌ Ошибка: {result.error}")
-        else:
-            await message.answer("❌ Неизвестный сервис")
-
-    except Exception as e:
-        logger.error("audio_generation_error", error=str(e), service=service_name)
-        await message.answer(f"❌ Произошла ошибка: {str(e)}")
-
-    finally:
-        await state.clear()
+    await message.answer(
+        f"⚠️ Функция генерации аудио ({service_display}) находится в разработке.\n\n"
+        f"📝 Ваш запрос получен: {message.text[:100]}...\n\n"
+        f"Скоро эта функция будет доступна!"
+    )
+    await state.clear()
 
 
 @router.message(MediaState.waiting_for_image, F.photo)
 async def process_image(message: Message, state: FSMContext, user: User):
-    """Process image for background removal/replacement."""
+    """Process image for background removal/replacement - TEMPORARY STUB."""
     data = await state.get_data()
     service_name = data.get("service", "remove_bg")
 
-    # Download image
-    photo = message.photo[-1]  # Get largest photo
-    file = await message.bot.get_file(photo.file_id)
+    service_names = {
+        "remove_bg": "Удаление фона",
+        "replace_bg": "Замена фона",
+        "whisper": "Whisper STT"
+    }
+    service_display = service_names.get(service_name, service_name)
 
-    # Save to temp location
-    import tempfile
-    import os
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
-        await message.bot.download_file(file.file_path, tmp)
-        temp_path = tmp.name
-
-    # Create progress callback
-    async def progress_callback(status: str):
-        try:
-            await message.answer(status)
-        except Exception as e:
-            logger.error("progress_callback_failed", error=str(e))
-
-    # Send initial message
-    status_msg = await message.answer("⏳ Обрабатываю изображение...")
-
-    try:
-        service = RemoveBgService()
-
-        if service_name == "remove_bg":
-            result = await service.process_image(temp_path, progress_callback=progress_callback)
-        elif service_name == "replace_bg":
-            result = await service.replace_background(temp_path, background_color="white", progress_callback=progress_callback)
-        else:
-            await message.answer("❌ Неизвестный сервис")
-            os.unlink(temp_path)
-            await state.clear()
-            return
-
-        # Send result
-        if result.success and result.image_path:
-            photo_file = FSInputFile(result.image_path)
-            await message.answer_photo(
-                photo_file,
-                caption=f"✅ Изображение обработано!\n⏱ Время: {result.processing_time:.1f}с"
-            )
-        else:
-            await message.answer(f"❌ Ошибка: {result.error}")
-
-    except Exception as e:
-        logger.error("image_processing_error", error=str(e), service=service_name)
-        await message.answer(f"❌ Произошла ошибка: {str(e)}")
-
-    finally:
-        # Cleanup
-        try:
-            os.unlink(temp_path)
-        except:
-            pass
-        await state.clear()
+    await message.answer(
+        f"⚠️ Функция обработки изображений ({service_display}) находится в разработке.\n\n"
+        f"📸 Изображение получено!\n\n"
+        f"Скоро эта функция будет доступна!"
+    )
+    await state.clear()
 
 
 @router.message(MediaState.waiting_for_upscale_image, F.photo)
 async def process_upscale(message: Message, state: FSMContext, user: User):
-    """Process image upscaling."""
-    # Download image
-    photo = message.photo[-1]
-    file = await message.bot.get_file(photo.file_id)
-
-    # Save to temp location
-    import tempfile
-    import os
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
-        await message.bot.download_file(file.file_path, tmp)
-        temp_path = tmp.name
-
-    # Create progress callback
-    async def progress_callback(status: str):
-        try:
-            await message.answer(status)
-        except Exception as e:
-            logger.error("progress_callback_failed", error=str(e))
-
-    # Send initial message
-    status_msg = await message.answer("⏳ Улучшаю изображение...")
-
-    try:
-        service = StabilityService()
-        result = await service.upscale_image(temp_path, scale_factor=2, progress_callback=progress_callback)
-
-        if result.success and result.image_path:
-            photo_file = FSInputFile(result.image_path)
-            await message.answer_photo(
-                photo_file,
-                caption=f"✅ Изображение улучшено!\n⏱ Время: {result.processing_time:.1f}с"
-            )
-        else:
-            await message.answer(f"❌ Ошибка: {result.error}")
-
-    except Exception as e:
-        logger.error("upscale_error", error=str(e))
-        await message.answer(f"❌ Произошла ошибка: {str(e)}")
-
-    finally:
-        # Cleanup
-        try:
-            os.unlink(temp_path)
-        except:
-            pass
-        await state.clear()
+    """Process image upscaling - TEMPORARY STUB."""
+    await message.answer(
+        f"⚠️ Функция улучшения изображений находится в разработке.\n\n"
+        f"📸 Изображение получено!\n\n"
+        f"Скоро эта функция будет доступна!"
+    )
+    await state.clear()
