@@ -413,9 +413,26 @@ async def process_perplexity_message(
     system_prompt: str = None
 ) -> dict:
     """Process message with Perplexity models."""
-    # TODO: Implement Perplexity service
-    return {
-        "success": True,
-        "content": f"🌐 Perplexity ответ (тестовый режим):\n\nОбработано сообщение типа '{message_type}' с моделью {model_id}",
-        "mock": True
-    }
+    from app.services.ai.perplexity_service import PerplexityService
+
+    try:
+        service = PerplexityService()
+
+        if message_type == "text":
+            result = await service.generate_text(
+                model=model_id,
+                prompt=content,
+                system_prompt=system_prompt
+            )
+        else:
+            return {"success": False, "error": f"Message type {message_type} not yet implemented for Perplexity"}
+
+        return {
+            "success": result.success,
+            "content": result.content if result.success else result.error,
+            "error": result.error if not result.success else None,
+            "mock": result.metadata.get("mock", False)
+        }
+    except Exception as e:
+        logger.error(f"Perplexity processing error: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}

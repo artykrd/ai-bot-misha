@@ -42,6 +42,11 @@ class OpenAIService(BaseAIProvider):
 
             messages.append({"role": "user", "content": prompt})
 
+            # O3 models use max_completion_tokens instead of max_tokens
+            if 'o1-' in model or 'o3-' in model:
+                if 'max_tokens' in kwargs:
+                    kwargs['max_completion_tokens'] = kwargs.pop('max_tokens')
+
             response = await self.client.chat.completions.create(
                 model=model,
                 messages=messages,
