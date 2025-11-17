@@ -61,17 +61,17 @@ MODEL_MAPPINGS = {
     329: {
         "name": "Gemini Flash 2.0",
         "provider": "google",
-        "model_id": "gemini-2.0-flash-exp",
+        "model_id": "gemini-2.0-flash-001",
         "cost_per_request": 400,
         "supports_vision": True,
         "supports_voice": True,
         "supports_files": True
     },
     330: {
-        "name": "Gemini Pro 2.5",
+        "name": "Gemini Flash 1.5",
         "provider": "google",
-        "model_id": "gemini-2.5-pro-preview",
-        "cost_per_request": 900,
+        "model_id": "gemini-1.5-flash-002",
+        "cost_per_request": 500,
         "supports_vision": True,
         "supports_voice": True,
         "supports_files": True
@@ -95,19 +95,19 @@ MODEL_MAPPINGS = {
         "supports_files": False
     },
     333: {
-        "name": "Claude 3.7",
+        "name": "Claude Sonnet 3.5",
         "provider": "anthropic",
-        "model_id": "claude-3-7-sonnet-20250219",
-        "cost_per_request": 1200,
+        "model_id": "claude-3-5-sonnet-20241022",
+        "cost_per_request": 1000,
         "supports_vision": True,
         "supports_voice": False,
         "supports_files": True
     },
     334: {
-        "name": "Claude 3.5",
+        "name": "Claude Haiku 3.5",
         "provider": "anthropic",
-        "model_id": "claude-3-5-sonnet-20241022",
-        "cost_per_request": 1000,
+        "model_id": "claude-3-5-haiku-20241022",
+        "cost_per_request": 600,
         "supports_vision": True,
         "supports_voice": False,
         "supports_files": True
