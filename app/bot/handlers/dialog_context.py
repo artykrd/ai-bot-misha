@@ -95,10 +95,10 @@ MODEL_MAPPINGS = {
         "supports_files": False
     },
     333: {
-        "name": "Claude Sonnet 3.5",
+        "name": "Claude Sonnet 4.5",
         "provider": "anthropic",
-        "model_id": "claude-3-5-sonnet-20241022",
-        "cost_per_request": 1000,
+        "model_id": "claude-sonnet-4-5",
+        "cost_per_request": 1200,
         "supports_vision": True,
         "supports_voice": False,
         "supports_files": True
