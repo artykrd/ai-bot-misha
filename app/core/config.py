@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     anthropic_api_key: Optional[str] = Field(None, description="Anthropic API key")
     google_ai_api_key: Optional[str] = Field(None, description="Google AI API key")
     deepseek_api_key: Optional[str] = Field(None, description="DeepSeek API key")
+    perplexity_api_key: Optional[str] = Field(None, description="Perplexity API key")
     stability_api_key: Optional[str] = Field(None, description="Stability AI API key")
     midjourney_api_key: Optional[str] = Field(None, description="Midjourney API key")
     replicate_api_key: Optional[str] = Field(None, description="Replicate API key")

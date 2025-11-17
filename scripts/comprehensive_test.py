@@ -226,6 +226,7 @@ class ComprehensiveTester:
             "Anthropic": settings.anthropic_api_key,
             "Google AI": settings.google_ai_api_key,
             "DeepSeek": settings.deepseek_api_key,
+            "Perplexity": settings.perplexity_api_key,
         }
 
         for api_name, api_key in apis.items():
@@ -410,6 +411,51 @@ class ComprehensiveTester:
                 "error": str(e)
             }
 
+    async def test_perplexity_model(self, model: str):
+        """Test Perplexity model."""
+        if not settings.perplexity_api_key:
+            self.results.add_skip(f"Perplexity {model}", "API key not configured")
+            return
+
+        try:
+            from app.services.ai.perplexity_service import PerplexityService
+
+            start = datetime.now()
+            service = PerplexityService()
+            result = await service.generate_text(
+                prompt=self.test_prompt,
+                model=model
+            )
+            duration = (datetime.now() - start).total_seconds()
+
+            if result.success:
+                self.results.add_success(
+                    f"Perplexity {model}",
+                    {"time": f"{duration:.2f}s", "tokens": result.tokens_used}
+                )
+                self.results.model_results[f"perplexity_{model}"] = {
+                    "success": True,
+                    "time": duration,
+                    "tokens": result.tokens_used,
+                    "response": result.content[:100]
+                }
+            else:
+                self.results.add_failure(
+                    f"Perplexity {model}",
+                    result.error,
+                    {"time": duration}
+                )
+                self.results.model_results[f"perplexity_{model}"] = {
+                    "success": False,
+                    "error": result.error
+                }
+        except Exception as e:
+            self.results.add_failure(f"Perplexity {model}", str(e))
+            self.results.model_results[f"perplexity_{model}"] = {
+                "success": False,
+                "error": str(e)
+            }
+
     async def test_all_models(self):
         """Test all configured models."""
         print(f"\n{Colors.BOLD}Testing AI Models...{Colors.ENDC}")
@@ -438,13 +484,11 @@ class ComprehensiveTester:
                 await self.test_deepseek_model(config['model_id'])
                 await asyncio.sleep(1)
 
-        # Test Perplexity (should warn it's not implemented)
+        # Test Perplexity models
         for model_id, config in MODEL_MAPPINGS.items():
             if config['provider'] == 'perplexity':
-                self.results.add_warning(
-                    f"Perplexity {config['model_id']} not implemented",
-                    {"model_id": model_id, "impact": "Users cannot use this model"}
-                )
+                await self.test_perplexity_model(config['model_id'])
+                await asyncio.sleep(1)
 
     async def test_model_configuration(self):
         """Test MODEL_MAPPINGS configuration."""

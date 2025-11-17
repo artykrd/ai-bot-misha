@@ -23,6 +23,7 @@ from app.services.ai.openai_service import OpenAIService
 from app.services.ai.anthropic_service import AnthropicService
 from app.services.ai.google_service import GoogleService
 from app.services.ai.deepseek_service import DeepSeekService
+from app.services.ai.perplexity_service import PerplexityService
 from app.bot.handlers.dialog_context import MODEL_MAPPINGS
 
 
@@ -35,6 +36,7 @@ class InteractiveModelTester:
             'anthropic': AnthropicService() if settings.anthropic_api_key else None,
             'google': GoogleService() if settings.google_ai_api_key else None,
             'deepseek': DeepSeekService() if settings.deepseek_api_key else None,
+            'perplexity': PerplexityService() if settings.perplexity_api_key else None,
         }
 
     def print_available_models(self):
