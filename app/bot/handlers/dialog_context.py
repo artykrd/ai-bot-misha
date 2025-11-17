@@ -97,7 +97,7 @@ MODEL_MAPPINGS = {
     333: {
         "name": "Claude Sonnet 4.5",
         "provider": "anthropic",
-        "model_id": "claude-sonnet-4-5",
+        "model_id": "claude-sonnet-4-20250514",
         "cost_per_request": 1200,
         "supports_vision": True,
         "supports_voice": False,
