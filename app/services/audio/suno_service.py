@@ -113,27 +113,39 @@ class SunoService(BaseAudioProvider):
 
     async def _create_generation(self, prompt: str, **kwargs) -> List[str]:
         """Create music generation request and return task IDs."""
-        url = f"{self.BASE_URL}/music/generate"
+        url = f"{self.BASE_URL}/generate"
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
 
-        # Build payload
+        # Build payload according to Suno API documentation
         payload = {
             "prompt": prompt,
-            "make_instrumental": kwargs.get("instrumental", False),
-            "wait_audio": False  # Use async mode
+            "customMode": kwargs.get("custom_mode", True),
+            "instrumental": kwargs.get("instrumental", False),
+            "model": kwargs.get("model", "V3_5"),  # V3_5, V4, V4_5, V4_5PLUS, V5
         }
 
-        # Optional parameters
-        if "custom_mode" in kwargs and kwargs["custom_mode"]:
-            payload["custom_mode"] = True
-            if "tags" in kwargs:
-                payload["tags"] = kwargs["tags"]
+        # Optional parameters for custom mode
+        if payload["customMode"]:
+            if "style" in kwargs:
+                payload["style"] = kwargs["style"]
             if "title" in kwargs:
                 payload["title"] = kwargs["title"]
+
+        # Other optional parameters
+        if "negativeTags" in kwargs:
+            payload["negativeTags"] = kwargs["negativeTags"]
+        if "vocalGender" in kwargs:
+            payload["vocalGender"] = kwargs["vocalGender"]
+        if "styleWeight" in kwargs:
+            payload["styleWeight"] = kwargs["styleWeight"]
+        if "weirdnessConstraint" in kwargs:
+            payload["weirdnessConstraint"] = kwargs["weirdnessConstraint"]
+        if "audioWeight" in kwargs:
+            payload["audioWeight"] = kwargs["audioWeight"]
 
         async with aiohttp.ClientSession() as session:
             async with session.post(url, headers=headers, json=payload) as response:
@@ -142,11 +154,16 @@ class SunoService(BaseAudioProvider):
                     raise Exception(f"Suno API error: {response.status} - {error_text}")
 
                 data = await response.json()
-                # Return list of task IDs
-                if "data" in data and isinstance(data["data"], list):
-                    return [task["id"] for task in data["data"]]
+                # Response format: {"code": 200, "msg": "success", "data": {"taskId": "..."}}
+                if data.get("code") == 200 and "data" in data:
+                    task_id = data["data"].get("taskId")
+                    if task_id:
+                        return [task_id]  # Return as list for compatibility
+                    else:
+                        raise Exception("No taskId in response")
                 else:
-                    raise Exception("Unexpected API response format")
+                    error_msg = data.get("msg", "Unknown error")
+                    raise Exception(f"Suno API error: {error_msg}")
 
     async def _poll_generation_status(
         self,

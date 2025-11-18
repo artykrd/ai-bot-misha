@@ -429,10 +429,14 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
 
         await progress_msg.delete()
     else:
-        await progress_msg.edit_text(
-            f"❌ Ошибка генерации видео:\n{result.error}",
-            parse_mode=None
-        )
+        try:
+            await progress_msg.edit_text(
+                f"❌ Ошибка генерации видео:\n{result.error}",
+                parse_mode=None
+            )
+        except Exception:
+            # Ignore errors when message is not modified
+            pass
 
     await state.clear()
 
@@ -482,7 +486,11 @@ async def process_sora_video(message: Message, user: User, state: FSMContext):
             logger.error("video_cleanup_failed", error=str(e))
         await progress_msg.delete()
     else:
-        await progress_msg.edit_text(f"❌ Ошибка: {result.error}", parse_mode=None)
+        try:
+            await progress_msg.edit_text(f"❌ Ошибка: {result.error}", parse_mode=None)
+        except Exception:
+            # Ignore errors when message is not modified
+            pass
 
     await state.clear()
 
@@ -531,7 +539,11 @@ async def process_luma_video(message: Message, user: User, state: FSMContext):
             logger.error("video_cleanup_failed", error=str(e))
         await progress_msg.delete()
     else:
-        await progress_msg.edit_text(f"❌ Ошибка: {result.error}", parse_mode=None)
+        try:
+            await progress_msg.edit_text(f"❌ Ошибка: {result.error}", parse_mode=None)
+        except Exception:
+            # Ignore errors when message is not modified
+            pass
 
     await state.clear()
 
@@ -580,7 +592,11 @@ async def process_hailuo_video(message: Message, user: User, state: FSMContext):
             logger.error("video_cleanup_failed", error=str(e))
         await progress_msg.delete()
     else:
-        await progress_msg.edit_text(f"❌ Ошибка: {result.error}", parse_mode=None)
+        try:
+            await progress_msg.edit_text(f"❌ Ошибка: {result.error}", parse_mode=None)
+        except Exception:
+            # Ignore errors when message is not modified
+            pass
 
     await state.clear()
 
@@ -631,7 +647,11 @@ async def process_kling_video(message: Message, user: User, state: FSMContext, i
             logger.error("video_cleanup_failed", error=str(e))
         await progress_msg.delete()
     else:
-        await progress_msg.edit_text(f"❌ Ошибка: {result.error}", parse_mode=None)
+        try:
+            await progress_msg.edit_text(f"❌ Ошибка: {result.error}", parse_mode=None)
+        except Exception:
+            # Ignore errors when message is not modified
+            pass
 
     await state.clear()
 
@@ -724,9 +744,13 @@ async def process_dalle_image(message: Message, user: User, state: FSMContext):
 
         await progress_msg.delete()
     else:
-        await progress_msg.edit_text(
-            f"❌ Ошибка генерации изображения:\n{result.error}"
-        )
+        try:
+            await progress_msg.edit_text(
+                f"❌ Ошибка генерации изображения:\n{result.error}"
+            )
+        except Exception:
+            # Ignore errors when message is not modified
+            pass
 
     await state.clear()
 
@@ -793,9 +817,13 @@ async def process_gemini_image(message: Message, user: User, state: FSMContext):
 
         await progress_msg.delete()
     else:
-        await progress_msg.edit_text(
-            f"❌ Ошибка генерации изображения:\n{result.error}"
-        )
+        try:
+            await progress_msg.edit_text(
+                f"❌ Ошибка генерации изображения:\n{result.error}"
+            )
+        except Exception:
+            # Ignore errors when message is not modified
+            pass
 
     await state.clear()
 
@@ -862,10 +890,14 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
 
         await progress_msg.delete()
     else:
-        await progress_msg.edit_text(
-            f"❌ Ошибка генерации изображения:\n{result.error}",
-            parse_mode=None
-        )
+        try:
+            await progress_msg.edit_text(
+                f"❌ Ошибка генерации изображения:\n{result.error}",
+                parse_mode=None
+            )
+        except Exception:
+            # Ignore errors when message is not modified
+            pass
 
     await state.clear()
 
@@ -956,10 +988,14 @@ async def process_suno_audio(message: Message, user: User, state: FSMContext):
 
         await progress_msg.delete()
     else:
-        await progress_msg.edit_text(
-            f"❌ Ошибка генерации музыки:\n{result.error}",
-            parse_mode=None
-        )
+        try:
+            await progress_msg.edit_text(
+                f"❌ Ошибка генерации музыки:\n{result.error}",
+                parse_mode=None
+            )
+        except Exception:
+            # Ignore errors when message is not modified
+            pass
 
     await state.clear()
 
@@ -1063,9 +1099,13 @@ async def process_upscale(message: Message, state: FSMContext, user: User):
 
         await progress_msg.delete()
     else:
-        await progress_msg.edit_text(
-            f"❌ Ошибка улучшения изображения:\n{result.error}"
-        )
+        try:
+            await progress_msg.edit_text(
+                f"❌ Ошибка улучшения изображения:\n{result.error}"
+            )
+        except Exception:
+            # Ignore errors when message is not modified
+            pass
 
     await state.clear()
 
@@ -1148,9 +1188,13 @@ async def process_whisper_audio(message: Message, state: FSMContext, user: User)
 
         await progress_msg.delete()
     else:
-        await progress_msg.edit_text(
-            f"❌ Ошибка расшифровки аудио:\n{result.error}"
-        )
+        try:
+            await progress_msg.edit_text(
+                f"❌ Ошибка расшифровки аудио:\n{result.error}"
+            )
+        except Exception:
+            # Ignore errors when message is not modified
+            pass
 
     await state.clear()
 
@@ -1226,10 +1270,14 @@ async def process_tts_audio(message: Message, user: User, state: FSMContext):
 
         await progress_msg.delete()
     else:
-        await progress_msg.edit_text(
-            f"❌ Ошибка генерации аудио:\n{result.error}",
-            parse_mode=None
-        )
+        try:
+            await progress_msg.edit_text(
+                f"❌ Ошибка генерации аудио:\n{result.error}",
+                parse_mode=None
+            )
+        except Exception:
+            # Ignore errors when message is not modified
+            pass
 
     await state.clear()
 
@@ -1338,8 +1386,12 @@ async def process_vision_prompt(message: Message, state: FSMContext, user: User)
 
         await progress_msg.delete()
     else:
-        await progress_msg.edit_text(
-            f"❌ Ошибка анализа изображения:\n{result.error}"
-        )
+        try:
+            await progress_msg.edit_text(
+                f"❌ Ошибка анализа изображения:\n{result.error}"
+            )
+        except Exception:
+            # Ignore errors when message is not modified
+            pass
 
     await state.clear()
