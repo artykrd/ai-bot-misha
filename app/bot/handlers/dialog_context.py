@@ -68,7 +68,7 @@ MODEL_MAPPINGS = {
         "supports_files": True
     },
     330: {
-        "name": "Gemini Pro 2.5",
+        "name": "nano Banana",
         "provider": "google",
         "model_id": "gemini-2.0-flash-exp",
         "cost_per_request": 900,
