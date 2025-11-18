@@ -114,10 +114,16 @@ async def cmd_sora(message: Message):
 
 @router.message(Command("veo"))
 async def cmd_veo(message: Message):
-    """Veo 3.1 command."""
+    """Veo 3.1 command - redirect to video creation menu."""
+    from app.bot.keyboards.inline import create_video_keyboard
     await message.answer(
-        "🎬 <b>Veo 3.1</b>\n\n⚠️ Функционал в разработке\n\nСтоимость: 50,000 токенов за запрос",
-        reply_markup=main_menu_keyboard(),
+        "🎬 <b>Создание видео</b>\n\n"
+        "Выберите сервис для генерации видео:\n\n"
+        "🌊 <b>Veo 3.1</b> - Google Veo, 8 секунд HD видео\n"
+        "☁️ <b>Sora 2</b> - OpenAI Sora (в разработке)\n"
+        "📹 <b>Luma</b>, <b>Hailuo</b>, <b>Kling</b> - другие сервисы (в разработке)\n\n"
+        "Стоимость Veo 3.1: ~15,000 токенов за видео",
+        reply_markup=create_video_keyboard(),
         parse_mode=ParseMode.HTML
     )
 
