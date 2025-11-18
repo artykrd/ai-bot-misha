@@ -63,6 +63,31 @@ class NanoBananaService(BaseImageProvider):
                     logger.error("nano_banana_init_failed", error=str(e))
                     self.client = None
 
+    async def process_image(
+        self,
+        image_path: str,
+        progress_callback: Optional[Callable[[str], Awaitable[None]]] = None,
+        **kwargs
+    ) -> ImageResponse:
+        """
+        Process image (Nano Banana primarily generates, but can also edit).
+
+        Args:
+            image_path: Path to input image (for editing)
+            progress_callback: Optional async callback for progress updates
+            **kwargs: Additional parameters including:
+                - prompt: Text prompt for image editing
+
+        Returns:
+            ImageResponse with processed image or error
+        """
+        # For now, Nano Banana doesn't support image editing
+        # TODO: Implement image editing when needed
+        return ImageResponse(
+            success=False,
+            error="Image editing not yet implemented for Nano Banana. Use text-to-image generation instead."
+        )
+
     async def generate_image(
         self,
         prompt: str,
