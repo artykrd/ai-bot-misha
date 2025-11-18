@@ -18,7 +18,8 @@ from app.database.database import async_session_maker
 from app.core.logger import get_logger
 from app.core.exceptions import InsufficientTokensError
 from app.services.video import VeoService
-from app.services.image import DalleService, GeminiImageService, StabilityService, RemoveBgService
+from app.services.image import DalleService, GeminiImageService, StabilityService, RemoveBgService, NanoBananaService
+from app.services.audio import SunoService
 from app.services.subscription.subscription_service import SubscriptionService
 
 logger = get_logger(__name__)
@@ -171,15 +172,17 @@ async def start_gpt_image(callback: CallbackQuery, state: FSMContext, user: User
 @router.callback_query(F.data == "bot.nano")
 async def start_nano(callback: CallbackQuery, state: FSMContext, user: User):
     text = (
-        "**Nano Banana (Gemini Imagen 3)**\n\n"
-        "Google Imagen 3 для создания изображений.\n\n"
-        "Форматы: 1:1, 16:9, 9:16, 3:4, 4:3\n\n"
-        "Стоимость: ~3,000 токенов\n\n"
-        "Отправьте описание изображения."
+        "🍌 **Nano Banana (Gemini 2.5 Flash Image)**\n\n"
+        "Gemini 2.5 Flash Image создаёт изображения по текстовому описанию.\n\n"
+        "📊 **Параметры:**\n"
+        "• Форматы: 1:1, 16:9, 9:16, 3:4, 4:3\n"
+        "• Высокое качество изображений\n\n"
+        "💰 **Стоимость:** ~3,000 токенов\n\n"
+        "✏️ **Отправьте описание изображения**"
     )
 
     await state.set_state(MediaState.waiting_for_image_prompt)
-    await state.update_data(service="gemini_image")
+    await state.update_data(service="nano_banana")
 
     await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
     await callback.answer()
@@ -391,6 +394,8 @@ async def process_image_prompt(message: Message, state: FSMContext, user: User):
         await process_dalle_image(message, user, state)
     elif service_name == "gemini_image":
         await process_gemini_image(message, user, state)
+    elif service_name == "nano_banana":
+        await process_nano_image(message, user, state)
     else:
         await message.answer(
             f"Функция генерации изображений находится в разработке.\n"
@@ -540,6 +545,76 @@ async def process_gemini_image(message: Message, user: User, state: FSMContext):
     await state.clear()
 
 
+async def process_nano_image(message: Message, user: User, state: FSMContext):
+    """Process Nano Banana (Gemini 2.5 Flash Image) image generation."""
+    prompt = message.text
+
+    # Check and use tokens
+    estimated_tokens = 3000  # Nano Banana cost
+
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+
+        try:
+            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+        except InsufficientTokensError as e:
+            await message.answer(
+                f"❌ Недостаточно токенов для генерации изображения!\n\n"
+                f"Требуется: {estimated_tokens:,} токенов\n"
+                f"Доступно: {e.details['available']:,} токенов\n\n"
+                f"Купите подписку: /start → 💎 Подписка"
+            )
+            await state.clear()
+            return
+
+    # Send progress message
+    progress_msg = await message.answer("🍌 Генерирую изображение с Nano Banana...")
+
+    # Create service
+    nano_service = NanoBananaService()
+
+    # Progress callback
+    async def update_progress(text: str):
+        try:
+            await progress_msg.edit_text(text, parse_mode=None)
+        except Exception:
+            pass
+
+    # Generate image
+    result = await nano_service.generate_image(
+        prompt=prompt,
+        progress_callback=update_progress,
+        aspect_ratio="1:1"
+    )
+
+    if result.success:
+        tokens_used = result.metadata.get("tokens_used", estimated_tokens)
+
+        # Send image
+        image_file = FSInputFile(result.image_path)
+        await message.answer_photo(
+            photo=image_file,
+            caption=f"✅ Изображение готово!\n\n"
+                    f"Промпт: {prompt[:200]}\n"
+                    f"Использовано токенов: {tokens_used:,}"
+        )
+
+        # Clean up
+        try:
+            os.remove(result.image_path)
+        except Exception as e:
+            logger.error("nano_image_cleanup_failed", error=str(e))
+
+        await progress_msg.delete()
+    else:
+        await progress_msg.edit_text(
+            f"❌ Ошибка генерации изображения:\n{result.error}",
+            parse_mode=None
+        )
+
+    await state.clear()
+
+
 # ======================
 # FSM HANDLERS - AUDIO
 # ======================
@@ -549,15 +624,93 @@ async def process_audio_prompt(message: Message, state: FSMContext, user: User):
     data = await state.get_data()
     service_name = data.get("service", "suno")
 
-    display = {
-        "suno": "Suno AI",
-        "tts": "OpenAI TTS"
-    }.get(service_name, service_name)
+    if service_name == "suno":
+        await process_suno_audio(message, user, state)
+    elif service_name == "tts":
+        # TTS is still in development
+        await message.answer(
+            f"Функция генерации аудио (OpenAI TTS) находится в разработке.\n"
+            f"Ваш текст получен: {message.text[:100]}..."
+        )
+        await state.clear()
+    else:
+        display = {
+            "suno": "Suno AI",
+            "tts": "OpenAI TTS"
+        }.get(service_name, service_name)
 
-    await message.answer(
-        f"Функция генерации аудио ({display}) находится в разработке.\n"
-        f"Ваш текст получен: {message.text[:100]}..."
+        await message.answer(
+            f"Функция генерации аудио ({display}) находится в разработке.\n"
+            f"Ваш текст получен: {message.text[:100]}..."
+        )
+        await state.clear()
+
+
+async def process_suno_audio(message: Message, user: User, state: FSMContext):
+    """Process Suno AI music generation."""
+    prompt = message.text
+
+    # Check and use tokens
+    estimated_tokens = 5000  # Suno AI cost
+
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+
+        try:
+            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+        except InsufficientTokensError as e:
+            await message.answer(
+                f"❌ Недостаточно токенов для генерации музыки!\n\n"
+                f"Требуется: {estimated_tokens:,} токенов\n"
+                f"Доступно: {e.details['available']:,} токенов\n\n"
+                f"Купите подписку: /start → 💎 Подписка"
+            )
+            await state.clear()
+            return
+
+    # Send progress message
+    progress_msg = await message.answer("🎵 Начинаю создание музыки с Suno AI...")
+
+    # Create service
+    suno_service = SunoService()
+
+    # Progress callback
+    async def update_progress(text: str):
+        try:
+            await progress_msg.edit_text(text, parse_mode=None)
+        except Exception:
+            pass
+
+    # Generate music
+    result = await suno_service.generate_audio(
+        prompt=prompt,
+        progress_callback=update_progress
     )
+
+    if result.success:
+        # Send audio
+        audio_file = FSInputFile(result.audio_path)
+        await message.answer_audio(
+            audio=audio_file,
+            caption=f"✅ Музыка готова!\n\n"
+                    f"Промпт: {prompt[:200]}\n"
+                    f"Использовано токенов: {estimated_tokens:,}",
+            title=f"Suno AI - {prompt[:50]}"
+        )
+
+        # Clean up
+        try:
+            os.remove(result.audio_path)
+        except Exception as e:
+            logger.error("suno_audio_cleanup_failed", error=str(e))
+
+        await progress_msg.delete()
+    else:
+        await progress_msg.edit_text(
+            f"❌ Ошибка генерации музыки:\n{result.error}",
+            parse_mode=None
+        )
+
     await state.clear()
 
 

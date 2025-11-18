@@ -68,10 +68,10 @@ MODEL_MAPPINGS = {
         "supports_files": True
     },
     330: {
-        "name": "Gemini Flash 1.5",
+        "name": "Gemini Pro 2.5",
         "provider": "google",
-        "model_id": "gemini-1.5-flash-002",
-        "cost_per_request": 500,
+        "model_id": "gemini-2.0-flash-exp",
+        "cost_per_request": 900,
         "supports_vision": True,
         "supports_voice": True,
         "supports_files": True
