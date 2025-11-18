@@ -5,9 +5,28 @@ Veo 3.1 is Google's latest video generation model, now available via the Gemini 
 
 **Updated:** November 2025 - Now uses Gemini API (google-generativeai library)
 
+## ⚠️ IMPORTANT: Payment Requirements
+
+**Veo 3.1 requires a PAID Google AI Studio subscription:**
+
+1. **Free tier API keys will NOT work** - you'll get a 429 RESOURCE_EXHAUSTED error
+2. **You need Tier 1 or higher** - requires active billing in Google Cloud/AI Studio
+3. **Cost:** Check [Google AI Pricing](https://ai.google.dev/pricing) for current rates
+
+### How to Enable Billing
+
+1. Go to [Google AI Studio](https://aistudio.google.com/)
+2. Navigate to Settings → Billing
+3. Add a payment method (credit/debit card)
+4. Upgrade to a paid tier (Tier 1 minimum for Veo 3.1)
+5. Verify your billing status before testing
+
+**Without paid access, you will see:** `429 RESOURCE_EXHAUSTED: You exceeded your current quota`
+
 ## Prerequisites
 - Google Account
-- Google AI Studio API access
+- **PAID Google AI Studio subscription (Tier 1+)** ⚠️
+- Valid payment method attached
 - Admin access to the bot configuration
 
 ## Setup Steps
@@ -16,10 +35,14 @@ Veo 3.1 is Google's latest video generation model, now available via the Gemini 
 
 1. Go to [Google AI Studio](https://aistudio.google.com/apikey)
 2. Sign in with your Google account
-3. Click "Create API Key"
-4. Copy the generated API key (starts with `AIza...`)
+3. **Verify billing is enabled** (Settings → Billing)
+4. Click "Create API Key"
+5. Copy the generated API key (starts with `AIza...`)
 
-**Important:** Keep your API key secure and never commit it to version control!
+**Important:**
+- Keep your API key secure and never commit it to version control!
+- Free tier keys will not work with Veo 3.1
+- Check your API key tier at https://aistudio.google.com/
 
 ### 2. Configure Bot
 
@@ -34,17 +57,19 @@ GOOGLE_GEMINI_API_KEY=AIzaSy...your-key-here
 
 ### 3. Install Required Packages
 
-The required package is already in `requirements.txt`:
+**IMPORTANT:** Update to the latest version of google-generativeai:
 
 ```bash
-pip install google-generativeai==0.3.2
+pip install google-generativeai>=0.8.3
 ```
 
-Or install all dependencies:
+Or update all dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
+
+The library version has been updated in `requirements.txt` from `0.3.2` to `>=0.8.3` to support the latest Veo 3.1 API.
 
 ### 4. Verify Installation
 
@@ -130,6 +155,34 @@ Check current pricing at [Google AI Pricing](https://ai.google.dev/pricing)
 
 ## Troubleshooting
 
+### ⚠️ Error: "429 RESOURCE_EXHAUSTED" or "You exceeded your current quota"
+
+**This is the MOST COMMON error** - it means you need a paid subscription.
+
+**Root cause:**
+- Free tier API keys cannot access Veo 3.1
+- You need a Tier 1 or higher paid subscription
+
+**Solution:**
+1. Go to [Google AI Studio](https://aistudio.google.com/)
+2. Click Settings → Billing
+3. Add a payment method (credit/debit card)
+4. Enable billing and upgrade to Tier 1+
+5. Wait 5-10 minutes for billing to activate
+6. Verify your usage limits at https://ai.dev/usage?tab=rate-limit
+7. Try generating a video again
+
+**Important checks:**
+- ✅ Billing is enabled in Google AI Studio
+- ✅ Payment method is valid and not expired
+- ✅ You have available credits/quota
+- ✅ API key is from a paid account (not free tier)
+
+**Still not working?**
+- Check your billing dashboard for any payment issues
+- Verify you haven't hit daily/monthly quotas
+- Review [pricing and limits](https://ai.google.dev/gemini-api/docs/rate-limits)
+
 ### Error: "API key not configured"
 **Solution:**
 1. Verify `GOOGLE_GEMINI_API_KEY` is set in `.env`
@@ -139,14 +192,14 @@ Check current pricing at [Google AI Pricing](https://ai.google.dev/pricing)
 ### Error: "google-generativeai library not available"
 **Solution:**
 ```bash
-pip install google-generativeai
+pip install google-generativeai>=0.8.3
 ```
 
 ### Error: "Permission denied" or "API key invalid"
 **Solution:**
 1. Verify your API key is active in [Google AI Studio](https://aistudio.google.com/apikey)
-2. Check if you've enabled the Gemini API
-3. Try generating a new API key
+2. Check if billing is enabled (Settings → Billing)
+3. Try generating a new API key from a paid account
 
 ### Error: "Insufficient tokens"
 **Solution:**

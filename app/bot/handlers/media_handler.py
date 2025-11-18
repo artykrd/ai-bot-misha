@@ -346,6 +346,7 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
     result = await veo_service.generate_video(
         prompt=prompt,
         progress_callback=update_progress,
+        duration=8,
         aspect_ratio="16:9",
         resolution="720p"
     )
