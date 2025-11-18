@@ -185,22 +185,23 @@ class NanoBananaService(BaseImageProvider):
 
         def _generate():
             try:
-                # According to documentation:
-                # response = client.models.generate_content(
-                #     model="gemini-2.5-flash-image",
-                #     contents=prompt,
-                #     config={"response_modalities":['IMAGE']}
-                # )
+                # Import types for proper config structure
+                from google.genai import types
 
-                config = {
-                    "response_modalities": ['IMAGE']
+                # Build config according to Gemini documentation
+                config_params = {
+                    "response_modalities": ['Image']
                 }
 
-                # Add aspect ratio if specified
+                # Add image config with aspect ratio if specified
                 if aspect_ratio and aspect_ratio != "auto":
-                    config["aspect_ratio"] = aspect_ratio
+                    config_params["image_config"] = types.ImageConfig(
+                        aspect_ratio=aspect_ratio
+                    )
 
-                # Generate image
+                # Generate image with proper types
+                config = types.GenerateContentConfig(**config_params)
+
                 response = self.client.models.generate_content(
                     model="gemini-2.5-flash-image",
                     contents=prompt,
@@ -212,10 +213,14 @@ class NanoBananaService(BaseImageProvider):
                 if not response.parts or len(response.parts) == 0:
                     raise ValueError("No image generated in response")
 
-                # Find the first image part
+                # Find the first image part - can be text or inline_data
                 image_part = None
                 for part in response.parts:
-                    if hasattr(part, 'as_image'):
+                    # Skip text parts
+                    if part.text is not None:
+                        continue
+                    # Check for inline data (image)
+                    if part.inline_data is not None or hasattr(part, 'as_image'):
                         image_part = part
                         break
 
@@ -226,20 +231,11 @@ class NanoBananaService(BaseImageProvider):
                 filename = self._generate_filename("png")
                 image_path = self.storage_path / filename
 
-                # Get image bytes and save
-                image_data = image_part.as_image()
+                # Get PIL Image using as_image() method
+                pil_image = image_part.as_image()
 
-                # Save image file
-                with open(image_path, 'wb') as f:
-                    # If image_data has a save method, use it
-                    if hasattr(image_data, 'save'):
-                        image_data.save(f, format='PNG')
-                    # Otherwise try to get bytes
-                    elif hasattr(image_data, 'read'):
-                        f.write(image_data.read())
-                    # Or if it's already bytes
-                    else:
-                        f.write(image_data)
+                # Save PIL Image
+                pil_image.save(str(image_path), format='PNG')
 
                 logger.info(
                     "nano_banana_image_saved",
