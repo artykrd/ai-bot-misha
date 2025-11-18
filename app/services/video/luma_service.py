@@ -114,7 +114,7 @@ class LumaService(BaseVideoProvider):
         url = f"{self.BASE_URL}/generations"
 
         headers = {
-            "x-luma-api-key": self.api_key,  # Luma uses x-luma-api-key header
+            "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
 
@@ -155,7 +155,7 @@ class LumaService(BaseVideoProvider):
         """
         url = f"{self.BASE_URL}/generations/{generation_id}"
         headers = {
-            "x-luma-api-key": self.api_key
+            "Authorization": f"Bearer {self.api_key}"
         }
 
         start_time = time.time()
