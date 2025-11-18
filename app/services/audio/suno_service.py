@@ -193,15 +193,13 @@ class SunoService(BaseAudioProvider):
                 all_completed = True
 
                 for task_id in task_ids:
-                    url = f"{self.BASE_URL}/query"
+                    url = f"{self.BASE_URL}/task/{task_id}"
                     headers = {
-                        "Authorization": f"Bearer {self.api_key}",
-                        "Content-Type": "application/json"
+                        "Authorization": f"Bearer {self.api_key}"
                     }
-                    query_payload = {"taskId": task_id}
 
                     async with aiohttp.ClientSession() as session:
-                        async with session.post(url, headers=headers, json=query_payload) as response:
+                        async with session.get(url, headers=headers) as response:
                             if response.status != 200:
                                 error_text = await response.text()
                                 raise Exception(f"Status check failed: {response.status} - {error_text}")

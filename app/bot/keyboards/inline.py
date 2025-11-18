@@ -197,11 +197,14 @@ def create_photo_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="👁 GPT Vision", callback_data="bot.gpt_vision")
     )
     builder.row(
-        InlineKeyboardButton(text="🌆 Midjourney", callback_data="bot.midjourney"),
-        InlineKeyboardButton(text="🖌 Stable Diffusion", callback_data="bot_stable_diffusion")
+        InlineKeyboardButton(text="🍌 Nano Banana", callback_data="bot.nano"),
+        InlineKeyboardButton(text="🌆 Midjourney", callback_data="bot.midjourney")
     )
     builder.row(
-        InlineKeyboardButton(text="🎨 Recraft", callback_data="bot.recraft"),
+        InlineKeyboardButton(text="🖌 Stable Diffusion", callback_data="bot_stable_diffusion"),
+        InlineKeyboardButton(text="🎨 Recraft", callback_data="bot.recraft")
+    )
+    builder.row(
         InlineKeyboardButton(text="🎭 Замена лиц", callback_data="bot.faceswap")
     )
     builder.row(
