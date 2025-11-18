@@ -17,9 +17,10 @@ from app.database.models.user import User
 from app.database.database import async_session_maker
 from app.core.logger import get_logger
 from app.core.exceptions import InsufficientTokensError
-from app.services.video import VeoService
+from app.services.video import VeoService, SoraService
 from app.services.image import DalleService, GeminiImageService, StabilityService, RemoveBgService, NanoBananaService
-from app.services.audio import SunoService
+from app.services.audio import SunoService, OpenAIAudioService
+from app.services.ai.vision_service import VisionService
 from app.services.subscription.subscription_service import SubscriptionService
 
 logger = get_logger(__name__)
@@ -33,6 +34,9 @@ class MediaState(StatesGroup):
     waiting_for_image_prompt = State()
     waiting_for_image = State()
     waiting_for_upscale_image = State()
+    waiting_for_whisper_audio = State()
+    waiting_for_vision_image = State()
+    waiting_for_vision_prompt = State()
 
 
 # ======================
@@ -212,19 +216,63 @@ async def start_suno(callback: CallbackQuery, state: FSMContext, user: User):
     await callback.answer()
 
 
+@router.callback_query(F.data == "bot.whisper")
+async def start_whisper(callback: CallbackQuery, state: FSMContext, user: User):
+    text = (
+        "🎙 **Whisper - Расшифровка голоса**\n\n"
+        "OpenAI Whisper распознает речь и превращает её в текст.\n\n"
+        "📊 **Возможности:**\n"
+        "• Точная расшифровка на русском и других языках\n"
+        "• Поддержка различных аудио форматов\n"
+        "• Высокая точность распознавания\n\n"
+        "💰 **Стоимость:** ~1,000 токенов за минуту аудио\n\n"
+        "🎵 **Отправьте аудио или голосовое сообщение**"
+    )
+
+    await state.set_state(MediaState.waiting_for_whisper_audio)
+
+    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
+    await callback.answer()
+
+
 @router.callback_query(F.data == "bot.whisper_tts")
 async def start_tts(callback: CallbackQuery, state: FSMContext, user: User):
     text = (
-        "OpenAI TTS – Text to Speech\n\n"
+        "🗣 **OpenAI TTS – Text to Speech**\n\n"
         "Превратите текст в естественную речь.\n\n"
-        "Стоимость: ~200 токенов за запрос\n\n"
-        "Доступные голоса:\n"
-        "- alloy\n- echo\n- fable\n- onyx\n- nova\n- shimmer\n\n"
-        "Отправьте текст для озвучки."
+        "💰 **Стоимость:** ~200 токенов за запрос\n\n"
+        "🎤 **Доступные голоса:**\n"
+        "• alloy - Нейтральный голос\n"
+        "• echo - Мужской голос\n"
+        "• fable - Британский акцент\n"
+        "• onyx - Глубокий мужской\n"
+        "• nova - Женский голос\n"
+        "• shimmer - Мягкий женский\n\n"
+        "✏️ **Отправьте текст для озвучки**"
     )
 
     await state.set_state(MediaState.waiting_for_audio_prompt)
     await state.update_data(service="tts")
+
+    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "bot.gpt_vision")
+async def start_gpt_vision(callback: CallbackQuery, state: FSMContext, user: User):
+    text = (
+        "👁 **GPT Image 1 - Анализ изображений**\n\n"
+        "GPT-4 Vision может анализировать изображения и отвечать на вопросы о них.\n\n"
+        "📊 **Возможности:**\n"
+        "• Детальное описание содержимого\n"
+        "• Распознавание объектов и текста\n"
+        "• Анализ данных из графиков\n"
+        "• Ответы на вопросы об изображении\n\n"
+        "💰 **Стоимость:** ~1,000 токенов за запрос\n\n"
+        "📸 **Отправьте изображение для анализа**"
+    )
+
+    await state.set_state(MediaState.waiting_for_vision_image)
 
     await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
     await callback.answer()
@@ -627,12 +675,7 @@ async def process_audio_prompt(message: Message, state: FSMContext, user: User):
     if service_name == "suno":
         await process_suno_audio(message, user, state)
     elif service_name == "tts":
-        # TTS is still in development
-        await message.answer(
-            f"Функция генерации аудио (OpenAI TTS) находится в разработке.\n"
-            f"Ваш текст получен: {message.text[:100]}..."
-        )
-        await state.clear()
+        await process_tts_audio(message, user, state)
     else:
         display = {
             "suno": "Suno AI",
@@ -815,6 +858,281 @@ async def process_upscale(message: Message, state: FSMContext, user: User):
     else:
         await progress_msg.edit_text(
             f"❌ Ошибка улучшения изображения:\n{result.error}"
+        )
+
+    await state.clear()
+
+
+# ======================
+# FSM HANDLERS - WHISPER (VOICE TRANSCRIPTION)
+# ======================
+
+@router.message(MediaState.waiting_for_whisper_audio, F.voice | F.audio)
+async def process_whisper_audio(message: Message, state: FSMContext, user: User):
+    """Process Whisper audio transcription."""
+
+    # Check and use tokens
+    estimated_tokens = 1000  # Whisper cost per minute
+
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+
+        try:
+            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+        except InsufficientTokensError as e:
+            await message.answer(
+                f"❌ Недостаточно токенов для расшифровки аудио!\n\n"
+                f"Требуется: {estimated_tokens:,} токенов\n"
+                f"Доступно: {e.details['available']:,} токенов\n\n"
+                f"Купите подписку: /start → 💎 Подписка"
+            )
+            await state.clear()
+            return
+
+    # Send progress message
+    progress_msg = await message.answer("📥 Загружаю аудио...")
+
+    # Download audio
+    if message.voice:
+        file = await message.bot.get_file(message.voice.file_id)
+        file_ext = "ogg"
+    else:
+        file = await message.bot.get_file(message.audio.file_id)
+        file_ext = "mp3"
+
+    # Create temp path
+    temp_dir = Path("./storage/temp")
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    temp_path = temp_dir / f"{file.file_id}.{file_ext}"
+
+    await message.bot.download_file(file.file_path, temp_path)
+
+    # Create service
+    whisper_service = OpenAIAudioService()
+
+    # Progress callback
+    async def update_progress(text: str):
+        try:
+            await progress_msg.edit_text(text, parse_mode=None)
+        except Exception:
+            pass
+
+    await update_progress("🎙️ Расшифровываю аудио...")
+
+    # Transcribe audio
+    result = await whisper_service.transcribe(
+        audio_path=str(temp_path),
+        language="ru"  # Russian language
+    )
+
+    # Clean up temp file
+    try:
+        os.remove(temp_path)
+    except Exception:
+        pass
+
+    if result.success:
+        # Send transcription
+        await message.answer(
+            f"✅ **Расшифровка готова!**\n\n"
+            f"📝 **Текст:**\n{result.text}\n\n"
+            f"💰 Использовано токенов: {estimated_tokens:,}"
+        )
+
+        await progress_msg.delete()
+    else:
+        await progress_msg.edit_text(
+            f"❌ Ошибка расшифровки аудио:\n{result.error}"
+        )
+
+    await state.clear()
+
+
+# ======================
+# FSM HANDLERS - TTS UPDATE
+# ======================
+
+async def process_tts_audio(message: Message, user: User, state: FSMContext):
+    """Process OpenAI TTS generation."""
+    text = message.text
+
+    if len(text) > 4096:
+        await message.answer("❌ Текст слишком длинный! Максимум 4096 символов.")
+        await state.clear()
+        return
+
+    # Check and use tokens
+    estimated_tokens = 200  # TTS cost
+
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+
+        try:
+            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+        except InsufficientTokensError as e:
+            await message.answer(
+                f"❌ Недостаточно токенов для озвучки текста!\n\n"
+                f"Требуется: {estimated_tokens:,} токенов\n"
+                f"Доступно: {e.details['available']:,} токенов\n\n"
+                f"Купите подписку: /start → 💎 Подписка"
+            )
+            await state.clear()
+            return
+
+    # Send progress message
+    progress_msg = await message.answer("🎙️ Генерирую речь...")
+
+    # Create service
+    tts_service = OpenAIAudioService()
+
+    # Progress callback
+    async def update_progress(text: str):
+        try:
+            await progress_msg.edit_text(text, parse_mode=None)
+        except Exception:
+            pass
+
+    # Generate audio (default voice: alloy)
+    result = await tts_service.generate_audio(
+        prompt=text,
+        voice="alloy",
+        model="tts-1",
+        progress_callback=update_progress
+    )
+
+    if result.success:
+        # Send audio
+        audio_file = FSInputFile(result.audio_path)
+        await message.answer_audio(
+            audio=audio_file,
+            caption=f"✅ Озвучка готова!\n\n"
+                    f"Голос: alloy\n"
+                    f"Использовано токенов: {estimated_tokens:,}",
+            title="OpenAI TTS"
+        )
+
+        # Clean up
+        try:
+            os.remove(result.audio_path)
+        except Exception as e:
+            logger.error("tts_audio_cleanup_failed", error=str(e))
+
+        await progress_msg.delete()
+    else:
+        await progress_msg.edit_text(
+            f"❌ Ошибка генерации аудио:\n{result.error}",
+            parse_mode=None
+        )
+
+    await state.clear()
+
+
+# ======================
+# FSM HANDLERS - GPT VISION (IMAGE ANALYSIS)
+# ======================
+
+@router.message(MediaState.waiting_for_vision_image, F.photo)
+async def process_vision_image(message: Message, state: FSMContext, user: User):
+    """Receive image and ask for analysis prompt."""
+    # Get the largest photo
+    photo = message.photo[-1]
+
+    # Send progress message
+    progress_msg = await message.answer("📥 Загружаю изображение...")
+
+    # Download photo
+    file = await message.bot.get_file(photo.file_id)
+
+    # Create temp path
+    temp_dir = Path("./storage/temp")
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    temp_path = temp_dir / f"{photo.file_id}.jpg"
+
+    await message.bot.download_file(file.file_path, temp_path)
+
+    # Store image path in state
+    await state.update_data(image_path=str(temp_path))
+    await state.set_state(MediaState.waiting_for_vision_prompt)
+
+    await progress_msg.edit_text(
+        "✅ Изображение получено!\n\n"
+        "Теперь отправьте вопрос или задание для анализа изображения.\n\n"
+        "**Примеры:**\n"
+        "• Что изображено на этой картинке?\n"
+        "• Опиши это изображение подробно\n"
+        "• Какой текст есть на изображении?\n"
+        "• Что за объекты изображены?"
+    )
+
+
+@router.message(MediaState.waiting_for_vision_prompt, F.text)
+async def process_vision_prompt(message: Message, state: FSMContext, user: User):
+    """Process GPT Vision image analysis."""
+    data = await state.get_data()
+    image_path = data.get("image_path")
+    prompt = message.text
+
+    if not image_path or not os.path.exists(image_path):
+        await message.answer("❌ Ошибка: изображение не найдено. Попробуйте снова.")
+        await state.clear()
+        return
+
+    # Check and use tokens
+    estimated_tokens = 1000  # GPT-4 Vision cost
+
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+
+        try:
+            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+        except InsufficientTokensError as e:
+            await message.answer(
+                f"❌ Недостаточно токенов для анализа изображения!\n\n"
+                f"Требуется: {estimated_tokens:,} токенов\n"
+                f"Доступно: {e.details['available']:,} токенов\n\n"
+                f"Купите подписку: /start → 💎 Подписка"
+            )
+            # Clean up temp file
+            try:
+                os.remove(image_path)
+            except Exception:
+                pass
+            await state.clear()
+            return
+
+    # Send progress message
+    progress_msg = await message.answer("👁 Анализирую изображение...")
+
+    # Create service
+    vision_service = VisionService()
+
+    # Analyze image
+    result = await vision_service.analyze_image(
+        image_path=image_path,
+        prompt=prompt,
+        model="gpt-4o",
+        max_tokens=1000,
+        detail="auto"
+    )
+
+    # Clean up temp file
+    try:
+        os.remove(image_path)
+    except Exception as e:
+        logger.error("vision_image_cleanup_failed", error=str(e))
+
+    if result.success:
+        # Send analysis
+        await message.answer(
+            f"✅ **Анализ изображения готов!**\n\n"
+            f"📝 **Ответ:**\n{result.content}\n\n"
+            f"💰 Использовано токенов: {result.tokens_used:,}"
+        )
+
+        await progress_msg.delete()
+    else:
+        await progress_msg.edit_text(
+            f"❌ Ошибка анализа изображения:\n{result.error}"
         )
 
     await state.clear()

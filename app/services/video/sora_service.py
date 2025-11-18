@@ -15,7 +15,11 @@ logger = get_logger(__name__)
 
 
 class SoraService(BaseVideoProvider):
-    """OpenAI Sora API integration for video generation."""
+    """OpenAI Sora API integration for video generation.
+
+    Note: Sora API access requires explicit invitation from OpenAI.
+    As of 2025, the API is not publicly available.
+    """
 
     BASE_URL = "https://api.openai.com/v1"
 
@@ -119,8 +123,12 @@ class SoraService(BaseVideoProvider):
         model: str,
         **kwargs
     ) -> str:
-        """Create video generation request and return generation ID."""
-        url = f"{self.BASE_URL}/video_generations"
+        """Create video generation request and return generation ID.
+
+        API Endpoint: POST /v1/videos
+        Documentation: https://platform.openai.com/docs/guides/video-generation
+        """
+        url = f"{self.BASE_URL}/videos"
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -133,12 +141,15 @@ class SoraService(BaseVideoProvider):
         }
 
         # Optional parameters
+        # Duration: "4", "8", or "12" seconds (string)
         if "duration" in kwargs:
-            payload["duration"] = kwargs["duration"]
-        if "aspect_ratio" in kwargs:
-            payload["aspect_ratio"] = kwargs["aspect_ratio"]
+            payload["seconds"] = str(kwargs["duration"])
+        # Size: resolution string like "1920x1080", "1280x720"
+        if "size" in kwargs:
+            payload["size"] = kwargs["size"]
         if "resolution" in kwargs:
-            payload["resolution"] = kwargs["resolution"]
+            # Convert resolution to size format if needed
+            payload["size"] = kwargs["resolution"]
 
         async with aiohttp.ClientSession() as session:
             async with session.post(url, headers=headers, json=payload) as response:
@@ -162,7 +173,7 @@ class SoraService(BaseVideoProvider):
         Returns:
             URL of the generated video
         """
-        url = f"{self.BASE_URL}/video_generations/{generation_id}"
+        url = f"{self.BASE_URL}/videos/{generation_id}"
         headers = {
             "Authorization": f"Bearer {self.api_key}"
         }
