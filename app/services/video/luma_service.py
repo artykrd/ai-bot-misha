@@ -120,7 +120,7 @@ class LumaService(BaseVideoProvider):
 
         payload = {
             "prompt": prompt,
-            "model": kwargs.get("model", "luma-1.5")  # Luma Dream Machine model
+            "model": kwargs.get("model", "ray-2")  # ray-1-6, ray-2, ray-flash-2, ray-3, ray-hdr-3, ray-flash-3
         }
 
         # Optional parameters
