@@ -1,96 +1,297 @@
 # Veo 3.1 Setup Guide
 
 ## Overview
-Veo 3.1 is Google's latest video generation model. To use it in the bot, you need to set up Google Cloud Platform and enable the Vertex AI API.
+Veo 3.1 is Google's latest video generation model, now available via the Gemini API. This guide will help you set up Veo 3.1 for the AI bot.
+
+**Updated:** November 2025 - Now uses Gemini API (google-generativeai library)
 
 ## Prerequisites
-- Google Cloud Platform account
-- Billing enabled on your GCP project
+- Google Account
+- Google AI Studio API access
 - Admin access to the bot configuration
 
 ## Setup Steps
 
-### 1. Create Google Cloud Project
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project or select an existing one
-3. Note your Project ID
+### 1. Get Google Gemini API Key
 
-### 2. Enable Vertex AI API
-1. Go to [Vertex AI API page](https://console.cloud.google.com/apis/library/aiplatform.googleapis.com)
-2. Click "Enable"
-3. Wait for activation (may take a few minutes)
+1. Go to [Google AI Studio](https://aistudio.google.com/apikey)
+2. Sign in with your Google account
+3. Click "Create API Key"
+4. Copy the generated API key (starts with `AIza...`)
 
-### 3. Create Service Account
-1. Go to IAM & Admin → Service Accounts
-2. Click "Create Service Account"
-3. Name: `veo-bot-service`
-4. Grant roles:
-   - `Vertex AI User`
-   - `Service Account Token Creator`
-5. Click "Done"
+**Important:** Keep your API key secure and never commit it to version control!
 
-### 4. Create Service Account Key
-1. Click on the created service account
-2. Go to "Keys" tab
-3. Click "Add Key" → "Create new key"
-4. Choose JSON format
-5. Save the downloaded file securely
+### 2. Configure Bot
 
-### 5. Configure Bot
-1. Upload the service account JSON file to your server
-2. Set environment variable:
-   ```bash
-   export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account-key.json"
-   ```
-3. Or add to `.env` file:
-   ```
-   GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account-key.json
-   GOOGLE_CLOUD_PROJECT=your-project-id
-   ```
+Add the API key to your `.env` file:
 
-### 6. Install Required Packages
 ```bash
-pip install google-cloud-aiplatform
+# Google Gemini API Key for Veo 3.1
+GOOGLE_GEMINI_API_KEY=AIzaSy...your-key-here
 ```
 
-### 7. Test Connection
-Run the diagnostic script:
+**Alternative:** You can also use `GOOGLE_AI_API_KEY` as the variable name.
+
+### 3. Install Required Packages
+
+The required package is already in `requirements.txt`:
+
 ```bash
-python scripts/test_veo_connection.py
+pip install google-generativeai==0.3.2
+```
+
+Or install all dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Verify Installation
+
+Run the bot and check logs for successful initialization:
+
+```bash
+python main.py
+```
+
+Look for:
+```
+INFO     veo_initialized    api_key_present=True
 ```
 
 ## Usage in Bot
-Once configured, users can:
-1. Click "Создать видео" → "Veo 3.1"
-2. Send text description of the video
-3. Wait for generation (may take 2-5 minutes)
-4. Receive the generated video
 
-## Pricing
-- Veo 3.1: ~$0.10-0.30 per video (varies by duration and resolution)
-- Check current pricing: [Vertex AI Pricing](https://cloud.google.com/vertex-ai/pricing)
+Once configured, users can generate videos in multiple ways:
 
-## Token Costs
-- Approximate cost: **12,000 tokens** per video
+### Method 1: Direct Command
+```
+/veo
+```
+This opens the video creation menu where users can select Veo 3.1.
+
+### Method 2: Main Menu Navigation
+1. Start the bot: `/start`
+2. Click "🎞 Создать видео"
+3. Select "🌊 Veo 3.1"
+4. Send a text description of the desired video
+
+### Method 3: Video Menu
+From the main menu, users can navigate to the video creation interface.
+
+## Video Generation Process
+
+1. **User sends prompt**: Describe the video in detail
+   - Example: "a golden retriever playing in a field of sunflowers at sunset"
+
+2. **Bot processes**:
+   - Checks user has sufficient tokens (~15,000 required)
+   - Initializes Veo 3.1 API
+   - Submits generation request
+
+3. **Generation time**: 1-3 minutes (users see progress updates)
+
+4. **Video delivery**: Bot sends the generated video directly in Telegram
+
+## Technical Details
+
+### Model Information
+- **Model ID:** `veo-3.1-generate-preview`
+- **Provider:** Google Gemini API
+- **Default duration:** 8 seconds
+- **Default resolution:** 720p
+- **Default aspect ratio:** 16:9
+
+### Supported Parameters
+- **Aspect ratios:** 1:1, 16:9, 9:16, 4:3, 3:4
+- **Resolutions:** 720p, 1080p
+- **Duration:** 8 seconds base (can be extended up to 141 seconds)
+- **Negative prompts:** Optional - describe what to avoid
+
+### API Architecture
+The implementation uses:
+- `google.genai.Client()` for API access
+- Async/await pattern for non-blocking operations
+- Polling mechanism for operation status
+- Automatic file download and storage
+
+## Pricing & Token Costs
+
+### Token Cost
+- **Veo 3.1:** ~15,000 tokens per 8-second video
+
+### Tariff Examples
+For a user to generate one Veo video:
+- **7-day plan:** 150,000 tokens = ~10 videos
+- **14-day plan:** 250,000 tokens = ~16 videos
+- **30-day plan (1M):** 1,000,000 tokens = ~66 videos
+
+### Google API Pricing
+Check current pricing at [Google AI Pricing](https://ai.google.dev/pricing)
 
 ## Troubleshooting
 
-### Error: "Project not found"
-- Verify GOOGLE_CLOUD_PROJECT is set correctly
-- Ensure the project exists in your GCP account
+### Error: "API key not configured"
+**Solution:**
+1. Verify `GOOGLE_GEMINI_API_KEY` is set in `.env`
+2. Restart the bot after adding the key
+3. Check for typos in the key
 
-### Error: "API not enabled"
-- Go to GCP Console → APIs & Services
-- Enable "Vertex AI API"
-- Wait 5-10 minutes for propagation
+### Error: "google-generativeai library not available"
+**Solution:**
+```bash
+pip install google-generativeai
+```
 
-### Error: "Permission denied"
-- Check service account has `Vertex AI User` role
-- Verify service account key is valid and not expired
+### Error: "Permission denied" or "API key invalid"
+**Solution:**
+1. Verify your API key is active in [Google AI Studio](https://aistudio.google.com/apikey)
+2. Check if you've enabled the Gemini API
+3. Try generating a new API key
 
-## Support
-For issues, contact: @gigavidacha
+### Error: "Insufficient tokens"
+**Solution:**
+- User needs to purchase a subscription via `/shop`
+- Required: at least 15,000 tokens
+- Show available balance with `/profile`
 
-## Additional Resources
-- [Vertex AI Documentation](https://cloud.google.com/vertex-ai/docs)
-- [Veo API Reference](https://cloud.google.com/vertex-ai/docs/generative-ai/video/generate-video)
+### Error: "Video generation timed out"
+**Possible causes:**
+- Google API service temporary issue
+- Network connectivity problems
+- High load on Google servers
+
+**Solution:**
+- Retry after a few minutes
+- Check [Google API Status](https://status.cloud.google.com/)
+
+### Video quality issues
+**Tips for better results:**
+- Use detailed, descriptive prompts
+- Specify camera angles, lighting, mood
+- Use negative prompts to avoid unwanted elements
+- Example: "close-up shot of...", "cinematic lighting", "4K quality"
+
+## Migration from Vertex AI
+
+If you previously used Vertex AI for Veo:
+
+### What Changed
+- ❌ **Old:** Vertex AI (`google-cloud-aiplatform`)
+- ✅ **New:** Gemini API (`google-generativeai`)
+
+### Configuration Changes
+- ❌ **Old:** `GOOGLE_CLOUD_PROJECT`, `GOOGLE_APPLICATION_CREDENTIALS`
+- ✅ **New:** `GOOGLE_GEMINI_API_KEY`
+
+### Code Changes
+- ❌ **Old:** `VideoGenerationModel.from_pretrained("veo-3.1")`
+- ✅ **New:** `client.models.generate_videos(model="veo-3.1-generate-preview")`
+
+### Migration Steps
+1. Get Gemini API key from Google AI Studio
+2. Add `GOOGLE_GEMINI_API_KEY` to `.env`
+3. Update code (already done in this version)
+4. Remove old Vertex AI credentials (optional)
+
+## Example Prompts
+
+### Good Prompts
+```
+"A serene beach at sunset with gentle waves and seagulls flying"
+
+"Close-up of a steaming cup of coffee on a wooden table, morning light"
+
+"Time-lapse of city traffic at night with car light trails"
+
+"A cat playing with a ball of yarn in slow motion"
+```
+
+### Advanced Prompts with Parameters
+```
+Prompt: "Cinematic shot of mountain landscape with morning fog"
+Aspect ratio: 16:9
+Resolution: 1080p
+Negative prompt: "people, buildings, cars"
+```
+
+## Best Practices
+
+1. **Prompt Engineering**
+   - Be specific and descriptive
+   - Include camera angles and movement
+   - Specify lighting and mood
+   - Use cinematic terminology
+
+2. **Resource Management**
+   - Monitor token usage
+   - Set appropriate limits for free users
+   - Consider video generation quotas
+
+3. **Error Handling**
+   - Implement retry logic for transient failures
+   - Provide clear error messages to users
+   - Log all API interactions for debugging
+
+4. **User Experience**
+   - Show progress updates during generation
+   - Estimate wait times accurately
+   - Provide example prompts to users
+
+## API Rate Limits
+
+Google Gemini API has rate limits:
+- **Requests per minute:** Check your tier
+- **Concurrent requests:** Limited
+- **Daily quota:** Based on your API key tier
+
+For production use, consider:
+- Implementing request queuing
+- Adding rate limit monitoring
+- Upgrading to higher API tiers
+
+## Support & Resources
+
+### Documentation
+- [Google Gemini API Docs](https://ai.google.dev/docs)
+- [Veo Model Card](https://deepmind.google/technologies/veo/)
+- [API Reference](https://ai.google.dev/api/rest)
+
+### Getting Help
+- Bot support: @gigavidacha
+- Google AI Studio: https://aistudio.google.com/
+- GitHub Issues: Report bugs in the project repository
+
+### Community
+- Share your generated videos
+- Exchange prompt tips
+- Report issues and improvements
+
+## Security Notes
+
+1. **API Key Security**
+   - Never commit API keys to Git
+   - Use environment variables
+   - Rotate keys periodically
+   - Use different keys for dev/prod
+
+2. **User Content**
+   - Implement content moderation
+   - Follow Google's usage policies
+   - Monitor for abuse
+
+3. **Data Privacy**
+   - Don't log user prompts unnecessarily
+   - Follow GDPR/privacy regulations
+   - Secure video storage
+
+## Updates & Changelog
+
+### November 2025
+- ✅ Updated to Gemini API (google-generativeai)
+- ✅ Simplified setup (API key vs service account)
+- ✅ Improved error handling
+- ✅ Better progress feedback
+
+### Previous Versions
+- Used Vertex AI with service account authentication
+- Required Google Cloud Platform project setup
