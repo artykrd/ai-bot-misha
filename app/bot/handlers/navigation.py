@@ -6,6 +6,7 @@ Navigation handlers for all menu buttons.
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
 from aiogram.enums import ParseMode
+from aiogram.fsm.context import FSMContext
 
 from app.bot.keyboards.inline import (
     main_menu_keyboard,
@@ -261,17 +262,23 @@ __ℹ️ Выберите нейросеть для генерации виде�
 
 # Nano Banana
 @router.callback_query(F.data == "bot.nano")
-async def show_nano_banana(callback: CallbackQuery):
+async def show_nano_banana(callback: CallbackQuery, state: FSMContext):
     """Show Nano Banana interface."""
+    from app.bot.handlers.media_handler import MediaState
+
     text = """🍌 **Nano Banana · твори и экспериментируй**
 
 📖 **Создавайте:**
 – Создает фотографии по промпту и по вашим изображениям;
 – Она отлично наследует исходное фото и может работать с ним. Попросите её, например, "перенести этот стиль на новое изображение".
 
-**Стоимость:** 8,000 токенов за запрос
+**Стоимость:** 3,000 токенов за запрос
 
-⚠️ Отправьте текстовый запрос или изображение для генерации"""
+✏️ **Отправьте текстовый запрос для генерации изображения**"""
+
+    # Set FSM state to wait for prompt
+    await state.set_state(MediaState.waiting_for_image_prompt)
+    await state.update_data(service="nano_banana")
 
     await callback.message.edit_text(
         text,
