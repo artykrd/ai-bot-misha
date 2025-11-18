@@ -29,11 +29,7 @@ def _get_genai():
     _GENAI_CHECKED = True
     try:
         from google import genai
-        from google.genai import types
-        _genai = {
-            'genai': genai,
-            'types': types
-        }
+        _genai = genai
         return _genai
     except Exception as e:
         logger.warning("genai_import_failed", error=str(e))
@@ -57,8 +53,10 @@ class VeoService(BaseVideoProvider):
             self._genai = _get_genai()
             if self._genai:
                 try:
-                    # Initialize Gemini client
-                    self.client = self._genai['genai'].Client(api_key=self.api_key)
+                    # Initialize Gemini client with API key
+                    # Set the API key as environment variable for the library
+                    os.environ["GEMINI_API_KEY"] = self.api_key
+                    self.client = self._genai.Client(api_key=self.api_key)
                     logger.info("veo_initialized", api_key_present=bool(self.api_key))
                 except Exception as e:
                     logger.error("veo_init_failed", error=str(e))
@@ -77,7 +75,7 @@ class VeoService(BaseVideoProvider):
             prompt: Text description for video generation
             progress_callback: Optional async callback for progress updates
             **kwargs: Additional parameters:
-                - duration: Video duration in seconds (8 default, can extend up to 141s)
+                - duration: Video duration in seconds (4, 6, 8, default: 8)
                 - aspect_ratio: Video aspect ratio (1:1, 16:9, 9:16, 4:3, 3:4, default: 16:9)
                 - negative_prompt: Things to avoid in the video
                 - resolution: Video resolution (720p, 1080p, default: 720p)
@@ -90,7 +88,7 @@ class VeoService(BaseVideoProvider):
         if not self.client or not self.api_key:
             return VideoResponse(
                 success=False,
-                error="Google Gemini API key not configured or client not initialized. Set GOOGLE_GEMINI_API_KEY in .env",
+                error="Google Gemini API key not configured. Set GOOGLE_GEMINI_API_KEY in .env. Get your key at: https://aistudio.google.com/apikey",
                 processing_time=time.time() - start_time
             )
 
@@ -104,7 +102,7 @@ class VeoService(BaseVideoProvider):
             if not self._genai:
                 return VideoResponse(
                     success=False,
-                    error="google-generativeai library not available. Install with: pip install google-generativeai",
+                    error="google-generativeai library not available. Install with: pip install google-generativeai>=0.8.3",
                     processing_time=time.time() - start_time
                 )
 
@@ -115,11 +113,12 @@ class VeoService(BaseVideoProvider):
             resolution = kwargs.get("resolution", "720p")
 
             if progress_callback:
-                await progress_callback(f"🎥 Генерирую видео ({duration}с, {aspect_ratio}, {resolution})...")
+                await progress_callback(f"🎥 Генерирую видео {duration}с, {aspect_ratio}, {resolution}...")
 
             # Generate video using Veo model
             video_path = await self._generate_veo_video(
                 prompt=prompt,
+                duration=duration,
                 aspect_ratio=aspect_ratio,
                 negative_prompt=negative_prompt,
                 resolution=resolution,
@@ -134,6 +133,7 @@ class VeoService(BaseVideoProvider):
             logger.info(
                 "veo_video_generated",
                 prompt=prompt[:100],
+                duration=duration,
                 aspect_ratio=aspect_ratio,
                 resolution=resolution,
                 time=processing_time
@@ -150,6 +150,7 @@ class VeoService(BaseVideoProvider):
                 metadata={
                     "provider": "veo",
                     "model": "veo-3.1-generate-preview",
+                    "duration": duration,
                     "aspect_ratio": aspect_ratio,
                     "resolution": resolution,
                     "prompt": prompt
@@ -158,10 +159,25 @@ class VeoService(BaseVideoProvider):
 
         except Exception as e:
             error_msg = str(e)
+
+            # Special handling for quota/rate limit errors
+            if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
+                error_msg = (
+                    "❌ Превышена квота API или требуется платная подписка.\n\n"
+                    "Veo 3.1 требует:\n"
+                    "1. Активную оплату в Google AI Studio\n"
+                    "2. Tier 1 или выше API ключ\n\n"
+                    "Проверьте:\n"
+                    "• https://aistudio.google.com/apikey (ваш API ключ)\n"
+                    "• https://ai.dev/usage?tab=rate-limit (использование)\n"
+                    "• https://ai.google.dev/pricing (цены и лимиты)\n\n"
+                    f"Оригинальная ошибка: {error_msg}"
+                )
+
             logger.error("veo_video_generation_failed", error=error_msg, prompt=prompt[:100])
 
             if progress_callback:
-                await progress_callback(f"❌ Ошибка: {error_msg}")
+                await progress_callback(f"❌ Ошибка: см. сообщение ниже")
 
             return VideoResponse(
                 success=False,
@@ -172,6 +188,7 @@ class VeoService(BaseVideoProvider):
     async def _generate_veo_video(
         self,
         prompt: str,
+        duration: int,
         aspect_ratio: str,
         negative_prompt: Optional[str],
         resolution: str,
@@ -184,50 +201,58 @@ class VeoService(BaseVideoProvider):
 
         def _generate():
             try:
-                # Prepare generation config
-                config_params = {
-                    "aspect_ratio": aspect_ratio,
-                }
+                # Prepare generation config according to official docs
+                config_params = {}
+
+                # Add aspect ratio
+                if aspect_ratio:
+                    config_params["aspect_ratio"] = aspect_ratio
 
                 # Add negative prompt if provided
                 if negative_prompt:
                     config_params["negative_prompt"] = negative_prompt
 
                 # Add resolution if not default
-                if resolution and resolution != "720p":
+                if resolution:
                     config_params["resolution"] = resolution
 
-                config = self._genai['types'].GenerateVideosConfig(**config_params)
+                # Add duration
+                if duration:
+                    config_params["duration_seconds"] = str(duration)
 
-                # Generate video using Veo 3.1
+                # Generate video using Veo 3.1 according to official Python example
+                # from google import genai
+                # client = genai.Client()
                 operation = self.client.models.generate_videos(
                     model="veo-3.1-generate-preview",
                     prompt=prompt,
-                    config=config,
+                    config=config_params if config_params else None,
                 )
 
                 # Wait for the video to be generated (polling)
-                # Veo uses async operations that need polling
-                max_wait_time = 300  # 5 minutes max
+                # According to docs: poll until operation.done is True
+                max_wait_time = 360  # 6 minutes max (docs say up to 6 min during peak)
                 start = time.time()
                 poll_interval = 10  # Poll every 10 seconds
 
                 while not operation.done:
                     if time.time() - start > max_wait_time:
-                        raise TimeoutError("Video generation timed out after 5 minutes")
+                        raise TimeoutError("Video generation timed out after 6 minutes")
 
                     time.sleep(poll_interval)
                     # Refresh operation status
                     operation = self.client.operations.get(operation)
 
-                # Get the generated video
-                generated_video = operation.result.generated_videos[0]
+                # Get the generated video from response
+                # According to docs: operation.response.generated_videos[0]
+                generated_video = operation.response.generated_videos[0]
 
                 # Save video to storage
                 filename = self._generate_filename("mp4")
                 video_path = self.storage_path / filename
 
                 # Download and save video file
+                # According to docs: client.files.download(file=video.video)
                 self.client.files.download(file=generated_video.video)
                 generated_video.video.save(str(video_path))
 
@@ -245,7 +270,7 @@ class VeoService(BaseVideoProvider):
 
         try:
             if progress_callback:
-                await progress_callback("⏳ Обработка запроса... (это может занять 1-3 минуты)")
+                await progress_callback("⏳ Обработка запроса... это может занять 1-6 минут")
 
             # Generate video in executor to not block async event loop
             video_path = await loop.run_in_executor(None, _generate)
