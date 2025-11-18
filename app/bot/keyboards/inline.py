@@ -193,7 +193,8 @@ def create_photo_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
     builder.row(
-        InlineKeyboardButton(text="💥 GPT Image", callback_data="bot.gpt_image")
+        InlineKeyboardButton(text="🖼 DALL-E 3", callback_data="bot.gpt_image"),
+        InlineKeyboardButton(text="👁 GPT Vision", callback_data="bot.gpt_vision")
     )
     builder.row(
         InlineKeyboardButton(text="🌆 Midjourney", callback_data="bot.midjourney"),
