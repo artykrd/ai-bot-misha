@@ -338,7 +338,7 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
     # Progress callback
     async def update_progress(text: str):
         try:
-            await progress_msg.edit_text(text)
+            await progress_msg.edit_text(text, parse_mode=None)
         except Exception:
             pass
 
@@ -370,7 +370,8 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
         await progress_msg.delete()
     else:
         await progress_msg.edit_text(
-            f"❌ Ошибка генерации видео:\n{result.error}"
+            f"❌ Ошибка генерации видео:\n{result.error}",
+            parse_mode=None
         )
 
     await state.clear()
@@ -428,7 +429,7 @@ async def process_dalle_image(message: Message, user: User, state: FSMContext):
     # Progress callback
     async def update_progress(text: str):
         try:
-            await progress_msg.edit_text(text)
+            await progress_msg.edit_text(text, parse_mode=None)
         except Exception:
             pass
 
@@ -500,7 +501,7 @@ async def process_gemini_image(message: Message, user: User, state: FSMContext):
     # Progress callback
     async def update_progress(text: str):
         try:
-            await progress_msg.edit_text(text)
+            await progress_msg.edit_text(text, parse_mode=None)
         except Exception:
             pass
 
@@ -623,7 +624,7 @@ async def process_upscale(message: Message, state: FSMContext, user: User):
     # Progress callback
     async def update_progress(text: str):
         try:
-            await progress_msg.edit_text(text)
+            await progress_msg.edit_text(text, parse_mode=None)
         except Exception:
             pass
 
