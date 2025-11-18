@@ -53,7 +53,7 @@ async def select_ai_model(callback: CallbackQuery):
 
 **GPT-4 Omni** - самая продвинутая модель OpenAI (1000 токенов)
 **GPT-4 Mini** - быстрая и доступная модель (250 токенов)
-**Claude 3.5** - модель от Anthropic (1200 токенов)
+**Claude 4** - модель от Anthropic (1200 токенов)
 **Gemini Pro** - модель от Google (900 токенов)
 **DeepSeek** - отличная альтернатива (800 токенов)"""
 
@@ -82,7 +82,7 @@ async def choose_model(callback: CallbackQuery, state: FSMContext):
     model_names = {
         "gpt-4": "GPT-4 Omni",
         "gpt-4-mini": "GPT-4 Omni Mini",
-        "claude": "Claude 3.5 Sonnet",
+        "claude": "Claude 4",
         "gemini": "Gemini Pro",
         "deepseek": "DeepSeek V2"
     }

@@ -10,8 +10,7 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
     builder.row(
-        InlineKeyboardButton(text="🗯 ChatGPT", callback_data="bot.start_chatgpt_dialog_324#home"),
-        InlineKeyboardButton(text="🍌 Nano Banana", callback_data="bot.nano")
+        InlineKeyboardButton(text="🗯 ChatGPT", callback_data="bot.start_chatgpt_dialog_324#home")
     )
     builder.row(
         InlineKeyboardButton(text="🤖 Выбрать модель", callback_data="bot.llm_models"),
@@ -61,15 +60,14 @@ def ai_models_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="⚡ Gemini Flash 2.0", callback_data="bot.start_chatgpt_dialog_329")
     )
     builder.row(
-        InlineKeyboardButton(text="🛡 Gemini Pro 2.5", callback_data="bot.start_chatgpt_dialog_330"),
+        InlineKeyboardButton(text="🛡 nano Banana", callback_data="bot.start_chatgpt_dialog_330"),
         InlineKeyboardButton(text="🌐 Sonar с поиском", callback_data="bot.start_chatgpt_dialog_331")
     )
     builder.row(
         InlineKeyboardButton(text="💻 Sonar Pro", callback_data="bot.start_chatgpt_dialog_332"),
-        InlineKeyboardButton(text="📔 Claude 3.7", callback_data="bot.start_chatgpt_dialog_333")
+        InlineKeyboardButton(text="📔 Claude 4", callback_data="bot.start_chatgpt_dialog_333")
     )
     builder.row(
-        InlineKeyboardButton(text="📘 Claude 3.5", callback_data="bot.start_chatgpt_dialog_334"),
         InlineKeyboardButton(text="🔥 GPT 5 Mini", callback_data="bot.start_chatgpt_dialog_337")
     )
     builder.row(
@@ -195,7 +193,6 @@ def create_photo_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
     builder.row(
-        InlineKeyboardButton(text="🍌 Nano Banana", callback_data="bot.nano"),
         InlineKeyboardButton(text="💥 GPT Image", callback_data="bot.gpt_image")
     )
     builder.row(

@@ -35,7 +35,7 @@ class MockAIService(BaseAIProvider):
         mock_responses = {
             "gpt-4": f"[Mock GPT-4 Response]\n\nВаш запрос: {prompt[:50]}...\n\nЭто тестовый ответ от GPT-4. API ключ не настроен.",
             "gpt-4-mini": f"[Mock GPT-4 Mini Response]\n\nВаш запрос: {prompt[:50]}...\n\nЭто быстрый тестовый ответ.",
-            "claude": f"[Mock Claude 3.5 Response]\n\nВаш запрос: {prompt[:50]}...\n\nЭто тестовый ответ от Claude.",
+            "claude": f"[Mock Claude 4 Response]\n\nВаш запрос: {prompt[:50]}...\n\nЭто тестовый ответ от Claude.",
             "gemini": f"[Mock Gemini Pro Response]\n\nВаш запрос: {prompt[:50]}...\n\nЭто тестовый ответ от Gemini.",
             "deepseek": f"[Mock DeepSeek Response]\n\nВаш запрос: {prompt[:50]}...\n\nЭто тестовый ответ от DeepSeek.",
         }
