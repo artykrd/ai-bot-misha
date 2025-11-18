@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     replicate_api_key: Optional[str] = Field(None, description="Replicate API key")
     suno_api_key: Optional[str] = Field(None, description="Suno AI API key")
     luma_api_key: Optional[str] = Field(None, description="Luma Labs API key")
+    hailuo_api_key: Optional[str] = Field(None, description="Hailuo (MiniMax) API key")
+    kling_api_key: Optional[str] = Field(None, description="Kling AI API key")
+    aimlapi_key: Optional[str] = Field(None, description="AI/ML API unified key (fallback for multiple services)")
     removebg_api_key: Optional[str] = Field(None, description="Remove.bg API key")
 
     # =====================================

@@ -1,5 +1,5 @@
 """
-Luma Labs (Dream Machine) video generation service.
+Hailuo (MiniMax) AI video generation service.
 """
 import time
 import asyncio
@@ -14,15 +14,21 @@ from app.services.video.base import BaseVideoProvider, VideoResponse
 logger = get_logger(__name__)
 
 
-class LumaService(BaseVideoProvider):
-    """Luma Labs API integration for video generation."""
+class HailuoService(BaseVideoProvider):
+    """
+    Hailuo (MiniMax) API integration for video generation.
 
-    BASE_URL = "https://api.lumalabs.ai/dream-machine/v1"
+    Supports both text-to-video and image-to-video generation.
+    Using AI/ML API as the provider.
+    """
+
+    BASE_URL = "https://api.aimlapi.com/v2"
 
     def __init__(self, api_key: Optional[str] = None):
-        super().__init__(api_key or getattr(settings, 'luma_api_key', None))
+        # Hailuo can use a dedicated API key or fall back to a general AIMLAPI key
+        super().__init__(api_key or getattr(settings, 'hailuo_api_key', None) or getattr(settings, 'aimlapi_key', None))
         if not self.api_key:
-            logger.warning("luma_api_key_missing")
+            logger.warning("hailuo_api_key_missing")
 
     async def generate_video(
         self,
@@ -31,12 +37,12 @@ class LumaService(BaseVideoProvider):
         **kwargs
     ) -> VideoResponse:
         """
-        Generate video using Luma Dream Machine.
+        Generate video using Hailuo AI.
 
         Args:
             prompt: Video generation prompt
             progress_callback: Optional async callback for progress updates
-            **kwargs: Additional parameters (aspect_ratio, loop, etc.)
+            **kwargs: Additional parameters (image_url for image-to-video)
 
         Returns:
             VideoResponse with video path or error
@@ -46,19 +52,19 @@ class LumaService(BaseVideoProvider):
         if not self.api_key:
             return VideoResponse(
                 success=False,
-                error="Luma API key not configured",
+                error="Hailuo API key not configured",
                 processing_time=time.time() - start_time
             )
 
         try:
             # Notify user that generation is starting
             if progress_callback:
-                await progress_callback("🎬 Начинаю генерацию видео с Luma...")
+                await progress_callback("🎬 Начинаю генерацию видео с Hailuo AI...")
 
             # Step 1: Create generation request
             generation_id = await self._create_generation(prompt, **kwargs)
             logger.info(
-                "luma_generation_created",
+                "hailuo_generation_created",
                 generation_id=generation_id
             )
 
@@ -81,7 +87,7 @@ class LumaService(BaseVideoProvider):
                 await progress_callback("✅ Видео готово!")
 
             logger.info(
-                "luma_video_generated",
+                "hailuo_video_generated",
                 path=video_path,
                 time=processing_time
             )
@@ -90,15 +96,16 @@ class LumaService(BaseVideoProvider):
                 success=True,
                 video_path=video_path,
                 processing_time=processing_time,
+                tokens_used=7000,  # Estimated token cost
                 metadata={
-                    "provider": "luma",
+                    "provider": "hailuo",
                     "generation_id": generation_id
                 }
             )
 
         except Exception as e:
             error_msg = str(e)
-            logger.error("luma_generation_failed", error=error_msg)
+            logger.error("hailuo_generation_failed", error=error_msg)
 
             if progress_callback:
                 await progress_callback(f"❌ Ошибка: {error_msg}")
@@ -110,35 +117,44 @@ class LumaService(BaseVideoProvider):
             )
 
     async def _create_generation(self, prompt: str, **kwargs) -> str:
-        """Create video generation request and return generation ID."""
-        url = f"{self.BASE_URL}/generations"
+        """
+        Create video generation request and return generation ID.
+
+        API uses a two-step process:
+        1. Create generation task
+        2. Poll for completion
+        """
+        url = f"{self.BASE_URL}/generate/video/minimax/generation"
 
         headers = {
-            "x-luma-api-key": self.api_key,  # Luma uses x-luma-api-key header
+            "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
 
         payload = {
+            "model": "hailuo-02",  # Latest Hailuo model
             "prompt": prompt
         }
 
-        # Optional parameters
-        if "aspect_ratio" in kwargs:
-            payload["aspect_ratio"] = kwargs["aspect_ratio"]  # 16:9, 9:16, 1:1, 4:3, 3:4
-        if "loop" in kwargs:
-            payload["loop"] = kwargs["loop"]
-        if "keyframes" in kwargs:
-            # keyframes for image-to-video
-            payload["keyframes"] = kwargs["keyframes"]
+        # Optional: image-to-video
+        if "image_url" in kwargs:
+            payload["image_url"] = kwargs["image_url"]
 
         async with aiohttp.ClientSession() as session:
             async with session.post(url, headers=headers, json=payload) as response:
                 if response.status not in [200, 201]:
                     error_text = await response.text()
-                    raise Exception(f"Luma API error: {response.status} - {error_text}")
+                    raise Exception(f"Hailuo API error: {response.status} - {error_text}")
 
                 data = await response.json()
-                return data["id"]
+
+                # The API returns a generation_id or task_id
+                if "generation_id" in data:
+                    return data["generation_id"]
+                elif "id" in data:
+                    return data["id"]
+                else:
+                    raise Exception("No generation ID in response")
 
     async def _poll_generation_status(
         self,
@@ -153,9 +169,9 @@ class LumaService(BaseVideoProvider):
         Returns:
             URL of the generated video
         """
-        url = f"{self.BASE_URL}/generations/{generation_id}"
+        url = f"{self.BASE_URL}/generate/video/minimax/generation/{generation_id}"
         headers = {
-            "x-luma-api-key": self.api_key
+            "Authorization": f"Bearer {self.api_key}"
         }
 
         start_time = time.time()
@@ -174,30 +190,28 @@ class LumaService(BaseVideoProvider):
                         raise Exception(f"Status check failed: {response.status} - {error_text}")
 
                     data = await response.json()
-                    status = data.get("state", "unknown")
+                    status = data.get("status", "unknown")
 
                     # Update user if status changed
                     if status != last_status and progress_callback:
-                        if status == "queued":
-                            await progress_callback("⏳ В очереди на генерацию...")
-                        elif status == "processing":
-                            await progress_callback("⚙️ Обрабатываю видео...")
-                        elif status == "dreaming":
-                            await progress_callback("💭 Dream Machine создаёт видео...")
+                        if status == "pending" or status == "queued":
+                            await progress_callback("⏳ Видео в очереди...")
+                        elif status == "processing" or status == "generating":
+                            await progress_callback("⚙️ Генерирую видео...")
 
                     last_status = status
 
                     # Check if complete
-                    if status == "completed":
-                        # Get video URL from assets
-                        video_url = data.get("assets", {}).get("video")
+                    if status == "completed" or status == "success":
+                        # Get video URL
+                        video_url = data.get("video_url") or data.get("url") or data.get("output", {}).get("url")
                         if not video_url:
                             raise Exception("Video URL not found in response")
                         return video_url
 
                     # Check if failed
-                    if status == "failed":
-                        error = data.get("failure_reason", "Unknown error")
+                    if status == "failed" or status == "error":
+                        error = data.get("error", {}).get("message", "Unknown error")
                         raise Exception(f"Generation failed: {error}")
 
                     # Wait before next poll

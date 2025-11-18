@@ -17,7 +17,7 @@ from app.database.models.user import User
 from app.database.database import async_session_maker
 from app.core.logger import get_logger
 from app.core.exceptions import InsufficientTokensError
-from app.services.video import VeoService, SoraService
+from app.services.video import VeoService, SoraService, LumaService, HailuoService, KlingService
 from app.services.image import DalleService, GeminiImageService, StabilityService, RemoveBgService, NanoBananaService
 from app.services.audio import SunoService, OpenAIAudioService
 from app.services.ai.vision_service import VisionService
@@ -347,9 +347,17 @@ async def process_video_prompt(message: Message, state: FSMContext, user: User):
     }
     display = display_names.get(service_name, service_name)
 
-    # Only Veo is implemented
+    # Route to appropriate video service
     if service_name == "veo":
         await process_veo_video(message, user, state)
+    elif service_name == "sora":
+        await process_sora_video(message, user, state)
+    elif service_name == "luma":
+        await process_luma_video(message, user, state)
+    elif service_name == "hailuo":
+        await process_hailuo_video(message, user, state)
+    elif service_name == "kling" or service_name == "kling_effects":
+        await process_kling_video(message, user, state, is_effects=(service_name == "kling_effects"))
     else:
         await message.answer(
             f"Функция генерации видео ({display}) находится в разработке.\n"
@@ -425,6 +433,205 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
             f"❌ Ошибка генерации видео:\n{result.error}",
             parse_mode=None
         )
+
+    await state.clear()
+
+
+async def process_sora_video(message: Message, user: User, state: FSMContext):
+    """Process Sora 2 video generation."""
+    prompt = message.text
+    estimated_tokens = 15000
+
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+        try:
+            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+        except InsufficientTokensError as e:
+            await message.answer(
+                f"❌ Недостаточно токенов!\n\n"
+                f"Требуется: {estimated_tokens:,} токенов\n"
+                f"Доступно: {e.details['available']:,} токенов"
+            )
+            await state.clear()
+            return
+
+    progress_msg = await message.answer("🎬 Инициализация Sora 2...")
+    sora_service = SoraService()
+
+    async def update_progress(text: str):
+        try:
+            await progress_msg.edit_text(text, parse_mode=None)
+        except Exception:
+            pass
+
+    result = await sora_service.generate_video(
+        prompt=prompt,
+        model="sora-2",
+        progress_callback=update_progress
+    )
+
+    if result.success:
+        video_file = FSInputFile(result.video_path)
+        await message.answer_video(
+            video=video_file,
+            caption=f"✅ Видео готово!\n\nПромпт: {prompt[:200]}\nТокенов: {result.tokens_used:,}"
+        )
+        try:
+            os.remove(result.video_path)
+        except Exception as e:
+            logger.error("video_cleanup_failed", error=str(e))
+        await progress_msg.delete()
+    else:
+        await progress_msg.edit_text(f"❌ Ошибка: {result.error}", parse_mode=None)
+
+    await state.clear()
+
+
+async def process_luma_video(message: Message, user: User, state: FSMContext):
+    """Process Luma Dream Machine video generation."""
+    prompt = message.text
+    estimated_tokens = 8000
+
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+        try:
+            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+        except InsufficientTokensError as e:
+            await message.answer(
+                f"❌ Недостаточно токенов!\n\n"
+                f"Требуется: {estimated_tokens:,} токенов\n"
+                f"Доступно: {e.details['available']:,} токенов"
+            )
+            await state.clear()
+            return
+
+    progress_msg = await message.answer("🎬 Инициализация Luma Dream Machine...")
+    luma_service = LumaService()
+
+    async def update_progress(text: str):
+        try:
+            await progress_msg.edit_text(text, parse_mode=None)
+        except Exception:
+            pass
+
+    result = await luma_service.generate_video(
+        prompt=prompt,
+        progress_callback=update_progress
+    )
+
+    if result.success:
+        video_file = FSInputFile(result.video_path)
+        await message.answer_video(
+            video=video_file,
+            caption=f"✅ Видео готово!\n\nПромпт: {prompt[:200]}\nТокенов: {result.tokens_used:,}"
+        )
+        try:
+            os.remove(result.video_path)
+        except Exception as e:
+            logger.error("video_cleanup_failed", error=str(e))
+        await progress_msg.delete()
+    else:
+        await progress_msg.edit_text(f"❌ Ошибка: {result.error}", parse_mode=None)
+
+    await state.clear()
+
+
+async def process_hailuo_video(message: Message, user: User, state: FSMContext):
+    """Process Hailuo (MiniMax) video generation."""
+    prompt = message.text
+    estimated_tokens = 7000
+
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+        try:
+            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+        except InsufficientTokensError as e:
+            await message.answer(
+                f"❌ Недостаточно токенов!\n\n"
+                f"Требуется: {estimated_tokens:,} токенов\n"
+                f"Доступно: {e.details['available']:,} токенов"
+            )
+            await state.clear()
+            return
+
+    progress_msg = await message.answer("🎬 Инициализация Hailuo AI...")
+    hailuo_service = HailuoService()
+
+    async def update_progress(text: str):
+        try:
+            await progress_msg.edit_text(text, parse_mode=None)
+        except Exception:
+            pass
+
+    result = await hailuo_service.generate_video(
+        prompt=prompt,
+        progress_callback=update_progress
+    )
+
+    if result.success:
+        video_file = FSInputFile(result.video_path)
+        await message.answer_video(
+            video=video_file,
+            caption=f"✅ Видео готово!\n\nПромпт: {prompt[:200]}\nТокенов: {result.tokens_used:,}"
+        )
+        try:
+            os.remove(result.video_path)
+        except Exception as e:
+            logger.error("video_cleanup_failed", error=str(e))
+        await progress_msg.delete()
+    else:
+        await progress_msg.edit_text(f"❌ Ошибка: {result.error}", parse_mode=None)
+
+    await state.clear()
+
+
+async def process_kling_video(message: Message, user: User, state: FSMContext, is_effects: bool = False):
+    """Process Kling AI video generation."""
+    prompt = message.text
+    estimated_tokens = 10000 if is_effects else 9000
+
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+        try:
+            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+        except InsufficientTokensError as e:
+            await message.answer(
+                f"❌ Недостаточно токенов!\n\n"
+                f"Требуется: {estimated_tokens:,} токенов\n"
+                f"Доступно: {e.details['available']:,} токенов"
+            )
+            await state.clear()
+            return
+
+    service_name = "Kling Effects" if is_effects else "Kling AI"
+    progress_msg = await message.answer(f"🎬 Инициализация {service_name}...")
+    kling_service = KlingService()
+
+    async def update_progress(text: str):
+        try:
+            await progress_msg.edit_text(text, parse_mode=None)
+        except Exception:
+            pass
+
+    result = await kling_service.generate_video(
+        prompt=prompt,
+        model="kling-v1.6-pro",
+        progress_callback=update_progress
+    )
+
+    if result.success:
+        video_file = FSInputFile(result.video_path)
+        await message.answer_video(
+            video=video_file,
+            caption=f"✅ Видео готово!\n\nПромпт: {prompt[:200]}\nТокенов: {result.tokens_used:,}"
+        )
+        try:
+            os.remove(result.video_path)
+        except Exception as e:
+            logger.error("video_cleanup_failed", error=str(e))
+        await progress_msg.delete()
+    else:
+        await progress_msg.edit_text(f"❌ Ошибка: {result.error}", parse_mode=None)
 
     await state.clear()
 

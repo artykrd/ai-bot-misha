@@ -70,17 +70,17 @@ class SoraService(BaseVideoProvider):
             )
 
             # Step 2: Poll for completion
-            video_url = await self._poll_generation_status(
+            completed_id = await self._poll_generation_status(
                 generation_id,
                 progress_callback
             )
 
-            # Step 3: Download video
+            # Step 3: Download video via content endpoint
             if progress_callback:
                 await progress_callback("📥 Скачиваю видео...")
 
             filename = self._generate_filename("mp4")
-            video_path = await self._download_file(video_url, filename)
+            video_path = await self._download_video_content(completed_id, filename)
 
             processing_time = time.time() - start_time
 
@@ -160,18 +160,64 @@ class SoraService(BaseVideoProvider):
                 data = await response.json()
                 return data["id"]
 
+    async def _download_video_content(
+        self,
+        video_id: str,
+        filename: str
+    ) -> str:
+        """
+        Download video content from completed generation.
+
+        According to OpenAI API docs, use GET /videos/{video_id}/content
+        to download the MP4 file directly.
+
+        Args:
+            video_id: The generation ID
+            filename: The filename to save as
+
+        Returns:
+            Path to downloaded video file
+        """
+        url = f"{self.BASE_URL}/videos/{video_id}/content"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}"
+        }
+
+        try:
+            file_path = self.storage_path / filename
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as response:
+                    if response.status == 200:
+                        with open(file_path, 'wb') as f:
+                            f.write(await response.read())
+
+                        logger.info(
+                            "sora_video_downloaded",
+                            video_id=video_id,
+                            path=str(file_path),
+                            size=file_path.stat().st_size
+                        )
+                        return str(file_path)
+                    else:
+                        error_text = await response.text()
+                        raise Exception(f"Failed to download video: HTTP {response.status} - {error_text}")
+        except Exception as e:
+            logger.error("sora_video_download_failed", error=str(e), video_id=video_id)
+            raise
+
     async def _poll_generation_status(
         self,
         generation_id: str,
         progress_callback: Optional[Callable[[str], Awaitable[None]]] = None,
         max_wait_time: int = 600,  # 10 minutes
-        poll_interval: int = 5  # 5 seconds
+        poll_interval: int = 10  # 10 seconds (longer for Sora)
     ) -> str:
         """
         Poll generation status until complete.
 
         Returns:
-            URL of the generated video
+            The generation_id when complete (video will be downloaded via content endpoint)
         """
         url = f"{self.BASE_URL}/videos/{generation_id}"
         headers = {
@@ -180,6 +226,7 @@ class SoraService(BaseVideoProvider):
 
         start_time = time.time()
         last_status = None
+        last_progress = None
 
         async with aiohttp.ClientSession() as session:
             while True:
@@ -194,28 +241,34 @@ class SoraService(BaseVideoProvider):
                         raise Exception(f"Status check failed: {response.status} - {error_text}")
 
                     data = await response.json()
-                    status = data["status"]
+                    status = data.get("status", "unknown")
+                    progress = data.get("progress", 0)
 
-                    # Update user if status changed
-                    if status != last_status and progress_callback:
-                        if status == "processing":
-                            await progress_callback("⚙️ Обрабатываю видео...")
-                        elif status == "rendering":
-                            await progress_callback("🎨 Рендерю видео...")
-                        elif status == "finalizing":
-                            await progress_callback("🔄 Почти готово...")
+                    # Update user if status or progress changed
+                    if progress_callback:
+                        if status != last_status:
+                            if status == "queued":
+                                await progress_callback("⏳ Видео в очереди на обработку...")
+                            elif status == "in_progress":
+                                await progress_callback("⚙️ Генерирую видео...")
+
+                        # Show progress if available and changed significantly
+                        if status == "in_progress" and progress and progress != last_progress:
+                            if progress - (last_progress or 0) >= 10:  # Update every 10%
+                                await progress_callback(f"🎬 Прогресс: {progress}%")
+                                last_progress = progress
 
                     last_status = status
 
                     # Check if complete
                     if status == "completed":
-                        # Return video URL
-                        if "url" in data:
-                            return data["url"]
-                        elif "output" in data and "url" in data["output"]:
-                            return data["output"]["url"]
-                        else:
-                            raise Exception("Video URL not found in response")
+                        logger.info(
+                            "sora_video_completed",
+                            generation_id=generation_id,
+                            time_elapsed=time.time() - start_time
+                        )
+                        # Return generation_id, not URL - we'll download via content endpoint
+                        return generation_id
 
                     # Check if failed
                     if status == "failed":
