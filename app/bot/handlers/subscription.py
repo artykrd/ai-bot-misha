@@ -73,30 +73,83 @@ async def show_eternal_tokens(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("buy:"))
 async def process_subscription_purchase(callback: CallbackQuery, user: User):
     """Process subscription purchase."""
+    from app.database.database import async_session_maker
+    from app.services.payment import PaymentService
+    from decimal import Decimal
 
     subscription_type = callback.data.split(":")[1]
 
-    # TODO: Integrate with payment service (YooKassa)
-    # For now, just show a message
+    # Define tariff details
+    TARIFFS = {
+        "eternal_150k": {"tokens": 150000, "price": Decimal("149.00"), "name": "150,000 токенов"},
+        "eternal_250k": {"tokens": 250000, "price": Decimal("279.00"), "name": "250,000 токенов"},
+        "eternal_500k": {"tokens": 500000, "price": Decimal("519.00"), "name": "500,000 токенов"},
+        "eternal_1m": {"tokens": 1000000, "price": Decimal("999.00"), "name": "1,000,000 токенов"},
+    }
+
+    tariff = TARIFFS.get(subscription_type)
+    if not tariff:
+        await callback.answer("❌ Неизвестный тариф", show_alert=True)
+        return
 
     logger.info(
         "subscription_purchase_initiated",
         user_id=user.id,
-        subscription_type=subscription_type
+        subscription_type=subscription_type,
+        amount=tariff["price"]
     )
 
-    text = f"""💳 **Оплата подписки**
+    # Create payment
+    async with async_session_maker() as session:
+        payment_service = PaymentService(session)
 
-Тариф: `{subscription_type}`
+        payment = await payment_service.create_payment(
+            user_id=user.id,
+            amount=tariff["price"],
+            description=f"Покупка {tariff['name']}",
+            metadata={
+                "subscription_type": subscription_type,
+                "tokens": tariff["tokens"],
+                "type": "eternal_tokens"
+            }
+        )
 
-⚠️ **Интеграция с ЮKassa в разработке**
+        if not payment:
+            await callback.answer("❌ Ошибка создания платежа. Попробуйте позже.", show_alert=True)
+            return
 
-Пока вы можете активировать подписку через промокод.
-Свяжитесь с поддержкой для получения промокода."""
+        # Get payment URL from yukassa_response
+        confirmation_url = payment.yukassa_response.get("confirmation_url")
+
+        if not confirmation_url:
+            await callback.answer("❌ Ошибка получения ссылки на оплату", show_alert=True)
+            return
+
+    # Build payment message
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    from aiogram.types import InlineKeyboardButton
+
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="💳 Оплатить", url=confirmation_url)
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад", callback_data="bot#shop")
+    )
+
+    text = f"""💳 **Оплата токенов**
+
+📦 **Тариф:** {tariff['name']}
+💰 **Стоимость:** {tariff['price']} руб.
+
+🔹 Токены вечные и никогда не сгорают
+🔹 После оплаты токены будут автоматически зачислены
+
+Нажмите кнопку "Оплатить" для перехода к оплате."""
 
     await callback.message.edit_text(
         text,
-        reply_markup=back_to_main_keyboard()
+        reply_markup=builder.as_markup()
     )
     await callback.answer()
 
