@@ -1545,12 +1545,12 @@ async def process_vision_prompt(message: Message, state: FSMContext, user: User)
 
 @router.message(MediaState.waiting_for_photo_upscale, F.photo)
 async def process_photo_upscale(message: Message, state: FSMContext, user: User):
-    """Process photo quality improvement using GPT Vision + DALL-E regeneration."""
+    """Process photo quality improvement using PIL image enhancement."""
     # Get the largest photo
     photo = message.photo[-1]
 
-    # Check and use tokens (Vision ~1000 + DALL-E ~4000)
-    estimated_tokens = 5000
+    # Check and use tokens (basic image processing is cheap)
+    estimated_tokens = 500
 
     async with async_session_maker() as session:
         sub_service = SubscriptionService(session)
@@ -1580,82 +1580,88 @@ async def process_photo_upscale(message: Message, state: FSMContext, user: User)
 
     await message.bot.download_file(file.file_path, temp_path)
 
-    # Progress callback
-    async def update_progress(text: str):
-        try:
-            await progress_msg.edit_text(text, parse_mode=None)
-        except Exception:
-            pass
-
     try:
-        # Step 1: Analyze image with GPT Vision
-        await update_progress("👁 Анализирую изображение...")
+        # Progress update
+        await progress_msg.edit_text("🎨 Улучшаю качество изображения...", parse_mode=None)
 
-        vision_service = VisionService()
-        analysis_result = await vision_service.analyze_image(
-            image_path=str(temp_path),
-            prompt=(
-                "Describe this image in extreme detail for recreation purposes. "
-                "Include: main subject, composition, lighting (direction, quality, color temperature), "
-                "colors (specific shades and tones), textures, atmosphere, mood, style, "
-                "any text or details visible. Focus on visual qualities that would help "
-                "recreate this image in higher quality with better clarity and detail."
-            ),
-            model="gpt-4o",
-            max_tokens=500,
-            detail="high"
-        )
+        # Open image with PIL
+        from PIL import Image, ImageEnhance, ImageFilter
 
-        if not analysis_result.success:
-            raise Exception(f"Vision analysis failed: {analysis_result.error}")
+        img = Image.open(temp_path)
 
-        # Step 2: Generate improved version with DALL-E
-        await update_progress("🎨 Создаю улучшенную версию...")
+        # Convert to RGB if needed
+        if img.mode in ('RGBA', 'LA', 'P'):
+            background = Image.new('RGB', img.size, (255, 255, 255))
+            if img.mode == 'P':
+                img = img.convert('RGBA')
+            if img.mode in ('RGBA', 'LA'):
+                background.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
+                img = background
 
-        # Create enhanced prompt
-        enhanced_prompt = (
-            f"A high-quality, detailed photograph: {analysis_result.content}. "
-            f"Professional photography, sharp focus, excellent lighting, "
-            f"high detail, crisp and clear, HD quality."
-        )
+        # 1. Enhance sharpness
+        enhancer = ImageEnhance.Sharpness(img)
+        img = enhancer.enhance(1.5)  # Increase sharpness by 50%
 
-        dalle_service = DalleService()
-        generation_result = await dalle_service.generate_image(
-            prompt=enhanced_prompt,
-            model="dall-e-3",
-            size="1024x1024",
-            quality="hd",  # Use HD quality for better results
-            style="natural"
-        )
+        # 2. Enhance contrast
+        enhancer = ImageEnhance.Contrast(img)
+        img = enhancer.enhance(1.2)  # Increase contrast by 20%
 
-        # Clean up temp file
+        # 3. Enhance color
+        enhancer = ImageEnhance.Color(img)
+        img = enhancer.enhance(1.1)  # Increase color saturation by 10%
+
+        # 4. Enhance brightness slightly
+        enhancer = ImageEnhance.Brightness(img)
+        img = enhancer.enhance(1.05)  # Increase brightness by 5%
+
+        # 5. Apply subtle unsharp mask for additional sharpness
+        img = img.filter(ImageFilter.UnsharpMask(radius=2, percent=150, threshold=3))
+
+        # Save enhanced image
+        enhanced_path = temp_dir / f"enhanced_{photo.file_id}.jpg"
+
+        # Save with high quality
+        img.save(str(enhanced_path), 'JPEG', quality=95, optimize=True)
+
+        # Check file size and optimize if needed
+        file_size = os.path.getsize(enhanced_path)
+        max_size = 10 * 1024 * 1024  # 10 MB Telegram limit
+
+        if file_size > max_size:
+            logger.info("enhanced_image_too_large", size=file_size, max_size=max_size)
+            # Reduce quality gradually until it fits
+            quality = 90
+            while file_size > max_size and quality > 60:
+                img.save(str(enhanced_path), 'JPEG', quality=quality, optimize=True)
+                file_size = os.path.getsize(enhanced_path)
+                quality -= 5
+                logger.info("enhanced_image_compressed", new_size=file_size, quality=quality)
+
+        # Clean up original temp file
         try:
             os.remove(temp_path)
         except Exception:
             pass
 
-        if generation_result.success:
-            # Send improved image
-            improved_file = FSInputFile(generation_result.image_path)
-            await message.answer_photo(
-                photo=improved_file,
-                caption=f"✅ Изображение улучшено!\n\n"
-                        f"Создано новое изображение высокого качества на основе анализа оригинала.\n\n"
-                        f"Использовано токенов: {estimated_tokens:,}"
-            )
+        # Send enhanced image
+        enhanced_file = FSInputFile(enhanced_path)
+        await message.answer_photo(
+            photo=enhanced_file,
+            caption=f"✅ Изображение улучшено!\n\n"
+                    f"Применены улучшения: резкость, контраст, цвета, яркость.\n\n"
+                    f"Использовано токенов: {estimated_tokens:,}"
+        )
 
-            # Clean up generated image
-            try:
-                os.remove(generation_result.image_path)
-            except Exception as e:
-                logger.error("improved_image_cleanup_failed", error=str(e))
+        # Clean up enhanced file
+        try:
+            os.remove(enhanced_path)
+        except Exception as e:
+            logger.error("enhanced_image_cleanup_failed", error=str(e))
 
-            await progress_msg.delete()
-        else:
-            raise Exception(f"Image generation failed: {generation_result.error}")
+        await progress_msg.delete()
 
     except Exception as e:
-        # Clean up temp file on error
+        # Clean up temp files on error
         try:
             os.remove(temp_path)
         except Exception:
@@ -1704,7 +1710,7 @@ async def process_photo_replace_bg(message: Message, state: FSMContext, user: Us
 
 @router.message(MediaState.waiting_for_photo_replace_bg, F.text)
 async def process_photo_replace_bg_prompt(message: Message, state: FSMContext, user: User):
-    """Process background replacement with user prompt."""
+    """Process background replacement with user-specified background."""
     data = await state.get_data()
     image_path = data.get("saved_image_path")
 
@@ -1715,34 +1721,240 @@ async def process_photo_replace_bg_prompt(message: Message, state: FSMContext, u
 
     bg_description = message.text
 
-    await _process_photo_with_path(
-        message, state, user,
-        image_path=image_path,
-        tool_name="Замена фона",
-        prompt=(
-            f"Analyze this image and describe in detail how to replace the background "
-            f"with the following: {bg_description}. "
-            f"Provide step-by-step instructions for seamless background replacement, "
-            f"including edge detection, subject isolation, and blending techniques."
-        ),
-        emoji="🪄"
-    )
+    # Check and use tokens (RemoveBG ~1000 + DALL-E ~4000)
+    estimated_tokens = 5000
+
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+
+        try:
+            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+        except InsufficientTokensError as e:
+            await message.answer(
+                f"❌ Недостаточно токенов для замены фона!\n\n"
+                f"Требуется: {estimated_tokens:,} токенов\n"
+                f"Доступно: {e.details['available']:,} токенов\n\n"
+                f"Купите подписку: /start → 💎 Подписка"
+            )
+            # Clean up saved image
+            try:
+                os.remove(image_path)
+            except Exception:
+                pass
+            await state.clear()
+            return
+
+    progress_msg = await message.answer("🖼️ Обрабатываю изображение...")
+
+    # Progress callback
+    async def update_progress(text: str):
+        try:
+            await progress_msg.edit_text(text, parse_mode=None)
+        except Exception:
+            pass
+
+    try:
+        # Step 1: Remove background
+        await update_progress("🖼️ Удаляю фон с изображения...")
+
+        removebg_service = RemoveBgService()
+        remove_result = await removebg_service.process_image(
+            image_path=image_path,
+            size="auto",
+            type="auto"
+        )
+
+        if not remove_result.success:
+            raise Exception(f"Background removal failed: {remove_result.error}")
+
+        # Step 2: Generate new background with DALL-E
+        await update_progress("🎨 Создаю новый фон...")
+
+        background_prompt = f"A high-quality background image: {bg_description}. Professional photography, suitable as a background."
+
+        dalle_service = DalleService()
+        bg_result = await dalle_service.generate_image(
+            prompt=background_prompt,
+            model="dall-e-3",
+            size="1024x1024",
+            quality="standard",
+            style="natural"
+        )
+
+        if not bg_result.success:
+            # Clean up removed bg image
+            try:
+                os.remove(remove_result.image_path)
+            except Exception:
+                pass
+            raise Exception(f"Background generation failed: {bg_result.error}")
+
+        # Step 3: Composite subject onto new background
+        await update_progress("🖌️ Объединяю изображения...")
+
+        from PIL import Image
+
+        # Open images
+        subject_img = Image.open(remove_result.image_path)  # RGBA
+        background_img = Image.open(bg_result.image_path)  # RGB
+
+        # Resize background to match subject size
+        background_img = background_img.resize(subject_img.size, Image.Resampling.LANCZOS)
+
+        # Convert background to RGBA
+        background_img = background_img.convert('RGBA')
+
+        # Composite
+        final_img = Image.alpha_composite(background_img, subject_img)
+
+        # Convert to RGB for JPEG
+        final_rgb = Image.new('RGB', final_img.size, (255, 255, 255))
+        final_rgb.paste(final_img, mask=final_img.split()[3])  # Use alpha as mask
+
+        # Save final image
+        temp_dir = Path("./storage/temp")
+        final_path = temp_dir / f"replaced_{os.path.basename(image_path)}"
+        final_rgb.save(str(final_path), 'JPEG', quality=95, optimize=True)
+
+        # Clean up intermediate files
+        try:
+            os.remove(image_path)
+            os.remove(remove_result.image_path)
+            os.remove(bg_result.image_path)
+        except Exception as e:
+            logger.error("temp_files_cleanup_failed", error=str(e))
+
+        # Send final image
+        final_file = FSInputFile(final_path)
+        await message.answer_photo(
+            photo=final_file,
+            caption=f"✅ Фон заменён!\n\n"
+                    f"Новый фон: {bg_description}\n\n"
+                    f"Использовано токенов: {estimated_tokens:,}"
+        )
+
+        # Clean up final file
+        try:
+            os.remove(final_path)
+        except Exception as e:
+            logger.error("final_image_cleanup_failed", error=str(e))
+
+        await progress_msg.delete()
+
+    except Exception as e:
+        # Clean up all temp files on error
+        try:
+            os.remove(image_path)
+        except Exception:
+            pass
+
+        logger.error("photo_replace_bg_failed", error=str(e))
+
+        try:
+            await progress_msg.edit_text(
+                f"❌ Ошибка замены фона:\n{str(e)}"
+            )
+        except Exception:
+            pass
+
+    await state.clear()
 
 
 @router.message(MediaState.waiting_for_photo_remove_bg, F.photo)
 async def process_photo_remove_bg(message: Message, state: FSMContext, user: User):
-    """Process background removal."""
-    await _process_photo_tool(
-        message, state, user,
-        tool_name="Удаление фона",
-        prompt=(
-            "Analyze this image and describe how to remove the background completely. "
-            "Provide detailed instructions for: subject detection, edge refinement, "
-            "alpha channel creation, and ensuring clean separation from the background. "
-            "Recommend the best approach for this specific image."
-        ),
-        emoji="🪞"
+    """Process background removal using Remove.bg API."""
+    # Get the largest photo
+    photo = message.photo[-1]
+
+    # Check and use tokens
+    estimated_tokens = 1000
+
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+
+        try:
+            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+        except InsufficientTokensError as e:
+            await message.answer(
+                f"❌ Недостаточно токенов для удаления фона!\n\n"
+                f"Требуется: {estimated_tokens:,} токенов\n"
+                f"Доступно: {e.details['available']:,} токенов\n\n"
+                f"Купите подписку: /start → 💎 Подписка"
+            )
+            await state.clear()
+            return
+
+    # Send progress message
+    progress_msg = await message.answer("📥 Загружаю изображение...")
+
+    # Download photo
+    file = await message.bot.get_file(photo.file_id)
+
+    # Create temp path
+    temp_dir = Path("./storage/temp")
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    temp_path = temp_dir / f"{photo.file_id}.jpg"
+
+    await message.bot.download_file(file.file_path, temp_path)
+
+    # Progress callback
+    async def update_progress(text: str):
+        try:
+            await progress_msg.edit_text(text, parse_mode=None)
+        except Exception:
+            pass
+
+    # Remove background
+    removebg_service = RemoveBgService()
+    result = await removebg_service.process_image(
+        image_path=str(temp_path),
+        progress_callback=update_progress,
+        size="auto",  # auto, preview, full
+        type="auto"   # auto, person, product, car
     )
+
+    # Clean up temp file
+    try:
+        os.remove(temp_path)
+    except Exception:
+        pass
+
+    if result.success:
+        # Send image with removed background
+        result_file = FSInputFile(result.image_path)
+
+        # Try sending as photo first
+        try:
+            await message.answer_photo(
+                photo=result_file,
+                caption=f"✅ Фон удалён!\n\n"
+                        f"Использовано токенов: {estimated_tokens:,}"
+            )
+        except Exception:
+            # If photo fails (transparent images sometimes do), send as document
+            await message.answer_document(
+                document=result_file,
+                caption=f"✅ Фон удалён!\n\n"
+                        f"Изображение с прозрачным фоном (PNG).\n\n"
+                        f"Использовано токенов: {estimated_tokens:,}"
+            )
+
+        # Clean up
+        try:
+            os.remove(result.image_path)
+        except Exception as e:
+            logger.error("removebg_cleanup_failed", error=str(e))
+
+        await progress_msg.delete()
+    else:
+        try:
+            await progress_msg.edit_text(
+                f"❌ Ошибка удаления фона:\n{result.error}"
+            )
+        except Exception:
+            pass
+
+    await state.clear()
 
 
 @router.message(MediaState.waiting_for_photo_vectorize, F.photo)
