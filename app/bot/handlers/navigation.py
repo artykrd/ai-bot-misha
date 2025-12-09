@@ -21,7 +21,8 @@ from app.bot.keyboards.inline import (
     dialog_keyboard,
     referral_keyboard,
     subscription_keyboard,
-    eternal_tokens_keyboard
+    eternal_tokens_keyboard,
+    back_to_main_keyboard
 )
 from app.database.models.user import User
 
