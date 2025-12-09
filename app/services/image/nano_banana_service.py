@@ -256,23 +256,61 @@ class NanoBananaService(BaseImageProvider):
                 filename = self._generate_filename("png")
                 image_path = self.storage_path / filename
 
-                # Get image data from inline_data
-                if image_part.inline_data:
-                    # Save binary data directly
-                    with open(image_path, 'wb') as f:
-                        f.write(image_part.inline_data.data)
-                else:
-                    # Try to use as_image() method and save properly
+                # Try to use as_image() method first (most reliable)
+                try:
                     from PIL import Image
                     pil_image = image_part.as_image()
 
-                    # Save without format parameter if object doesn't support it
+                    logger.info("nano_banana_using_as_image", image_type=type(pil_image).__name__)
+
+                    # Save as PNG
                     if isinstance(pil_image, Image.Image):
                         # Standard PIL Image
                         pil_image.save(str(image_path), 'PNG')
                     else:
                         # Custom image object with save method
                         pil_image.save(str(image_path))
+
+                except Exception as as_image_error:
+                    # Fallback: try to get data from inline_data
+                    logger.warning("nano_banana_as_image_failed", error=str(as_image_error))
+
+                    if image_part.inline_data:
+                        # Check if data is base64-encoded or raw bytes
+                        import base64
+                        data = image_part.inline_data.data
+
+                        logger.info("nano_banana_using_inline_data",
+                                  data_type=type(data).__name__,
+                                  data_size=len(data))
+
+                        # Try to decode if it's base64
+                        try:
+                            if isinstance(data, str):
+                                # It's a base64 string
+                                decoded_data = base64.b64decode(data)
+                            elif isinstance(data, bytes):
+                                # It might be already decoded or might be base64 bytes
+                                # Try to decode first
+                                try:
+                                    decoded_data = base64.b64decode(data)
+                                    logger.info("nano_banana_decoded_base64", size=len(decoded_data))
+                                except Exception:
+                                    # Not base64, use as is
+                                    decoded_data = data
+                                    logger.info("nano_banana_using_raw_bytes", size=len(decoded_data))
+                            else:
+                                decoded_data = data
+
+                            # Write decoded data
+                            with open(image_path, 'wb') as f:
+                                f.write(decoded_data)
+
+                        except Exception as decode_error:
+                            logger.error("nano_banana_decode_failed", error=str(decode_error))
+                            raise
+                    else:
+                        raise ValueError("No valid image data found in response")
 
                 logger.info(
                     "nano_banana_image_saved",
