@@ -259,17 +259,30 @@ class NanoBananaService(BaseImageProvider):
                 # Try to use as_image() method first (most reliable)
                 try:
                     from PIL import Image
+                    import io
+
                     pil_image = image_part.as_image()
 
                     logger.info("nano_banana_using_as_image", image_type=type(pil_image).__name__)
 
-                    # Save as PNG
+                    # Check if it's a real PIL Image or a custom object
                     if isinstance(pil_image, Image.Image):
-                        # Standard PIL Image
+                        # Standard PIL Image - save directly
                         pil_image.save(str(image_path), 'PNG')
                     else:
-                        # Custom image object with save method
-                        pil_image.save(str(image_path))
+                        # Custom image object - convert to real PIL Image via buffer
+                        # First save to buffer
+                        buffer = io.BytesIO()
+                        pil_image.save(buffer)
+                        buffer.seek(0)
+
+                        # Load as real PIL Image
+                        real_pil_image = Image.open(buffer)
+
+                        # Save as PNG
+                        real_pil_image.save(str(image_path), 'PNG')
+
+                        logger.info("nano_banana_converted_custom_to_pil")
 
                 except Exception as as_image_error:
                     # Fallback: try to get data from inline_data
