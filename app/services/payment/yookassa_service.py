@@ -98,7 +98,7 @@ class YooKassaService:
                 "amount": amount,
                 "currency": "RUB",
                 "confirmation_url": payment.confirmation.confirmation_url,
-                "created_at": payment.created_at.isoformat() if payment.created_at else None,
+                "created_at": str(payment.created_at) if payment.created_at else None,
                 "metadata": payment_metadata
             }
 
@@ -138,8 +138,8 @@ class YooKassaService:
                 "amount": Decimal(payment.amount.value),
                 "currency": payment.amount.currency,
                 "paid": payment.paid,
-                "created_at": payment.created_at.isoformat() if payment.created_at else None,
-                "captured_at": payment.captured_at.isoformat() if payment.captured_at else None,
+                "created_at": str(payment.created_at) if payment.created_at else None,
+                "captured_at": str(payment.captured_at) if payment.captured_at else None,
                 "metadata": payment.metadata if payment.metadata else {}
             }
 
