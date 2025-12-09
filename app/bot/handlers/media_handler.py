@@ -6,11 +6,13 @@ Media handlers for video, audio, and image generation.
 """
 
 from aiogram import Router, F
-from aiogram.types import CallbackQuery, Message, FSInputFile
+from aiogram.types import CallbackQuery, Message, FSInputFile, BufferedInputFile
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 import os
 from pathlib import Path
+from PIL import Image
+import io
 
 from app.bot.keyboards.inline import back_to_main_keyboard
 from app.database.models.user import User
@@ -37,6 +39,11 @@ class MediaState(StatesGroup):
     waiting_for_whisper_audio = State()
     waiting_for_vision_image = State()
     waiting_for_vision_prompt = State()
+    # Photo tools states
+    waiting_for_photo_upscale = State()
+    waiting_for_photo_replace_bg = State()
+    waiting_for_photo_remove_bg = State()
+    waiting_for_photo_vectorize = State()
 
 
 # ======================
@@ -190,6 +197,54 @@ async def start_nano(callback: CallbackQuery, state: FSMContext, user: User):
 
     await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
     await callback.answer()
+
+
+@router.callback_query(F.data == "bot.midjourney")
+async def start_midjourney(callback: CallbackQuery):
+    """Midjourney stub - under development."""
+    text = (
+        "🌆 **Midjourney**\n\n"
+        "⚠️ **Функционал в разработке**\n\n"
+        "Интеграция с Midjourney находится в процессе разработки.\n"
+        "Пожалуйста, используйте альтернативные сервисы:\n\n"
+        "• 🍌 Nano Banana (Gemini 2.5 Flash)\n"
+        "• 🖼 DALL·E 3\n\n"
+        "Следите за обновлениями!"
+    )
+    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
+    await callback.answer("⚠️ Функционал в разработке", show_alert=False)
+
+
+@router.callback_query(F.data == "bot_stable_diffusion")
+async def start_stable_diffusion(callback: CallbackQuery):
+    """Stable Diffusion stub - under development."""
+    text = (
+        "🖌 **Stable Diffusion**\n\n"
+        "⚠️ **Функционал в разработке**\n\n"
+        "Интеграция с Stable Diffusion находится в процессе разработки.\n"
+        "Пожалуйста, используйте альтернативные сервисы:\n\n"
+        "• 🍌 Nano Banana (Gemini 2.5 Flash)\n"
+        "• 🖼 DALL·E 3\n\n"
+        "Следите за обновлениями!"
+    )
+    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
+    await callback.answer("⚠️ Функционал в разработке", show_alert=False)
+
+
+@router.callback_query(F.data == "bot.recraft")
+async def start_recraft(callback: CallbackQuery):
+    """Recraft stub - under development."""
+    text = (
+        "🎨 **Recraft**\n\n"
+        "⚠️ **Функционал в разработке**\n\n"
+        "Интеграция с Recraft находится в процессе разработки.\n"
+        "Пожалуйста, используйте альтернативные сервисы:\n\n"
+        "• 🍌 Nano Banana (Gemini 2.5 Flash)\n"
+        "• 🖼 DALL·E 3\n\n"
+        "Следите за обновлениями!"
+    )
+    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
+    await callback.answer("⚠️ Функционал в разработке", show_alert=False)
 
 
 # ======================
@@ -873,14 +928,101 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
     if result.success:
         tokens_used = result.metadata.get("tokens_used", estimated_tokens)
 
-        # Send image
-        image_file = FSInputFile(result.image_path)
-        await message.answer_photo(
-            photo=image_file,
-            caption=f"✅ Изображение готово!\n\n"
-                    f"Промпт: {prompt[:200]}\n"
+        # Optimize and send image
+        try:
+            # Check file size
+            file_size = os.path.getsize(result.image_path)
+            logger.info("nano_image_file_size", path=result.image_path, size=file_size)
+
+            # If file is too large (>2MB) or to ensure compatibility, optimize it
+            if file_size > 2 * 1024 * 1024:  # 2MB
+                logger.info("nano_image_optimizing", original_size=file_size)
+
+                # Open image with PIL
+                img = Image.open(result.image_path)
+
+                # Convert RGBA to RGB if needed (for JPEG)
+                if img.mode in ('RGBA', 'LA', 'P'):
+                    background = Image.new('RGB', img.size, (255, 255, 255))
+                    if img.mode == 'P':
+                        img = img.convert('RGBA')
+                    background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+                    img = background
+
+                # Save as JPEG with quality reduction
+                buffer = io.BytesIO()
+                quality = 85
+                img.save(buffer, format='JPEG', quality=quality, optimize=True)
+                buffer.seek(0)
+
+                optimized_size = buffer.getbuffer().nbytes
+                logger.info("nano_image_optimized", original_size=file_size, new_size=optimized_size, quality=quality)
+
+                # Send optimized image
+                photo = BufferedInputFile(buffer.read(), filename="image.jpg")
+                await message.answer_photo(
+                    photo=photo,
+                    caption=f"✅ Изображение готово!\n\n"
+                            f"Промпт: {prompt[:200]}\n"
+                            f"Использовано токенов: {tokens_used:,}"
+                )
+            else:
+                # Try sending original PNG first
+                try:
+                    image_file = FSInputFile(result.image_path)
+                    await message.answer_photo(
+                        photo=image_file,
+                        caption=f"✅ Изображение готово!\n\n"
+                                f"Промпт: {prompt[:200]}\n"
+                                f"Использовано токенов: {tokens_used:,}"
+                    )
+                except Exception as send_error:
+                    logger.warning("nano_image_send_as_photo_failed", error=str(send_error))
+
+                    # If sending as photo fails, try optimizing and re-sending
+                    img = Image.open(result.image_path)
+
+                    # Convert to RGB if needed
+                    if img.mode in ('RGBA', 'LA', 'P'):
+                        background = Image.new('RGB', img.size, (255, 255, 255))
+                        if img.mode == 'P':
+                            img = img.convert('RGBA')
+                        background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+                        img = background
+
+                    # Save as JPEG
+                    buffer = io.BytesIO()
+                    img.save(buffer, format='JPEG', quality=90, optimize=True)
+                    buffer.seek(0)
+
+                    logger.info("nano_image_converted_to_jpeg", original_format="PNG")
+
+                    photo = BufferedInputFile(buffer.read(), filename="image.jpg")
+                    await message.answer_photo(
+                        photo=photo,
+                        caption=f"✅ Изображение готово!\n\n"
+                                f"Промпт: {prompt[:200]}\n"
+                                f"Использовано токенов: {tokens_used:,}"
+                    )
+
+        except Exception as send_error:
+            logger.error("nano_image_send_failed", error=str(send_error))
+            # Last resort: try sending as document
+            try:
+                doc_file = FSInputFile(result.image_path)
+                await message.answer_document(
+                    document=doc_file,
+                    caption=f"✅ Изображение готово (отправлено как файл)!\n\n"
+                            f"Промпт: {prompt[:200]}\n"
+                            f"Использовано токенов: {tokens_used:,}"
+                )
+            except Exception as doc_error:
+                logger.error("nano_image_send_as_document_failed", error=str(doc_error))
+                await message.answer(
+                    f"✅ Изображение создано, но произошла ошибка при отправке.\n"
+                    f"Изображение сохранено на сервере.\n"
                     f"Использовано токенов: {tokens_used:,}"
-        )
+                )
 
         # Clean up
         try:
@@ -1381,6 +1523,197 @@ async def process_vision_prompt(message: Message, state: FSMContext, user: User)
         await message.answer(
             f"✅ **Анализ изображения готов!**\n\n"
             f"📝 **Ответ:**\n{result.content}\n\n"
+            f"💰 Использовано токенов: {result.tokens_used:,}"
+        )
+
+        await progress_msg.delete()
+    else:
+        try:
+            await progress_msg.edit_text(
+                f"❌ Ошибка анализа изображения:\n{result.error}"
+            )
+        except Exception:
+            # Ignore errors when message is not modified
+            pass
+
+    await state.clear()
+
+
+# ======================
+# PHOTO TOOLS HANDLERS
+# ======================
+
+@router.message(MediaState.waiting_for_photo_upscale, F.photo)
+async def process_photo_upscale(message: Message, state: FSMContext, user: User):
+    """Process photo quality improvement."""
+    await _process_photo_tool(
+        message, state, user,
+        tool_name="Улучшение качества",
+        prompt=(
+            "Analyze this image and describe how to improve its quality. "
+            "Provide specific recommendations for: sharpness, color correction, "
+            "noise reduction, contrast, and overall enhancement. "
+            "Be detailed and technical in your analysis."
+        ),
+        emoji="🔎"
+    )
+
+
+@router.message(MediaState.waiting_for_photo_replace_bg, F.photo)
+async def process_photo_replace_bg(message: Message, state: FSMContext, user: User):
+    """Process background replacement."""
+    # First, save the photo and ask for background description
+    photo = message.photo[-1]
+    file_info = await message.bot.get_file(photo.file_id)
+
+    # Download photo
+    import tempfile
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as tmp_file:
+        await message.bot.download_file(file_info.file_path, tmp_file.name)
+        image_path = tmp_file.name
+
+    # Save to state
+    await state.update_data(saved_image_path=image_path)
+
+    # Ask for background description
+    await message.answer(
+        "📤 Фото получено!\n\n"
+        "✏️ Теперь опишите, какой фон вы хотите:\n\n"
+        "Примеры:\n"
+        "• Горный пейзаж с заснеженными вершинами\n"
+        "• Тропический пляж с пальмами\n"
+        "• Современный офис\n"
+        "• Космическое пространство с звездами",
+        reply_markup=back_to_main_keyboard()
+    )
+
+
+@router.message(MediaState.waiting_for_photo_replace_bg, F.text)
+async def process_photo_replace_bg_prompt(message: Message, state: FSMContext, user: User):
+    """Process background replacement with user prompt."""
+    data = await state.get_data()
+    image_path = data.get("saved_image_path")
+
+    if not image_path or not os.path.exists(image_path):
+        await message.answer("❌ Ошибка: фото не найдено. Попробуйте снова.")
+        await state.clear()
+        return
+
+    bg_description = message.text
+
+    await _process_photo_with_path(
+        message, state, user,
+        image_path=image_path,
+        tool_name="Замена фона",
+        prompt=(
+            f"Analyze this image and describe in detail how to replace the background "
+            f"with the following: {bg_description}. "
+            f"Provide step-by-step instructions for seamless background replacement, "
+            f"including edge detection, subject isolation, and blending techniques."
+        ),
+        emoji="🪄"
+    )
+
+
+@router.message(MediaState.waiting_for_photo_remove_bg, F.photo)
+async def process_photo_remove_bg(message: Message, state: FSMContext, user: User):
+    """Process background removal."""
+    await _process_photo_tool(
+        message, state, user,
+        tool_name="Удаление фона",
+        prompt=(
+            "Analyze this image and describe how to remove the background completely. "
+            "Provide detailed instructions for: subject detection, edge refinement, "
+            "alpha channel creation, and ensuring clean separation from the background. "
+            "Recommend the best approach for this specific image."
+        ),
+        emoji="🪞"
+    )
+
+
+@router.message(MediaState.waiting_for_photo_vectorize, F.photo)
+async def process_photo_vectorize(message: Message, state: FSMContext, user: User):
+    """Process photo vectorization."""
+    await _process_photo_tool(
+        message, state, user,
+        tool_name="Векторизация",
+        prompt=(
+            "Analyze this image and describe how to convert it to a vector format. "
+            "Provide recommendations for: tracing method, color palette reduction, "
+            "path simplification, and optimal settings for this specific image type. "
+            "Suggest the best vectorization approach (outline, centerline, or full color)."
+        ),
+        emoji="📐"
+    )
+
+
+async def _process_photo_tool(message: Message, state: FSMContext, user: User,
+                              tool_name: str, prompt: str, emoji: str):
+    """Helper function to process photo with GPT Vision."""
+    photo = message.photo[-1]
+    file_info = await message.bot.get_file(photo.file_id)
+
+    # Download photo
+    import tempfile
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as tmp_file:
+        await message.bot.download_file(file_info.file_path, tmp_file.name)
+        image_path = tmp_file.name
+
+    await _process_photo_with_path(message, state, user, image_path, tool_name, prompt, emoji)
+
+
+async def _process_photo_with_path(message: Message, state: FSMContext, user: User,
+                                   image_path: str, tool_name: str, prompt: str, emoji: str):
+    """Process photo with given path."""
+    # Check and use tokens
+    estimated_tokens = 1500  # GPT-4 Vision cost
+
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+
+        try:
+            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+        except InsufficientTokensError as e:
+            await message.answer(
+                f"❌ Недостаточно токенов для обработки фото!\n\n"
+                f"Требуется: {estimated_tokens:,} токенов\n"
+                f"Доступно: {e.details['available']:,} токенов\n\n"
+                f"Купите подписку: /start → 💎 Подписка"
+            )
+            # Clean up temp file
+            try:
+                os.remove(image_path)
+            except Exception:
+                pass
+            await state.clear()
+            return
+
+    # Send progress message
+    progress_msg = await message.answer(f"{emoji} Анализирую фото...")
+
+    # Create service
+    vision_service = VisionService()
+
+    # Analyze image
+    result = await vision_service.analyze_image(
+        image_path=image_path,
+        prompt=prompt,
+        model="gpt-4o",
+        max_tokens=1500,
+        detail="high"
+    )
+
+    # Clean up temp file
+    try:
+        os.remove(image_path)
+    except Exception as e:
+        logger.error("photo_tool_cleanup_failed", error=str(e))
+
+    if result.success:
+        # Send analysis
+        await message.answer(
+            f"✅ **{tool_name} - Анализ готов!**\n\n"
+            f"📝 **Рекомендации:**\n{result.content}\n\n"
             f"💰 Использовано токенов: {result.tokens_used:,}"
         )
 
