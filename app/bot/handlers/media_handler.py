@@ -1545,12 +1545,12 @@ async def process_vision_prompt(message: Message, state: FSMContext, user: User)
 
 @router.message(MediaState.waiting_for_photo_upscale, F.photo)
 async def process_photo_upscale(message: Message, state: FSMContext, user: User):
-    """Process photo quality improvement using actual upscaling."""
+    """Process photo quality improvement using GPT Vision + DALL-E regeneration."""
     # Get the largest photo
     photo = message.photo[-1]
 
-    # Check and use tokens
-    estimated_tokens = 2000
+    # Check and use tokens (Vision ~1000 + DALL-E ~4000)
+    estimated_tokens = 5000
 
     async with async_session_maker() as session:
         sub_service = SubscriptionService(session)
@@ -1580,9 +1580,6 @@ async def process_photo_upscale(message: Message, state: FSMContext, user: User)
 
     await message.bot.download_file(file.file_path, temp_path)
 
-    # Create service
-    stability_service = StabilityService()
-
     # Progress callback
     async def update_progress(text: str):
         try:
@@ -1590,43 +1587,87 @@ async def process_photo_upscale(message: Message, state: FSMContext, user: User)
         except Exception:
             pass
 
-    # Upscale image
-    result = await stability_service.upscale_image(
-        image_path=str(temp_path),
-        scale_factor=2,
-        progress_callback=update_progress
-    )
-
-    # Clean up temp file
     try:
-        os.remove(temp_path)
-    except Exception:
-        pass
+        # Step 1: Analyze image with GPT Vision
+        await update_progress("👁 Анализирую изображение...")
 
-    if result.success:
-
-        # Send upscaled image
-        upscaled_file = FSInputFile(result.image_path)
-        await message.answer_photo(
-            photo=upscaled_file,
-            caption=f"✅ Изображение улучшено!\n\n"
-                    f"Использовано токенов: {estimated_tokens:,}"
+        vision_service = VisionService()
+        analysis_result = await vision_service.analyze_image(
+            image_path=str(temp_path),
+            prompt=(
+                "Describe this image in extreme detail for recreation purposes. "
+                "Include: main subject, composition, lighting (direction, quality, color temperature), "
+                "colors (specific shades and tones), textures, atmosphere, mood, style, "
+                "any text or details visible. Focus on visual qualities that would help "
+                "recreate this image in higher quality with better clarity and detail."
+            ),
+            model="gpt-4o",
+            max_tokens=500,
+            detail="high"
         )
 
-        # Clean up
-        try:
-            os.remove(result.image_path)
-        except Exception as e:
-            logger.error("upscale_cleanup_failed", error=str(e))
+        if not analysis_result.success:
+            raise Exception(f"Vision analysis failed: {analysis_result.error}")
 
-        await progress_msg.delete()
-    else:
+        # Step 2: Generate improved version with DALL-E
+        await update_progress("🎨 Создаю улучшенную версию...")
+
+        # Create enhanced prompt
+        enhanced_prompt = (
+            f"A high-quality, detailed photograph: {analysis_result.content}. "
+            f"Professional photography, sharp focus, excellent lighting, "
+            f"high detail, crisp and clear, HD quality."
+        )
+
+        dalle_service = DalleService()
+        generation_result = await dalle_service.generate_image(
+            prompt=enhanced_prompt,
+            model="dall-e-3",
+            size="1024x1024",
+            quality="hd",  # Use HD quality for better results
+            style="natural"
+        )
+
+        # Clean up temp file
+        try:
+            os.remove(temp_path)
+        except Exception:
+            pass
+
+        if generation_result.success:
+            # Send improved image
+            improved_file = FSInputFile(generation_result.image_path)
+            await message.answer_photo(
+                photo=improved_file,
+                caption=f"✅ Изображение улучшено!\n\n"
+                        f"Создано новое изображение высокого качества на основе анализа оригинала.\n\n"
+                        f"Использовано токенов: {estimated_tokens:,}"
+            )
+
+            # Clean up generated image
+            try:
+                os.remove(generation_result.image_path)
+            except Exception as e:
+                logger.error("improved_image_cleanup_failed", error=str(e))
+
+            await progress_msg.delete()
+        else:
+            raise Exception(f"Image generation failed: {generation_result.error}")
+
+    except Exception as e:
+        # Clean up temp file on error
+        try:
+            os.remove(temp_path)
+        except Exception:
+            pass
+
+        logger.error("photo_quality_improvement_failed", error=str(e))
+
         try:
             await progress_msg.edit_text(
-                f"❌ Ошибка улучшения изображения:\n{result.error}"
+                f"❌ Ошибка улучшения изображения:\n{str(e)}"
             )
         except Exception:
-            # Ignore errors when message is not modified
             pass
 
     await state.clear()
