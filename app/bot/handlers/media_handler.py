@@ -1545,18 +1545,91 @@ async def process_vision_prompt(message: Message, state: FSMContext, user: User)
 
 @router.message(MediaState.waiting_for_photo_upscale, F.photo)
 async def process_photo_upscale(message: Message, state: FSMContext, user: User):
-    """Process photo quality improvement."""
-    await _process_photo_tool(
-        message, state, user,
-        tool_name="Улучшение качества",
-        prompt=(
-            "Analyze this image and describe how to improve its quality. "
-            "Provide specific recommendations for: sharpness, color correction, "
-            "noise reduction, contrast, and overall enhancement. "
-            "Be detailed and technical in your analysis."
-        ),
-        emoji="🔎"
+    """Process photo quality improvement using actual upscaling."""
+    # Get the largest photo
+    photo = message.photo[-1]
+
+    # Check and use tokens
+    estimated_tokens = 2000
+
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+
+        try:
+            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+        except InsufficientTokensError as e:
+            await message.answer(
+                f"❌ Недостаточно токенов для улучшения изображения!\n\n"
+                f"Требуется: {estimated_tokens:,} токенов\n"
+                f"Доступно: {e.details['available']:,} токенов\n\n"
+                f"Купите подписку: /start → 💎 Подписка"
+            )
+            await state.clear()
+            return
+
+    # Send progress message
+    progress_msg = await message.answer("📥 Загружаю изображение...")
+
+    # Download photo
+    file = await message.bot.get_file(photo.file_id)
+
+    # Create temp path
+    temp_dir = Path("./storage/temp")
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    temp_path = temp_dir / f"{photo.file_id}.jpg"
+
+    await message.bot.download_file(file.file_path, temp_path)
+
+    # Create service
+    stability_service = StabilityService()
+
+    # Progress callback
+    async def update_progress(text: str):
+        try:
+            await progress_msg.edit_text(text, parse_mode=None)
+        except Exception:
+            pass
+
+    # Upscale image
+    result = await stability_service.upscale_image(
+        image_path=str(temp_path),
+        scale_factor=2,
+        progress_callback=update_progress
     )
+
+    # Clean up temp file
+    try:
+        os.remove(temp_path)
+    except Exception:
+        pass
+
+    if result.success:
+
+        # Send upscaled image
+        upscaled_file = FSInputFile(result.image_path)
+        await message.answer_photo(
+            photo=upscaled_file,
+            caption=f"✅ Изображение улучшено!\n\n"
+                    f"Использовано токенов: {estimated_tokens:,}"
+        )
+
+        # Clean up
+        try:
+            os.remove(result.image_path)
+        except Exception as e:
+            logger.error("upscale_cleanup_failed", error=str(e))
+
+        await progress_msg.delete()
+    else:
+        try:
+            await progress_msg.edit_text(
+                f"❌ Ошибка улучшения изображения:\n{result.error}"
+            )
+        except Exception:
+            # Ignore errors when message is not modified
+            pass
+
+    await state.clear()
 
 
 @router.message(MediaState.waiting_for_photo_replace_bg, F.photo)
