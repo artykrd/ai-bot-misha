@@ -256,11 +256,23 @@ class NanoBananaService(BaseImageProvider):
                 filename = self._generate_filename("png")
                 image_path = self.storage_path / filename
 
-                # Get PIL Image using as_image() method
-                pil_image = image_part.as_image()
+                # Get image data from inline_data
+                if image_part.inline_data:
+                    # Save binary data directly
+                    with open(image_path, 'wb') as f:
+                        f.write(image_part.inline_data.data)
+                else:
+                    # Try to use as_image() method and save properly
+                    from PIL import Image
+                    pil_image = image_part.as_image()
 
-                # Save PIL Image
-                pil_image.save(str(image_path), format='PNG')
+                    # Save without format parameter if object doesn't support it
+                    if isinstance(pil_image, Image.Image):
+                        # Standard PIL Image
+                        pil_image.save(str(image_path), 'PNG')
+                    else:
+                        # Custom image object with save method
+                        pil_image.save(str(image_path))
 
                 logger.info(
                     "nano_banana_image_saved",
