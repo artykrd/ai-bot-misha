@@ -1,0 +1,247 @@
+"""
+Payment service for managing payment operations in the database.
+"""
+from typing import Optional, Dict, Any
+from decimal import Decimal
+from datetime import datetime
+
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+
+from app.database.models.payment import Payment
+from app.database.models.user import User
+from app.database.models.subscription import Subscription
+from app.services.payment.yookassa_service import YooKassaService
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
+
+
+class PaymentService:
+    """Service for managing payments."""
+
+    def __init__(self, session: AsyncSession):
+        """
+        Initialize payment service.
+
+        Args:
+            session: Database session
+        """
+        self.session = session
+        self.yookassa = YooKassaService()
+
+    async def create_payment(
+        self,
+        user_id: int,
+        amount: Decimal,
+        description: str,
+        subscription_id: Optional[int] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> Optional[Payment]:
+        """
+        Create a new payment.
+
+        Args:
+            user_id: User ID
+            amount: Payment amount in RUB
+            description: Payment description
+            subscription_id: Optional subscription ID
+            metadata: Optional metadata
+
+        Returns:
+            Payment object or None if failed
+        """
+        # Get user
+        result = await self.session.execute(
+            select(User).where(User.id == user_id)
+        )
+        user = result.scalar_one_or_none()
+
+        if not user:
+            logger.error("payment_create_failed", error="User not found", user_id=user_id)
+            return None
+
+        # Create payment in YooKassa
+        yookassa_data = self.yookassa.create_payment(
+            amount=amount,
+            description=description,
+            user_telegram_id=user.telegram_id,
+            metadata=metadata
+        )
+
+        if not yookassa_data:
+            logger.error("payment_create_failed", error="YooKassa payment creation failed")
+            return None
+
+        # Create payment record in database
+        import uuid
+        payment = Payment(
+            payment_id=f"PAY-{uuid.uuid4().hex[:16].upper()}",
+            user_id=user_id,
+            subscription_id=subscription_id,
+            amount=amount,
+            currency="RUB",
+            status="pending",
+            yukassa_payment_id=yookassa_data["id"],
+            yukassa_response=yookassa_data
+        )
+
+        self.session.add(payment)
+        await self.session.commit()
+        await self.session.refresh(payment)
+
+        logger.info(
+            "payment_created",
+            payment_id=payment.payment_id,
+            user_id=user_id,
+            amount=amount,
+            yukassa_id=yookassa_data["id"]
+        )
+
+        return payment
+
+    async def get_payment_by_id(self, payment_id: str) -> Optional[Payment]:
+        """
+        Get payment by ID.
+
+        Args:
+            payment_id: Payment ID
+
+        Returns:
+            Payment object or None
+        """
+        result = await self.session.execute(
+            select(Payment).where(Payment.payment_id == payment_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_payment_by_yukassa_id(self, yukassa_payment_id: str) -> Optional[Payment]:
+        """
+        Get payment by YooKassa payment ID.
+
+        Args:
+            yukassa_payment_id: YooKassa payment ID
+
+        Returns:
+            Payment object or None
+        """
+        result = await self.session.execute(
+            select(Payment).where(Payment.yukassa_payment_id == yukassa_payment_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def update_payment_status(
+        self,
+        payment_id: str,
+        status: str,
+        payment_method: Optional[str] = None,
+        yukassa_response: Optional[Dict[str, Any]] = None
+    ) -> Optional[Payment]:
+        """
+        Update payment status.
+
+        Args:
+            payment_id: Payment ID
+            status: New status (pending, success, failed, refunded)
+            payment_method: Payment method used
+            yukassa_response: Updated YooKassa response
+
+        Returns:
+            Updated payment or None
+        """
+        payment = await self.get_payment_by_id(payment_id)
+        if not payment:
+            logger.error("payment_update_failed", error="Payment not found", payment_id=payment_id)
+            return None
+
+        payment.status = status
+        if payment_method:
+            payment.payment_method = payment_method
+        if yukassa_response:
+            payment.yukassa_response = yukassa_response
+
+        await self.session.commit()
+        await self.session.refresh(payment)
+
+        logger.info(
+            "payment_status_updated",
+            payment_id=payment_id,
+            status=status
+        )
+
+        return payment
+
+    async def process_successful_payment(self, payment: Payment) -> bool:
+        """
+        Process successful payment - activate subscription or add tokens.
+
+        Args:
+            payment: Payment object
+
+        Returns:
+            True if processed successfully
+        """
+        try:
+            # If payment is for subscription
+            if payment.subscription_id:
+                result = await self.session.execute(
+                    select(Subscription).where(Subscription.id == payment.subscription_id)
+                )
+                subscription = result.scalar_one_or_none()
+
+                if subscription:
+                    subscription.is_active = True
+                    subscription.payment_status = "paid"
+                    await self.session.commit()
+
+                    logger.info(
+                        "subscription_activated",
+                        subscription_id=subscription.id,
+                        payment_id=payment.payment_id
+                    )
+
+            # Update payment status
+            payment.status = "success"
+            await self.session.commit()
+
+            logger.info(
+                "payment_processed_successfully",
+                payment_id=payment.payment_id
+            )
+
+            return True
+
+        except Exception as e:
+            logger.error(
+                "payment_processing_failed",
+                error=str(e),
+                payment_id=payment.payment_id
+            )
+            await self.session.rollback()
+            return False
+
+    async def get_user_payments(
+        self,
+        user_id: int,
+        limit: int = 10,
+        offset: int = 0
+    ) -> list[Payment]:
+        """
+        Get user payments.
+
+        Args:
+            user_id: User ID
+            limit: Limit
+            offset: Offset
+
+        Returns:
+            List of payments
+        """
+        result = await self.session.execute(
+            select(Payment)
+            .where(Payment.user_id == user_id)
+            .order_by(Payment.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        return list(result.scalars().all())

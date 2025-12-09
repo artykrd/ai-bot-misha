@@ -86,15 +86,114 @@ async def telegram_webhook(request: Request):
 @app.post("/webhook/yukassa")
 async def yukassa_webhook(request: Request):
     """YooKassa payment webhook."""
+    from app.database.database import async_session_maker
+    from app.services.payment import PaymentService, YooKassaService
+    from app.services.subscription import SubscriptionService
+    from datetime import datetime, timedelta
+
     try:
         body = await request.json()
 
         logger.info("yukassa_webhook_received", data=body)
 
-        # TODO: Implement payment processing
-        # 1. Verify webhook signature
-        # 2. Process payment
-        # 3. Activate subscription
+        # Process webhook
+        yookassa_service = YooKassaService()
+        webhook_data = yookassa_service.process_webhook(body)
+
+        if not webhook_data:
+            logger.error("yukassa_webhook_invalid", body=body)
+            raise HTTPException(status_code=400, detail="Invalid webhook data")
+
+        # Get payment from database
+        async with async_session_maker() as session:
+            payment_service = PaymentService(session)
+            payment = await payment_service.get_payment_by_yukassa_id(webhook_data["payment_id"])
+
+            if not payment:
+                logger.error("yukassa_payment_not_found", payment_id=webhook_data["payment_id"])
+                raise HTTPException(status_code=404, detail="Payment not found")
+
+            # Handle successful payment
+            if webhook_data["event"] == "payment.succeeded" and webhook_data["paid"]:
+                logger.info(
+                    "yukassa_payment_succeeded",
+                    payment_id=payment.payment_id,
+                    amount=webhook_data["amount"]
+                )
+
+                # Update payment status
+                await payment_service.update_payment_status(
+                    payment_id=payment.payment_id,
+                    status="success",
+                    payment_method=webhook_data.get("metadata", {}).get("payment_method"),
+                    yukassa_response=webhook_data
+                )
+
+                # Process payment - add tokens or activate subscription
+                metadata = webhook_data.get("metadata", {})
+                payment_type = metadata.get("type", "eternal_tokens")
+
+                subscription_service = SubscriptionService(session)
+
+                if payment_type == "eternal_tokens":
+                    # Add eternal tokens to user
+                    tokens = int(metadata.get("tokens", 0))
+                    if tokens > 0:
+                        await subscription_service.add_eternal_tokens(payment.user_id, tokens)
+                        logger.info(
+                            "eternal_tokens_added",
+                            user_id=payment.user_id,
+                            tokens=tokens
+                        )
+
+                elif payment_type == "subscription":
+                    # Activate subscription
+                    days = int(metadata.get("days", 30))
+                    tokens = metadata.get("tokens")
+
+                    # Create subscription
+                    from app.database.models.subscription import Subscription
+                    subscription = Subscription(
+                        user_id=payment.user_id,
+                        subscription_type="premium",
+                        start_date=datetime.utcnow(),
+                        end_date=datetime.utcnow() + timedelta(days=days),
+                        is_active=True,
+                        auto_renew=False,
+                        payment_status="paid",
+                        tokens_included=tokens if tokens else 0
+                    )
+
+                    session.add(subscription)
+                    await session.commit()
+
+                    # Add tokens if included
+                    if tokens:
+                        await subscription_service.add_subscription_tokens(payment.user_id, tokens)
+
+                    # Link payment to subscription
+                    payment.subscription_id = subscription.id
+                    await session.commit()
+
+                    logger.info(
+                        "subscription_activated",
+                        user_id=payment.user_id,
+                        days=days,
+                        tokens=tokens
+                    )
+
+            elif webhook_data["event"] == "payment.canceled":
+                # Payment was canceled
+                await payment_service.update_payment_status(
+                    payment_id=payment.payment_id,
+                    status="failed",
+                    yukassa_response=webhook_data
+                )
+
+                logger.info(
+                    "yukassa_payment_canceled",
+                    payment_id=payment.payment_id
+                )
 
         return {"status": "ok"}
 

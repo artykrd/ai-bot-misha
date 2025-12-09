@@ -405,21 +405,94 @@ async def show_eternal_tokens(callback: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("shop_select_tariff_"))
-async def tariff_selected(callback: CallbackQuery):
+async def tariff_selected(callback: CallbackQuery, user: User):
     """Handle tariff selection."""
-    await callback.answer(
-        "⚠️ Оплата будет доступна в следующей версии",
-        show_alert=True
+    from app.database.database import async_session_maker
+    from app.services.payment import PaymentService
+    from decimal import Decimal
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    from aiogram.types import InlineKeyboardButton
+
+    # Extract tariff ID
+    tariff_id = callback.data.split("_")[-1]
+
+    # Define subscription tariffs
+    TARIFFS = {
+        "1": {"days": 7, "tokens": 150000, "price": Decimal("98.00"), "name": "7 дней — 150,000 токенов"},
+        "2": {"days": 14, "tokens": 250000, "price": Decimal("196.00"), "name": "14 дней — 250,000 токенов"},
+        "3": {"days": 21, "tokens": 500000, "price": Decimal("289.00"), "name": "21 день — 500,000 токенов"},
+        "6": {"days": 30, "tokens": 1000000, "price": Decimal("597.00"), "name": "30 дней — 1,000,000 токенов"},
+        "21": {"days": 30, "tokens": 5000000, "price": Decimal("2790.00"), "name": "30 дней — 5,000,000 токенов"},
+        "22": {"days": 1, "tokens": None, "price": Decimal("199.00"), "name": "Безлимит на 1 день"},
+    }
+
+    tariff = TARIFFS.get(tariff_id)
+    if not tariff:
+        await callback.answer("❌ Неизвестный тариф", show_alert=True)
+        return
+
+    # Create payment
+    async with async_session_maker() as session:
+        payment_service = PaymentService(session)
+
+        payment = await payment_service.create_payment(
+            user_id=user.id,
+            amount=tariff["price"],
+            description=f"Подписка: {tariff['name']}",
+            metadata={
+                "tariff_id": tariff_id,
+                "days": tariff["days"],
+                "tokens": tariff["tokens"],
+                "type": "subscription"
+            }
+        )
+
+        if not payment:
+            await callback.answer("❌ Ошибка создания платежа. Попробуйте позже.", show_alert=True)
+            return
+
+        # Get payment URL
+        confirmation_url = payment.yukassa_response.get("confirmation_url")
+
+        if not confirmation_url:
+            await callback.answer("❌ Ошибка получения ссылки на оплату", show_alert=True)
+            return
+
+    # Build payment message
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="💳 Оплатить", url=confirmation_url)
     )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад", callback_data="bot#shop")
+    )
+
+    tokens_text = f"{tariff['tokens']:,} токенов" if tariff['tokens'] else "Безлимит"
+
+    text = f"""💳 **Оплата подписки**
+
+📦 **Тариф:** {tariff['name']}
+💰 **Стоимость:** {tariff['price']} руб.
+⏰ **Срок:** {tariff['days']} дней
+🎁 **Токены:** {tokens_text}
+
+После оплаты подписка будет автоматически активирована.
+
+Нажмите кнопку "Оплатить" для перехода к оплате."""
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=builder.as_markup()
+    )
+    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("buy:eternal_"))
-async def eternal_token_selected(callback: CallbackQuery):
-    """Handle eternal token purchase."""
-    await callback.answer(
-        "⚠️ Оплата будет доступна в следующей версии",
-        show_alert=True
-    )
+async def eternal_token_selected(callback: CallbackQuery, user: User):
+    """Handle eternal token purchase - redirect to subscription handler."""
+    # This will be handled by the subscription.py handler
+    from app.bot.handlers.subscription import process_subscription_purchase
+    await process_subscription_purchase(callback, user)
 
 
 @router.callback_query(F.data == "activate_promocode")

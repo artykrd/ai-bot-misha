@@ -113,29 +113,54 @@ async def cmd_sora(message: Message):
 
 
 @router.message(Command("veo"))
-async def cmd_veo(message: Message):
-    """Veo 3.1 command - redirect to video creation menu."""
-    from app.bot.keyboards.inline import create_video_keyboard
-    await message.answer(
-        "🎬 <b>Создание видео</b>\n\n"
-        "Выберите сервис для генерации видео:\n\n"
-        "🌊 <b>Veo 3.1</b> - Google Veo, 8 секунд HD видео\n"
-        "☁️ <b>Sora 2</b> - OpenAI Sora (в разработке)\n"
-        "📹 <b>Luma</b>, <b>Hailuo</b>, <b>Kling</b> - другие сервисы (в разработке)\n\n"
-        "Стоимость Veo 3.1: ~15,000 токенов за видео",
-        reply_markup=create_video_keyboard(),
-        parse_mode=ParseMode.HTML
+async def cmd_veo(message: Message, state):
+    """Veo 3.1 command - directly open Veo interface."""
+    from app.bot.keyboards.inline import back_to_main_keyboard
+    from app.bot.handlers.media_handler import MediaState
+
+    text = (
+        "🌊 **Veo 3.1 - Video Generation**\n\n"
+        "Google Veo создаёт реалистичные HD видео по вашему описанию.\n\n"
+        "📊 **Параметры:**\n"
+        "• Длительность: 8 секунд\n"
+        "• Разрешение: 720p\n"
+        "• Форматы: 16:9, 9:16, 1:1, 4:3, 3:4\n\n"
+        "💰 **Стоимость:** ~15,000 токенов за видео\n\n"
+        "✏️ **Отправьте описание видео**\n"
+        "_Чем детальнее описание, тем лучше результат!_\n\n"
+        "**Примеры:**\n"
+        "• \"Золотой ретривер играет в поле подсолнухов\"\n"
+        "• \"Чашка кофе на деревянном столе, утренний свет\"\n"
+        "• \"Ночной город с потоками света машин\""
     )
+
+    await state.set_state(MediaState.waiting_for_video_prompt)
+    await state.update_data(service="veo")
+
+    await message.answer(text, reply_markup=back_to_main_keyboard(), parse_mode=ParseMode.MARKDOWN)
 
 
 @router.message(Command("nano"))
-async def cmd_nano(message: Message):
-    """Nano Banana command."""
-    await message.answer(
-        "🍌 <b>Nano Banana</b>\n\n⚠️ Функционал в разработке\n\nСтоимость: 8,000 токенов за запрос",
-        reply_markup=main_menu_keyboard(),
-        parse_mode=ParseMode.HTML
-    )
+async def cmd_nano(message: Message, state):
+    """Nano Banana command - directly open Nano Banana interface."""
+    from app.bot.keyboards.inline import nano_banana_keyboard
+    from app.bot.handlers.media_handler import MediaState
+
+    text = """🍌 **Nano Banana · твори и экспериментируй**
+
+📖 **Создавайте:**
+– Создает фотографии по промпту и по вашим изображениям;
+– Она отлично наследует исходное фото и может работать с ним. Попросите её, например, "перенести этот стиль на новое изображение".
+
+**Стоимость:** 3,000 токенов за запрос
+
+✏️ **Отправьте текстовый запрос для генерации изображения**"""
+
+    # Set FSM state to wait for prompt
+    await state.set_state(MediaState.waiting_for_image_prompt)
+    await state.update_data(service="nano_banana")
+
+    await message.answer(text, reply_markup=nano_banana_keyboard(), parse_mode=ParseMode.MARKDOWN)
 
 
 @router.message(Command("suno"))
