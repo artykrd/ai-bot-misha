@@ -95,7 +95,7 @@ class YooKassaService:
             return {
                 "id": payment.id,
                 "status": payment.status,
-                "amount": amount,
+                "amount": float(amount),  # Convert Decimal to float for JSON serialization
                 "currency": "RUB",
                 "confirmation_url": payment.confirmation.confirmation_url,
                 "created_at": str(payment.created_at) if payment.created_at else None,
@@ -135,7 +135,7 @@ class YooKassaService:
             return {
                 "id": payment.id,
                 "status": payment.status,
-                "amount": Decimal(payment.amount.value),
+                "amount": float(payment.amount.value),  # Convert to float for JSON serialization
                 "currency": payment.amount.currency,
                 "paid": payment.paid,
                 "created_at": str(payment.created_at) if payment.created_at else None,
@@ -181,7 +181,7 @@ class YooKassaService:
                 "event": notification.event,
                 "payment_id": payment.id,
                 "status": payment.status,
-                "amount": Decimal(payment.amount.value),
+                "amount": float(payment.amount.value),  # Convert to float for JSON serialization
                 "currency": payment.amount.currency,
                 "paid": payment.paid,
                 "metadata": payment.metadata if payment.metadata else {}
