@@ -337,20 +337,54 @@ async def show_photo_tools(callback: CallbackQuery):
 
 
 @router.callback_query(F.data.in_(["bot.pi_upscale", "bot.pi_repb", "bot.pi_remb", "bot.pi_vect"]))
-async def photo_tool_selected(callback: CallbackQuery):
+async def photo_tool_selected(callback: CallbackQuery, state: FSMContext):
     """Handle photo tool selection."""
-    tool_names = {
-        "bot.pi_upscale": "🔎 Улучшение качества фото",
-        "bot.pi_repb": "🪄 Замена фона",
-        "bot.pi_remb": "🪞 Удаление фона",
-        "bot.pi_vect": "📐 Векторизация фото"
-    }
-    tool_name = tool_names.get(callback.data, "Инструмент")
+    from app.bot.handlers.media_handler import MediaState
 
-    await callback.answer(
-        f"⚠️ {tool_name} будет доступно в следующей версии",
-        show_alert=True
+    tool_info = {
+        "bot.pi_upscale": {
+            "name": "🔎 Улучшение качества фото",
+            "state": MediaState.waiting_for_photo_upscale,
+            "description": "Загрузите фото, качество которого вы хотите улучшить.\n\n"
+                          "Бот использует GPT Vision для анализа и улучшения качества изображения."
+        },
+        "bot.pi_repb": {
+            "name": "🪄 Замена фона",
+            "state": MediaState.waiting_for_photo_replace_bg,
+            "description": "Загрузите фото и опишите, какой фон вы хотите.\n\n"
+                          "Пример: 'Замени фон на горный пейзаж' или 'Поставь меня на пляж'.\n\n"
+                          "Сначала загрузите фото, затем опишите желаемый фон."
+        },
+        "bot.pi_remb": {
+            "name": "🪞 Удаление фона",
+            "state": MediaState.waiting_for_photo_remove_bg,
+            "description": "Загрузите фото, с которого нужно удалить фон.\n\n"
+                          "Бот создаст изображение с прозрачным или белым фоном."
+        },
+        "bot.pi_vect": {
+            "name": "📐 Векторизация фото",
+            "state": MediaState.waiting_for_photo_vectorize,
+            "description": "Загрузите фото для векторизации.\n\n"
+                          "Бот создаст векторную версию вашего изображения."
+        }
+    }
+
+    tool = tool_info.get(callback.data)
+    if not tool:
+        await callback.answer("⚠️ Неизвестный инструмент", show_alert=True)
+        return
+
+    # Set state and save tool type
+    await state.set_state(tool["state"])
+    await state.update_data(photo_tool=callback.data)
+
+    text = f"{tool['name']}\n\n{tool['description']}\n\n📤 **Загрузите фотографию**"
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=back_to_main_keyboard()
     )
+    await callback.answer()
 
 
 # Audio tools
