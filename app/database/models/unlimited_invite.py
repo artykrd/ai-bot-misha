@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, List, Optional
 import secrets
 
-from sqlalchemy import BigInteger, String, Integer, Boolean, DateTime
+from sqlalchemy import BigInteger, String, Integer, Boolean, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.database import Base
@@ -119,6 +119,7 @@ class UnlimitedInviteUse(Base, BaseModel, TimestampMixin):
     # Foreign keys
     invite_link_id: Mapped[int] = mapped_column(
         BigInteger,
+        ForeignKey("unlimited_invite_links.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
         comment="ID of the invite link"
@@ -126,6 +127,7 @@ class UnlimitedInviteUse(Base, BaseModel, TimestampMixin):
 
     user_id: Mapped[int] = mapped_column(
         BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
         unique=True,
@@ -135,6 +137,7 @@ class UnlimitedInviteUse(Base, BaseModel, TimestampMixin):
     # Subscription details
     subscription_id: Mapped[Optional[int]] = mapped_column(
         BigInteger,
+        ForeignKey("subscriptions.id", ondelete="SET NULL"),
         nullable=True,
         comment="ID of created subscription"
     )
