@@ -41,6 +41,9 @@ def upgrade() -> None:
     sa.Column('subscription_id', sa.BigInteger(), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.ForeignKeyConstraint(['invite_link_id'], ['unlimited_invite_links.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['subscription_id'], ['subscriptions.id'], ondelete='SET NULL'),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_unlimited_invite_uses_invite_link_id'), 'unlimited_invite_uses', ['invite_link_id'], unique=False)
