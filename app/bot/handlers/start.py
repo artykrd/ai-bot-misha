@@ -15,15 +15,88 @@ router = Router(name="start")
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, user: User):
-    """Handle /start command with optional referral code."""
+    """Handle /start command with optional referral code or unlimited invite."""
     from app.database.database import async_session_maker
     from app.database.models.referral import Referral
+    from app.database.models.unlimited_invite import UnlimitedInviteLink, UnlimitedInviteUse
+    from app.database.models.subscription import Subscription
     from sqlalchemy import select
+    from datetime import datetime, timedelta, timezone
 
-    # Check for referral code in command args
+    # Check for referral code or unlimited invite in command args
     if message.text and len(message.text.split()) > 1:
         args = message.text.split()[1]  # Get argument after /start
-        if args.startswith("ref"):
+
+        # Check if it's an unlimited invite link
+        if args.startswith("unlimited_"):
+            async with async_session_maker() as session:
+                # Find the invite link
+                result = await session.execute(
+                    select(UnlimitedInviteLink).where(
+                        UnlimitedInviteLink.invite_code == args
+                    )
+                )
+                invite_link = result.scalar_one_or_none()
+
+                if invite_link and invite_link.is_valid:
+                    # Check if user already used this type of link
+                    existing_use = await session.execute(
+                        select(UnlimitedInviteUse).where(
+                            UnlimitedInviteUse.user_id == user.id
+                        )
+                    )
+                    has_used = existing_use.scalar_one_or_none()
+
+                    if not has_used:
+                        # Create unlimited subscription for the user
+                        from app.services.subscription.subscription_service import SubscriptionService
+
+                        sub_service = SubscriptionService(session)
+
+                        # Create subscription with unlimited tokens for specified duration
+                        started_at = datetime.now(timezone.utc)
+                        expires_at = started_at + timedelta(days=invite_link.duration_days)
+
+                        subscription = Subscription(
+                            user_id=user.id,
+                            subscription_type=f"unlimited_{invite_link.duration_days}days",
+                            tokens_amount=999999999,  # Virtually unlimited
+                            tokens_used=0,
+                            price=0.0,
+                            is_active=True,
+                            started_at=started_at,
+                            expires_at=expires_at
+                        )
+
+                        session.add(subscription)
+                        await session.flush()  # Get subscription ID
+
+                        # Track the usage
+                        invite_use = UnlimitedInviteUse(
+                            invite_link_id=invite_link.id,
+                            user_id=user.id,
+                            subscription_id=subscription.id
+                        )
+                        session.add(invite_use)
+
+                        # Increment usage counter
+                        invite_link.current_uses += 1
+
+                        await session.commit()
+
+                        await message.answer(
+                            f"🎉 **Поздравляем!**\n\n"
+                            f"Вы получили **безлимитный доступ** на **{invite_link.duration_days} дней**!\n\n"
+                            f"✨ У вас неограниченные токены до {expires_at.strftime('%d.%m.%Y %H:%M')} UTC\n\n"
+                            f"Используйте бота без ограничений!"
+                        )
+                    else:
+                        await message.answer(
+                            "ℹ️ Вы уже использовали безлимитную пригласительную ссылку ранее."
+                        )
+
+        # Regular referral code
+        elif args.startswith("ref"):
             try:
                 referrer_telegram_id = int(args[3:])  # Extract ID from "ref123456789"
 

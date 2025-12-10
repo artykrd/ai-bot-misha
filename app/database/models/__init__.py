@@ -9,6 +9,7 @@ from app.database.models.dialog import Dialog, DialogMessage
 from app.database.models.referral import Referral
 from app.database.models.file import File
 from app.database.models.promocode import Promocode, PromocodeUse
+from app.database.models.unlimited_invite import UnlimitedInviteLink, UnlimitedInviteUse
 from app.database.models.system import (
     AIModel,
     AICache,
@@ -27,6 +28,8 @@ __all__ = [
     "File",
     "Promocode",
     "PromocodeUse",
+    "UnlimitedInviteLink",
+    "UnlimitedInviteUse",
     "AIModel",
     "AICache",
     "SystemSetting",
