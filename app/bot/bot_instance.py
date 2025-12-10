@@ -47,13 +47,13 @@ async def setup_bot() -> Dispatcher:
     )
     from app.bot.handlers import dialog_handler
 
-    # Order matters! dialog_handler should be last to catch unhandled messages
+    # Order matters! Commands should come before FSM handlers, dialog_handler should be last
     dp.include_router(start.router)
     dp.include_router(navigation.router)
-    dp.include_router(media_handler.router)
+    dp.include_router(common.router)  # Commands BEFORE FSM handlers
+    dp.include_router(media_handler.router)  # FSM state handlers
     dp.include_router(profile.router)
     dp.include_router(text_ai.router)
-    dp.include_router(common.router)
     dp.include_router(dialog_handler.router)  # MUST be last
 
     # Setup bot commands menu
