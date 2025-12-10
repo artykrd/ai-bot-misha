@@ -278,10 +278,6 @@ async def process_unlimited_description(message: Message, state: FSMContext):
 
             invite_url = f"https://t.me/{bot_username}?start={invite_code}"
 
-            # Escape underscores for Markdown
-            escaped_code = invite_code.replace('_', '\\_')
-            escaped_url = invite_url.replace('_', '\\_')
-
             text = f"""✅ **Безлимитная ссылка создана!**
 
 🔗 **Код:** `{invite_code}`
@@ -289,8 +285,8 @@ async def process_unlimited_description(message: Message, state: FSMContext):
 👥 **Макс. использований:** {max_uses if max_uses else '∞'}
 📝 **Описание:** {description if description else 'Нет'}
 
-**Ссылка для приглашений:**
-{escaped_url}
+Ссылка для приглашений:
+`{invite_url}`
 
 Пользователи, перешедшие по этой ссылке, получат безлимитный доступ на {duration_days} дней!"""
 
