@@ -79,8 +79,10 @@ class VeoService(BaseVideoProvider):
                 - aspect_ratio: Video aspect ratio (1:1, 16:9, 9:16, 4:3, 3:4, default: 16:9)
                 - negative_prompt: Things to avoid in the video
                 - resolution: Video resolution (720p, 1080p, default: 720p)
-                - image_path: Path to image for image-to-video generation (optional)
+                - image_path: Path to first frame image for image-to-video (optional)
+                - last_frame_path: Path to last frame image for interpolation (optional, requires image_path)
                 - reference_images: List of up to 3 reference image paths (optional, Veo 3.1 only)
+                - video_path: Path to Veo-generated video for extension (optional, Veo 3.1 only)
 
         Returns:
             VideoResponse with video path or error
@@ -114,10 +116,17 @@ class VeoService(BaseVideoProvider):
             negative_prompt = kwargs.get("negative_prompt", None)
             resolution = kwargs.get("resolution", "720p")
             image_path = kwargs.get("image_path", None)
+            last_frame_path = kwargs.get("last_frame_path", None)
             reference_images = kwargs.get("reference_images", None)
+            input_video_path = kwargs.get("video_path", None)
 
+            # Determine mode
             mode = "text-to-video"
-            if image_path:
+            if input_video_path:
+                mode = "video-extension"
+            elif image_path and last_frame_path:
+                mode = "interpolation"
+            elif image_path:
                 mode = "image-to-video"
             elif reference_images:
                 mode = "reference-images"
@@ -126,14 +135,16 @@ class VeoService(BaseVideoProvider):
                 await progress_callback(f"🎥 Генерирую видео ({mode}) {duration}с, {aspect_ratio}, {resolution}...")
 
             # Generate video using Veo model
-            video_path = await self._generate_veo_video(
+            output_video_path = await self._generate_veo_video(
                 prompt=prompt,
                 duration=duration,
                 aspect_ratio=aspect_ratio,
                 negative_prompt=negative_prompt,
                 resolution=resolution,
                 image_path=image_path,
+                last_frame_path=last_frame_path,
                 reference_images=reference_images,
+                input_video_path=input_video_path,
                 progress_callback=progress_callback
             )
 
@@ -148,6 +159,7 @@ class VeoService(BaseVideoProvider):
                 duration=duration,
                 aspect_ratio=aspect_ratio,
                 resolution=resolution,
+                mode=mode,
                 time=processing_time
             )
 
@@ -156,7 +168,7 @@ class VeoService(BaseVideoProvider):
 
             return VideoResponse(
                 success=True,
-                video_path=video_path,
+                video_path=output_video_path,
                 tokens_used=tokens_used,
                 processing_time=processing_time,
                 metadata={
@@ -165,6 +177,7 @@ class VeoService(BaseVideoProvider):
                     "duration": duration,
                     "aspect_ratio": aspect_ratio,
                     "resolution": resolution,
+                    "mode": mode,
                     "prompt": prompt
                 }
             )
@@ -205,7 +218,9 @@ class VeoService(BaseVideoProvider):
         negative_prompt: Optional[str],
         resolution: str,
         image_path: Optional[str] = None,
+        last_frame_path: Optional[str] = None,
         reference_images: Optional[list] = None,
+        input_video_path: Optional[str] = None,
         progress_callback: Optional[Callable[[str], Awaitable[None]]] = None
     ) -> str:
         """Generate video using Veo 3.1 model via Gemini API."""
@@ -235,61 +250,111 @@ class VeoService(BaseVideoProvider):
                     config_params["duration_seconds"] = str(duration)
 
                 # Prepare image parameter if provided
+                # According to Veo 3.1 docs, we need to upload the file first
                 image_obj = None
+                uploaded_image_file = None
                 if image_path:
                     try:
-                        from PIL import Image
+                        # Upload image file to Google using Files API
+                        # This returns a File object that can be used in generate_videos
+                        uploaded_image_file = self.client.files.upload(path=image_path)
 
-                        # Load image using PIL - Veo API accepts PIL Image directly
-                        img = Image.open(image_path)
-                        # Convert to RGB if needed
-                        if img.mode != 'RGB':
-                            img = img.convert('RGB')
+                        # The uploaded file can be used directly as image parameter
+                        image_obj = uploaded_image_file
 
-                        # Pass PIL Image directly (not base64)
-                        image_obj = img
-
-                        logger.info("veo_image_loaded", path=image_path, size=img.size)
+                        logger.info("veo_image_uploaded", path=image_path, file_uri=uploaded_image_file.name)
                     except Exception as img_error:
-                        logger.error("veo_image_load_failed", error=str(img_error))
-                        raise Exception(f"Failed to load image: {img_error}")
+                        logger.error("veo_image_upload_failed", error=str(img_error))
+                        raise Exception(f"Failed to upload image: {img_error}")
 
-                # Prepare reference images if provided
+                # Prepare reference images if provided (Veo 3.1 only)
                 ref_images_objs = None
+                uploaded_ref_files = []
                 if reference_images and len(reference_images) > 0:
                     try:
                         from google.genai import types
-                        from PIL import Image
 
                         ref_images_objs = []
                         for idx, ref_img_path in enumerate(reference_images[:3]):  # Max 3 images
-                            img = Image.open(ref_img_path)
-                            if img.mode != 'RGB':
-                                img = img.convert('RGB')
+                            # Upload reference image file to Google
+                            uploaded_ref_file = self.client.files.upload(path=ref_img_path)
+                            uploaded_ref_files.append(uploaded_ref_file)
 
-                            # Create VideoGenerationReferenceImage
+                            # Create VideoGenerationReferenceImage with uploaded file
                             ref_img = types.VideoGenerationReferenceImage(
-                                image=img,
+                                image=uploaded_ref_file,
                                 reference_type="asset"  # asset or style
                             )
                             ref_images_objs.append(ref_img)
-                            logger.info("veo_reference_image_loaded", index=idx, path=ref_img_path)
+                            logger.info("veo_reference_image_uploaded", index=idx, path=ref_img_path, file_uri=uploaded_ref_file.name)
 
                         # Add reference images to config
                         config_params["reference_images"] = ref_images_objs
                     except Exception as ref_error:
-                        logger.error("veo_reference_images_load_failed", error=str(ref_error))
-                        raise Exception(f"Failed to load reference images: {ref_error}")
+                        logger.error("veo_reference_images_upload_failed", error=str(ref_error))
+                        raise Exception(f"Failed to upload reference images: {ref_error}")
+
+                # Prepare last frame for interpolation (Veo 3.1 only)
+                # Requires both image_path and last_frame_path
+                last_frame_obj = None
+                uploaded_last_frame_file = None
+                if last_frame_path and image_path:
+                    try:
+                        from google.genai import types
+
+                        # Upload last frame file to Google
+                        uploaded_last_frame_file = self.client.files.upload(path=last_frame_path)
+                        last_frame_obj = uploaded_last_frame_file
+
+                        # Add last_frame to config
+                        config_params["last_frame"] = last_frame_obj
+
+                        logger.info("veo_last_frame_uploaded", path=last_frame_path, file_uri=uploaded_last_frame_file.name)
+                    except Exception as last_error:
+                        logger.error("veo_last_frame_upload_failed", error=str(last_error))
+                        raise Exception(f"Failed to upload last frame: {last_error}")
+
+                # Prepare video for extension (Veo 3.1 only)
+                # Must be a video from a previous Veo generation
+                video_obj = None
+                if input_video_path:
+                    try:
+                        # For video extension, we need to upload the video file
+                        # The video must be from a previous Veo generation
+                        uploaded_video_file = self.client.files.upload(path=input_video_path)
+                        video_obj = uploaded_video_file
+
+                        logger.info("veo_input_video_uploaded", path=input_video_path, file_uri=uploaded_video_file.name)
+                    except Exception as vid_error:
+                        logger.error("veo_input_video_upload_failed", error=str(vid_error))
+                        raise Exception(f"Failed to upload input video: {vid_error}")
 
                 # Generate video using Veo 3.1 according to official Python example
                 # from google import genai
                 # client = genai.Client()
-                operation = self.client.models.generate_videos(
-                    model="veo-3.1-generate-preview",
-                    prompt=prompt,
-                    image=image_obj if image_obj else None,
-                    config=config_params if config_params else None,
-                )
+                # Different parameters depending on mode:
+                # - Text-to-Video: prompt + config
+                # - Image-to-Video: prompt + image + config
+                # - Interpolation: prompt + image + config (with last_frame)
+                # - Reference Images: prompt + config (with reference_images)
+                # - Video Extension: prompt + video + config
+
+                if video_obj:
+                    # Video extension mode
+                    operation = self.client.models.generate_videos(
+                        model="veo-3.1-generate-preview",
+                        prompt=prompt,
+                        video=video_obj,
+                        config=config_params if config_params else None,
+                    )
+                else:
+                    # All other modes (text, image, interpolation, reference)
+                    operation = self.client.models.generate_videos(
+                        model="veo-3.1-generate-preview",
+                        prompt=prompt,
+                        image=image_obj if image_obj else None,
+                        config=config_params if config_params else None,
+                    )
 
                 # Wait for the video to be generated (polling)
                 # According to docs: poll until operation.done is True
