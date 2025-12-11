@@ -97,8 +97,7 @@ class VeoService(BaseVideoProvider):
             )
 
         try:
-            if progress_callback:
-                await progress_callback("🎬 Инициализация Veo 3.1...")
+            # Don't update progress - keep the message from media_handler
 
             if not self._genai:
                 self._genai = _get_genai()

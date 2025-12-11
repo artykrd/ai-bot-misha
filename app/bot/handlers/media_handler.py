@@ -212,11 +212,15 @@ async def start_nano(callback: CallbackQuery, state: FSMContext, user: User):
         "💰 **Стоимость:** ~3,000 токенов\n\n"
         "🎨 **Режимы работы:**\n"
         "• **Text-to-Image:** Отправьте описание изображения\n"
-        "• **Image-to-Image:** Отправьте фото, затем описание (создаст изображение на основе вашего фото)\n\n"
+        "• **Image-to-Image:** Отправьте фото + подробное описание трансформации\n\n"
         "✏️ **Отправьте описание изображения ИЛИ фото**\n\n"
-        "**Примеры:**\n"
+        "**Примеры text-to-image:**\n"
         "• \"Кот в космосе среди звёзд\"\n"
-        "• Отправьте фото + \"Сделай в стиле аниме\""
+        "• \"Закат на берегу океана с пальмами\"\n\n"
+        "**Примеры image-to-image:**\n"
+        "• Фото + \"Преобразуй в аниме стиль с яркими красками\"\n"
+        "• Фото + \"Сделай в стиле масляной живописи Ван Гога\"\n"
+        "• Фото + \"Преобразуй в фэнтези иллюстрацию с магическими эффектами\""
     )
 
     await state.set_state(MediaState.waiting_for_image_prompt)
@@ -1268,6 +1272,27 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
     if result.success:
         tokens_used = result.metadata.get("tokens_used", estimated_tokens)
 
+        # Get user's remaining tokens
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            user_tokens = await sub_service.get_user_total_tokens(user.id)
+
+        # Create buttons
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        builder = InlineKeyboardBuilder()
+        builder.button(text="🎨 Создать новое изображение", callback_data="bot.nano")
+        builder.button(text="🏠 В главное меню", callback_data="main_menu")
+        builder.adjust(1)  # 1 button per row
+
+        # Prepare caption
+        mode_info = "image-to-image" if reference_image_path else "text-to-image"
+        caption = (
+            f"✅ Сгенерировал изображение по вашему запросу в Nano Banana ({mode_info}).\n\n"
+            f"💰 Запрос стоил: {tokens_used:,} токенов\n"
+            f"📊 Остаток: {user_tokens:,} токенов\n\n"
+            f"📝 Промпт: {prompt[:150]}{'...' if len(prompt) > 150 else ''}"
+        )
+
         # Optimize and send image
         try:
             # Check file size
@@ -1302,9 +1327,8 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
                 photo = BufferedInputFile(buffer.read(), filename="image.jpg")
                 await message.answer_photo(
                     photo=photo,
-                    caption=f"✅ Изображение готово!\n\n"
-                            f"Промпт: {prompt[:200]}\n"
-                            f"Использовано токенов: {tokens_used:,}"
+                    caption=caption,
+                    reply_markup=builder.as_markup()
                 )
             else:
                 # Try sending original PNG first
@@ -1312,9 +1336,8 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
                     image_file = FSInputFile(result.image_path)
                     await message.answer_photo(
                         photo=image_file,
-                        caption=f"✅ Изображение готово!\n\n"
-                                f"Промпт: {prompt[:200]}\n"
-                                f"Использовано токенов: {tokens_used:,}"
+                        caption=caption,
+                        reply_markup=builder.as_markup()
                     )
                 except Exception as send_error:
                     logger.warning("nano_image_send_as_photo_failed", error=str(send_error))
@@ -1340,9 +1363,8 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
                     photo = BufferedInputFile(buffer.read(), filename="image.jpg")
                     await message.answer_photo(
                         photo=photo,
-                        caption=f"✅ Изображение готово!\n\n"
-                                f"Промпт: {prompt[:200]}\n"
-                                f"Использовано токенов: {tokens_used:,}"
+                        caption=caption,
+                        reply_markup=builder.as_markup()
                     )
 
         except Exception as send_error:
@@ -1352,9 +1374,8 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
                 doc_file = FSInputFile(result.image_path)
                 await message.answer_document(
                     document=doc_file,
-                    caption=f"✅ Изображение готово (отправлено как файл)!\n\n"
-                            f"Промпт: {prompt[:200]}\n"
-                            f"Использовано токенов: {tokens_used:,}"
+                    caption=caption,
+                    reply_markup=builder.as_markup()
                 )
             except Exception as doc_error:
                 logger.error("nano_image_send_as_document_failed", error=str(doc_error))
@@ -1378,6 +1399,9 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
                 logger.error("reference_image_cleanup_failed", error=str(e))
 
         await progress_msg.delete()
+
+        # Clear reference_image_path but keep service to allow new generation
+        await state.update_data(reference_image_path=None, photo_caption_prompt=None)
     else:
         # Clean up reference image if exists
         if reference_image_path and os.path.exists(reference_image_path):
@@ -1395,7 +1419,8 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
             # Ignore errors when message is not modified
             pass
 
-    await state.clear()
+        # Clear state on error
+        await state.clear()
 
 
 # ======================
