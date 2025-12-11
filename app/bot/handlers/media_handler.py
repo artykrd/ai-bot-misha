@@ -418,15 +418,15 @@ async def process_video_photo(message: Message, state: FSMContext, user: User):
     photo = message.photo[-1]
     file = await message.bot.get_file(photo.file_id)
 
-    # Create temp path
-    temp_dir = Path("./storage/temp")
+    # Create temp path (use absolute path)
+    temp_dir = Path("./storage/temp").resolve().resolve()
     temp_dir.mkdir(parents=True, exist_ok=True)
     temp_path = temp_dir / f"video_input_{photo.file_id}.jpg"
 
     await message.bot.download_file(file.file_path, temp_path)
 
-    # Save image path to state
-    await state.update_data(image_path=str(temp_path))
+    # Save absolute image path to state
+    await state.update_data(image_path=str(temp_path.resolve()))
 
     # Check if photo has caption (description)
     if message.caption and message.caption.strip():
@@ -941,14 +941,14 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
     file = await message.bot.get_file(photo.file_id)
 
     # Create temp path
-    temp_dir = Path("./storage/temp")
+    temp_dir = Path("./storage/temp").resolve()
     temp_dir.mkdir(parents=True, exist_ok=True)
     temp_path = temp_dir / f"image_input_{photo.file_id}.jpg"
 
     await message.bot.download_file(file.file_path, temp_path)
 
     # Save image path to state
-    await state.update_data(reference_image_path=str(temp_path))
+    await state.update_data(reference_image_path=str(temp_path.resolve()))
 
     service_display = {
         "nano_banana": "Nano Banana",
@@ -1542,7 +1542,7 @@ async def process_upscale(message: Message, state: FSMContext, user: User):
     file = await message.bot.get_file(photo.file_id)
 
     # Create temp path
-    temp_dir = Path("./storage/temp")
+    temp_dir = Path("./storage/temp").resolve()
     temp_dir.mkdir(parents=True, exist_ok=True)
     temp_path = temp_dir / f"{photo.file_id}.jpg"
 
@@ -1638,7 +1638,7 @@ async def process_whisper_audio(message: Message, state: FSMContext, user: User)
         file_ext = "mp3"
 
     # Create temp path
-    temp_dir = Path("./storage/temp")
+    temp_dir = Path("./storage/temp").resolve()
     temp_dir.mkdir(parents=True, exist_ok=True)
     temp_path = temp_dir / f"{file.file_id}.{file_ext}"
 
@@ -1789,14 +1789,14 @@ async def process_vision_image(message: Message, state: FSMContext, user: User):
     file = await message.bot.get_file(photo.file_id)
 
     # Create temp path
-    temp_dir = Path("./storage/temp")
+    temp_dir = Path("./storage/temp").resolve()
     temp_dir.mkdir(parents=True, exist_ok=True)
     temp_path = temp_dir / f"{photo.file_id}.jpg"
 
     await message.bot.download_file(file.file_path, temp_path)
 
     # Store image path in state
-    await state.update_data(image_path=str(temp_path))
+    await state.update_data(image_path=str(temp_path.resolve()))
     await state.set_state(MediaState.waiting_for_vision_prompt)
 
     await progress_msg.edit_text(
@@ -1922,7 +1922,7 @@ async def process_photo_upscale(message: Message, state: FSMContext, user: User)
     file = await message.bot.get_file(photo.file_id)
 
     # Create temp path
-    temp_dir = Path("./storage/temp")
+    temp_dir = Path("./storage/temp").resolve()
     temp_dir.mkdir(parents=True, exist_ok=True)
     temp_path = temp_dir / f"{photo.file_id}.jpg"
 
@@ -2160,7 +2160,7 @@ async def process_photo_replace_bg_prompt(message: Message, state: FSMContext, u
         final_rgb.paste(final_img, mask=final_img.split()[3])  # Use alpha as mask
 
         # Save final image
-        temp_dir = Path("./storage/temp")
+        temp_dir = Path("./storage/temp").resolve()
         final_path = temp_dir / f"replaced_{os.path.basename(image_path)}"
         final_rgb.save(str(final_path), 'JPEG', quality=95, optimize=True)
 
@@ -2239,7 +2239,7 @@ async def process_photo_remove_bg(message: Message, state: FSMContext, user: Use
     file = await message.bot.get_file(photo.file_id)
 
     # Create temp path
-    temp_dir = Path("./storage/temp")
+    temp_dir = Path("./storage/temp").resolve()
     temp_dir.mkdir(parents=True, exist_ok=True)
     temp_path = temp_dir / f"{photo.file_id}.jpg"
 
@@ -2429,14 +2429,14 @@ async def handle_photo_no_model(message: Message, state: FSMContext):
     file = await message.bot.get_file(photo.file_id)
 
     # Create temp path
-    temp_dir = Path("./storage/temp")
+    temp_dir = Path("./storage/temp").resolve()
     temp_dir.mkdir(parents=True, exist_ok=True)
     temp_path = temp_dir / f"unsorted_{photo.file_id}.jpg"
 
     await message.bot.download_file(file.file_path, temp_path)
 
     # Save to state
-    await state.update_data(saved_photo_path=str(temp_path))
+    await state.update_data(saved_photo_path=str(temp_path.resolve()))
     await state.set_state(MediaState.waiting_for_photo_action_choice)
 
     # Create inline keyboard for choosing action
