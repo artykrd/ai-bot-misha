@@ -441,7 +441,32 @@ class VeoService(BaseVideoProvider):
                     raise Exception("Response doesn't have 'generated_videos' attribute. Check API response structure.")
 
                 if not operation.response.generated_videos:
-                    # Check if there are other video-related attributes
+                    # Check if content was filtered by Google's Responsible AI filters
+                    if hasattr(operation.response, 'rai_media_filtered_count'):
+                        filter_count = getattr(operation.response, 'rai_media_filtered_count', 0)
+                        filter_reasons = getattr(operation.response, 'rai_media_filtered_reasons', [])
+
+                        if filter_count and filter_count > 0:
+                            logger.error("veo_content_filtered",
+                                       filtered_count=filter_count,
+                                       filter_reasons=filter_reasons)
+
+                            # Provide user-friendly error message
+                            error_msg = (
+                                "❌ Видео было заблокировано фильтрами безопасности Google.\n\n"
+                                "Возможные причины:\n"
+                                "• Запрос содержит реалистичные изображения людей\n"
+                                "• Контент нарушает политику использования Google AI\n"
+                                "• Промпт содержит запрещенные темы\n\n"
+                                "Попробуйте:\n"
+                                "• Изменить промпт на менее конкретный\n"
+                                "• Использовать мультяшный/анимационный стиль вместо реалистичного\n"
+                                "• Убрать упоминания реалистичных людей или животных\n"
+                                "• Использовать другие изображения"
+                            )
+                            raise Exception(error_msg)
+
+                    # If not filtered, check other attributes
                     video_attrs = [attr for attr in dir(operation.response) if 'video' in attr.lower()]
                     logger.error("veo_generated_videos_empty",
                                video_related_attrs=video_attrs,
