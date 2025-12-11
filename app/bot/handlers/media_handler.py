@@ -174,13 +174,16 @@ async def start_gpt_image(callback: CallbackQuery, state: FSMContext, user: User
     text = (
         "**GPT Image (DALL-E 3)**\n\n"
         "Создайте уникальные изображения по текстовому описанию.\n\n"
-        "Модели:\n"
+        "📊 **Модели:**\n"
         "• DALL-E 3 (HD качество)\n"
         "• DALL-E 3 (стандарт)\n"
         "• DALL-E 2\n\n"
-        "Размеры: 1024x1024, 1792x1024, 1024x1792\n\n"
-        "Стоимость: 4,000-8,000 токенов\n\n"
-        "Отправьте описание изображения."
+        "**Размеры:** 1024x1024, 1792x1024, 1024x1792\n\n"
+        "💰 **Стоимость:** 4,000-8,000 токенов\n\n"
+        "🎨 **Режимы работы:**\n"
+        "• **Text-to-Image:** Отправьте описание изображения\n"
+        "• **Image Variation (DALL-E 2):** Отправьте фото для создания вариаций\n\n"
+        "✏️ **Отправьте описание изображения ИЛИ фото**"
     )
 
     await state.set_state(MediaState.waiting_for_image_prompt)
@@ -199,7 +202,13 @@ async def start_nano(callback: CallbackQuery, state: FSMContext, user: User):
         "• Форматы: 1:1, 16:9, 9:16, 3:4, 4:3\n"
         "• Высокое качество изображений\n\n"
         "💰 **Стоимость:** ~3,000 токенов\n\n"
-        "✏️ **Отправьте описание изображения**"
+        "🎨 **Режимы работы:**\n"
+        "• **Text-to-Image:** Отправьте описание изображения\n"
+        "• **Image-to-Image:** Отправьте фото, затем описание (создаст изображение на основе вашего фото)\n\n"
+        "✏️ **Отправьте описание изображения ИЛИ фото**\n\n"
+        "**Примеры:**\n"
+        "• \"Кот в космосе среди звёзд\"\n"
+        "• Отправьте фото + \"Сделай в стиле аниме\""
     )
 
     await state.set_state(MediaState.waiting_for_image_prompt)
@@ -864,6 +873,42 @@ async def process_kling_video(message: Message, user: User, state: FSMContext, i
 # FSM HANDLERS - IMAGE GENERATION
 # ======================
 
+@router.message(MediaState.waiting_for_image_prompt, F.photo)
+async def process_image_photo(message: Message, state: FSMContext, user: User):
+    """Handle photo for image-to-image generation."""
+    data = await state.get_data()
+    service_name = data.get("service", "nano_banana")
+
+    # Download the photo
+    photo = message.photo[-1]
+    file = await message.bot.get_file(photo.file_id)
+
+    # Create temp path
+    temp_dir = Path("./storage/temp")
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    temp_path = temp_dir / f"image_input_{photo.file_id}.jpg"
+
+    await message.bot.download_file(file.file_path, temp_path)
+
+    # Save image path to state
+    await state.update_data(reference_image_path=str(temp_path))
+
+    service_display = {
+        "nano_banana": "Nano Banana",
+        "dalle": "DALL-E"
+    }.get(service_name, service_name)
+
+    await message.answer(
+        f"✅ Фото получено!\n\n"
+        f"📝 Теперь отправьте описание изображения, которое вы хотите создать на основе этого фото.\n\n"
+        f"**Примеры для {service_display}:**\n"
+        "• \"Сделай в стиле аниме\"\n"
+        "• \"Преобразуй в акварельный рисунок\"\n"
+        "• \"Сделай фон космическим\"\n"
+        "• \"Преобразуй в стиль Ван Гога\""
+    )
+
+
 @router.message(MediaState.waiting_for_image_prompt, F.text)
 async def process_image_prompt(message: Message, state: FSMContext, user: User):
     data = await state.get_data()
@@ -884,11 +929,15 @@ async def process_image_prompt(message: Message, state: FSMContext, user: User):
 
 
 async def process_dalle_image(message: Message, user: User, state: FSMContext):
-    """Process DALL-E image generation."""
+    """Process DALL-E image generation or variation."""
     prompt = message.text
 
+    # Get state data (check if reference image was provided)
+    data = await state.get_data()
+    reference_image_path = data.get("reference_image_path", None)
+
     # Check and use tokens
-    estimated_tokens = 4000  # DALL-E 3 standard
+    estimated_tokens = 2000 if reference_image_path else 4000  # Variations are cheaper
 
     async with async_session_maker() as session:
         sub_service = SubscriptionService(session)
@@ -896,6 +945,13 @@ async def process_dalle_image(message: Message, user: User, state: FSMContext):
         try:
             await sub_service.check_and_use_tokens(user.id, estimated_tokens)
         except InsufficientTokensError as e:
+            # Clean up reference image if exists
+            if reference_image_path and os.path.exists(reference_image_path):
+                try:
+                    os.remove(reference_image_path)
+                except Exception:
+                    pass
+
             await message.answer(
                 f"❌ Недостаточно токенов для генерации изображения!\n\n"
                 f"Требуется: {estimated_tokens:,} токенов\n"
@@ -905,39 +961,64 @@ async def process_dalle_image(message: Message, user: User, state: FSMContext):
             await state.clear()
             return
 
-    # Send progress message
-    progress_msg = await message.answer("🎨 Генерирую изображение...")
-
     # Create service
     dalle_service = DalleService()
 
-    # Progress callback
-    async def update_progress(text: str):
-        try:
-            await progress_msg.edit_text(text, parse_mode=None)
-        except Exception:
-            pass
+    # Determine operation mode
+    if reference_image_path:
+        # Image variation mode (DALL-E 2 only)
+        progress_msg = await message.answer("🎨 Создаю вариацию изображения с DALL-E 2...")
 
-    # Generate image
-    result = await dalle_service.generate_image(
-        prompt=prompt,
-        progress_callback=update_progress,
-        model="dall-e-3",
-        size="1024x1024",
-        quality="standard",
-        style="vivid"
-    )
+        # Progress callback
+        async def update_progress(text: str):
+            try:
+                await progress_msg.edit_text(text, parse_mode=None)
+            except Exception:
+                pass
+
+        # Create variation
+        result = await dalle_service.create_variation(
+            image_path=reference_image_path,
+            progress_callback=update_progress,
+            model="dall-e-2",
+            size="1024x1024"
+        )
+    else:
+        # Text-to-image mode
+        progress_msg = await message.answer("🎨 Генерирую изображение с DALL-E 3...")
+
+        # Progress callback
+        async def update_progress(text: str):
+            try:
+                await progress_msg.edit_text(text, parse_mode=None)
+            except Exception:
+                pass
+
+        # Generate image
+        result = await dalle_service.generate_image(
+            prompt=prompt,
+            progress_callback=update_progress,
+            model="dall-e-3",
+            size="1024x1024",
+            quality="standard",
+            style="vivid"
+        )
 
     if result.success:
         tokens_used = result.metadata.get("tokens_used", estimated_tokens)
 
         # Send image
         image_file = FSInputFile(result.image_path)
+        caption_text = "✅ Изображение готово!\n\n"
+        if reference_image_path:
+            caption_text += "Режим: Image Variation (DALL-E 2)\n"
+        else:
+            caption_text += f"Промпт: {prompt[:200]}\n"
+        caption_text += f"Использовано токенов: {tokens_used:,}"
+
         await message.answer_photo(
             photo=image_file,
-            caption=f"✅ Изображение готово!\n\n"
-                    f"Промпт: {prompt[:200]}\n"
-                    f"Использовано токенов: {tokens_used:,}"
+            caption=caption_text
         )
 
         # Clean up
@@ -946,8 +1027,22 @@ async def process_dalle_image(message: Message, user: User, state: FSMContext):
         except Exception as e:
             logger.error("image_cleanup_failed", error=str(e))
 
+        # Clean up reference image if exists
+        if reference_image_path and os.path.exists(reference_image_path):
+            try:
+                os.remove(reference_image_path)
+            except Exception as e:
+                logger.error("reference_image_cleanup_failed", error=str(e))
+
         await progress_msg.delete()
     else:
+        # Clean up reference image if exists
+        if reference_image_path and os.path.exists(reference_image_path):
+            try:
+                os.remove(reference_image_path)
+            except Exception as e:
+                logger.error("reference_image_cleanup_failed", error=str(e))
+
         try:
             await progress_msg.edit_text(
                 f"❌ Ошибка генерации изображения:\n{result.error}"
@@ -1036,6 +1131,10 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
     """Process Nano Banana (Gemini 2.5 Flash Image) image generation."""
     prompt = message.text
 
+    # Get state data (check if reference image was provided)
+    data = await state.get_data()
+    reference_image_path = data.get("reference_image_path", None)
+
     # Check and use tokens
     estimated_tokens = 3000  # Nano Banana cost
 
@@ -1045,6 +1144,13 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
         try:
             await sub_service.check_and_use_tokens(user.id, estimated_tokens)
         except InsufficientTokensError as e:
+            # Clean up reference image if exists
+            if reference_image_path and os.path.exists(reference_image_path):
+                try:
+                    os.remove(reference_image_path)
+                except Exception:
+                    pass
+
             await message.answer(
                 f"❌ Недостаточно токенов для генерации изображения!\n\n"
                 f"Требуется: {estimated_tokens:,} токенов\n"
@@ -1055,7 +1161,8 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
             return
 
     # Send progress message
-    progress_msg = await message.answer("🍌 Генерирую изображение с Nano Banana...")
+    mode_text = "image-to-image" if reference_image_path else "text-to-image"
+    progress_msg = await message.answer(f"🍌 Генерирую изображение с Nano Banana ({mode_text})...")
 
     # Create service
     nano_service = NanoBananaService()
@@ -1071,7 +1178,8 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
     result = await nano_service.generate_image(
         prompt=prompt,
         progress_callback=update_progress,
-        aspect_ratio="1:1"
+        aspect_ratio="1:1",
+        reference_image_path=reference_image_path
     )
 
     if result.success:
@@ -1179,8 +1287,22 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
         except Exception as e:
             logger.error("nano_image_cleanup_failed", error=str(e))
 
+        # Clean up reference image if exists
+        if reference_image_path and os.path.exists(reference_image_path):
+            try:
+                os.remove(reference_image_path)
+            except Exception as e:
+                logger.error("reference_image_cleanup_failed", error=str(e))
+
         await progress_msg.delete()
     else:
+        # Clean up reference image if exists
+        if reference_image_path and os.path.exists(reference_image_path):
+            try:
+                os.remove(reference_image_path)
+            except Exception as e:
+                logger.error("reference_image_cleanup_failed", error=str(e))
+
         try:
             await progress_msg.edit_text(
                 f"❌ Ошибка генерации изображения:\n{result.error}",
