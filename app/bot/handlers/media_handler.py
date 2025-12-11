@@ -431,9 +431,8 @@ async def process_video_photo(message: Message, state: FSMContext, user: User):
     # Check if photo has caption (description)
     if message.caption and message.caption.strip():
         # User sent photo with description - process immediately
-        # Update message text to be the caption for processing
-        original_text = message.text
-        message.text = message.caption.strip()
+        # Save caption as prompt in state
+        await state.update_data(photo_caption_prompt=message.caption.strip())
 
         # Route to appropriate video service
         if service_name == "veo":
@@ -448,9 +447,6 @@ async def process_video_photo(message: Message, state: FSMContext, user: User):
             await process_kling_video(message, user, state)
         elif service_name == "kling_effects":
             await process_kling_effects(message, user, state)
-
-        # Restore original text
-        message.text = original_text
     else:
         # No caption - ask for description
         await message.answer(
@@ -499,10 +495,11 @@ async def process_video_prompt(message: Message, state: FSMContext, user: User):
 
 async def process_veo_video(message: Message, user: User, state: FSMContext):
     """Process Veo video generation."""
-    prompt = message.text
-
     # Get state data (check if image was provided)
     data = await state.get_data()
+
+    # Get prompt from caption if available, otherwise from message text
+    prompt = data.get("photo_caption_prompt") or message.text
     image_path = data.get("image_path", None)
 
     # Check and use tokens
@@ -603,7 +600,10 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
 
 async def process_sora_video(message: Message, user: User, state: FSMContext):
     """Process Sora 2 video generation."""
-    prompt = message.text
+    # Get state data
+    data = await state.get_data()
+    # Get prompt from caption if available, otherwise from message text
+    prompt = data.get("photo_caption_prompt") or message.text
     estimated_tokens = 15000
 
     async with async_session_maker() as session:
@@ -657,10 +657,11 @@ async def process_sora_video(message: Message, user: User, state: FSMContext):
 
 async def process_luma_video(message: Message, user: User, state: FSMContext):
     """Process Luma Dream Machine video generation."""
-    prompt = message.text
-
     # Get state data (check if image was provided)
     data = await state.get_data()
+
+    # Get prompt from caption if available, otherwise from message text
+    prompt = data.get("photo_caption_prompt") or message.text
     image_path = data.get("image_path", None)
 
     estimated_tokens = 8000
@@ -752,7 +753,10 @@ async def process_luma_video(message: Message, user: User, state: FSMContext):
 
 async def process_hailuo_video(message: Message, user: User, state: FSMContext):
     """Process Hailuo (MiniMax) video generation."""
-    prompt = message.text
+    # Get state data
+    data = await state.get_data()
+    # Get prompt from caption if available, otherwise from message text
+    prompt = data.get("photo_caption_prompt") or message.text
     estimated_tokens = 7000
 
     async with async_session_maker() as session:
@@ -805,10 +809,11 @@ async def process_hailuo_video(message: Message, user: User, state: FSMContext):
 
 async def process_kling_video(message: Message, user: User, state: FSMContext, is_effects: bool = False):
     """Process Kling AI video generation."""
-    prompt = message.text
-
     # Get state data (check if image was provided)
     data = await state.get_data()
+
+    # Get prompt from caption if available, otherwise from message text
+    prompt = data.get("photo_caption_prompt") or message.text
     image_path = data.get("image_path", None)
 
     estimated_tokens = 10000 if is_effects else 9000
@@ -928,9 +933,8 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
     # Check if photo has caption (description)
     if message.caption and message.caption.strip():
         # User sent photo with description - process immediately
-        # Update message text to be the caption for processing
-        original_text = message.text
-        message.text = message.caption.strip()
+        # Save caption as prompt in state
+        await state.update_data(photo_caption_prompt=message.caption.strip())
 
         # Route to appropriate image service
         if service_name == "dalle":
@@ -939,9 +943,6 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
             await process_gemini_image(message, user, state)
         elif service_name == "nano_banana":
             await process_nano_image(message, user, state)
-
-        # Restore original text
-        message.text = original_text
     else:
         # No caption - ask for description
         await message.answer(
@@ -976,10 +977,11 @@ async def process_image_prompt(message: Message, state: FSMContext, user: User):
 
 async def process_dalle_image(message: Message, user: User, state: FSMContext):
     """Process DALL-E image generation or variation."""
-    prompt = message.text
-
     # Get state data (check if reference image was provided)
     data = await state.get_data()
+
+    # Get prompt from caption if available, otherwise from message text
+    prompt = data.get("photo_caption_prompt") or message.text
     reference_image_path = data.get("reference_image_path", None)
 
     # Check and use tokens
@@ -1102,7 +1104,10 @@ async def process_dalle_image(message: Message, user: User, state: FSMContext):
 
 async def process_gemini_image(message: Message, user: User, state: FSMContext):
     """Process Gemini/Imagen image generation."""
-    prompt = message.text
+    # Get state data
+    data = await state.get_data()
+    # Get prompt from caption if available, otherwise from message text
+    prompt = data.get("photo_caption_prompt") or message.text
 
     # Check and use tokens
     estimated_tokens = 3000  # Imagen 3
@@ -1175,10 +1180,11 @@ async def process_gemini_image(message: Message, user: User, state: FSMContext):
 
 async def process_nano_image(message: Message, user: User, state: FSMContext):
     """Process Nano Banana (Gemini 2.5 Flash Image) image generation."""
-    prompt = message.text
-
     # Get state data (check if reference image was provided)
     data = await state.get_data()
+
+    # Get prompt from caption if available, otherwise from message text
+    prompt = data.get("photo_caption_prompt") or message.text
     reference_image_path = data.get("reference_image_path", None)
 
     # Check and use tokens
