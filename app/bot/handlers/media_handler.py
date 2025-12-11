@@ -75,7 +75,8 @@ async def start_veo(callback: CallbackQuery, state: FSMContext, user: User):
     )
 
     await state.set_state(MediaState.waiting_for_video_prompt)
-    await state.update_data(service="veo")
+    # Clear old data when starting fresh Veo session
+    await state.update_data(service="veo", image_path=None, photo_caption_prompt=None)
 
     await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
     await callback.answer()
@@ -91,7 +92,8 @@ async def start_sora(callback: CallbackQuery, state: FSMContext, user: User):
     )
 
     await state.set_state(MediaState.waiting_for_video_prompt)
-    await state.update_data(service="sora")
+    # Clear old data when starting fresh session
+    await state.update_data(service="sora", image_path=None, photo_caption_prompt=None)
 
     await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
     await callback.answer()
@@ -110,7 +112,8 @@ async def start_luma(callback: CallbackQuery, state: FSMContext, user: User):
     )
 
     await state.set_state(MediaState.waiting_for_video_prompt)
-    await state.update_data(service="luma")
+    # Clear old data when starting fresh session
+    await state.update_data(service="luma", image_path=None, photo_caption_prompt=None)
 
     await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
     await callback.answer()
@@ -126,7 +129,8 @@ async def start_hailuo(callback: CallbackQuery, state: FSMContext, user: User):
     )
 
     await state.set_state(MediaState.waiting_for_video_prompt)
-    await state.update_data(service="hailuo")
+    # Clear old data when starting fresh session
+    await state.update_data(service="hailuo", image_path=None, photo_caption_prompt=None)
 
     await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
     await callback.answer()
@@ -145,7 +149,8 @@ async def start_kling(callback: CallbackQuery, state: FSMContext, user: User):
     )
 
     await state.set_state(MediaState.waiting_for_video_prompt)
-    await state.update_data(service="kling")
+    # Clear old data when starting fresh session
+    await state.update_data(service="kling", image_path=None, photo_caption_prompt=None)
 
     await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
     await callback.answer()
@@ -161,7 +166,8 @@ async def start_kling_effects(callback: CallbackQuery, state: FSMContext, user: 
     )
 
     await state.set_state(MediaState.waiting_for_video_prompt)
-    await state.update_data(service="kling_effects")
+    # Clear old data when starting fresh session
+    await state.update_data(service="kling_effects", image_path=None, photo_caption_prompt=None)
 
     await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
     await callback.answer()
