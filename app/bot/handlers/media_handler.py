@@ -428,14 +428,39 @@ async def process_video_photo(message: Message, state: FSMContext, user: User):
     # Save image path to state
     await state.update_data(image_path=str(temp_path))
 
-    await message.answer(
-        "✅ Фото получено!\n\n"
-        "📝 Теперь отправьте описание видео, которое вы хотите создать на основе этого фото.\n\n"
-        "**Примеры:**\n"
-        "• \"Оживи это фото, добавь плавное движение\"\n"
-        "• \"Сделай так, чтобы волосы развевались на ветру\"\n"
-        "• \"Добавь падающие снежинки и плавное движение камеры\""
-    )
+    # Check if photo has caption (description)
+    if message.caption and message.caption.strip():
+        # User sent photo with description - process immediately
+        # Update message text to be the caption for processing
+        original_text = message.text
+        message.text = message.caption.strip()
+
+        # Route to appropriate video service
+        if service_name == "veo":
+            await process_veo_video(message, user, state)
+        elif service_name == "sora":
+            await process_sora_video(message, user, state)
+        elif service_name == "luma":
+            await process_luma_video(message, user, state)
+        elif service_name == "hailuo":
+            await process_hailuo_video(message, user, state)
+        elif service_name == "kling":
+            await process_kling_video(message, user, state)
+        elif service_name == "kling_effects":
+            await process_kling_effects(message, user, state)
+
+        # Restore original text
+        message.text = original_text
+    else:
+        # No caption - ask for description
+        await message.answer(
+            "✅ Фото получено!\n\n"
+            "📝 Теперь отправьте описание видео, которое вы хотите создать на основе этого фото.\n\n"
+            "**Примеры:**\n"
+            "• \"Оживи это фото, добавь плавное движение\"\n"
+            "• \"Сделай так, чтобы волосы развевались на ветру\"\n"
+            "• \"Добавь падающие снежинки и плавное движение камеры\""
+        )
 
 
 @router.message(MediaState.waiting_for_video_prompt, F.text)
@@ -900,15 +925,34 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
         "dalle": "DALL-E"
     }.get(service_name, service_name)
 
-    await message.answer(
-        f"✅ Фото получено!\n\n"
-        f"📝 Теперь отправьте описание изображения, которое вы хотите создать на основе этого фото.\n\n"
-        f"**Примеры для {service_display}:**\n"
-        "• \"Сделай в стиле аниме\"\n"
-        "• \"Преобразуй в акварельный рисунок\"\n"
-        "• \"Сделай фон космическим\"\n"
-        "• \"Преобразуй в стиль Ван Гога\""
-    )
+    # Check if photo has caption (description)
+    if message.caption and message.caption.strip():
+        # User sent photo with description - process immediately
+        # Update message text to be the caption for processing
+        original_text = message.text
+        message.text = message.caption.strip()
+
+        # Route to appropriate image service
+        if service_name == "dalle":
+            await process_dalle_image(message, user, state)
+        elif service_name == "gemini_image":
+            await process_gemini_image(message, user, state)
+        elif service_name == "nano_banana":
+            await process_nano_image(message, user, state)
+
+        # Restore original text
+        message.text = original_text
+    else:
+        # No caption - ask for description
+        await message.answer(
+            f"✅ Фото получено!\n\n"
+            f"📝 Теперь отправьте описание изображения, которое вы хотите создать на основе этого фото.\n\n"
+            f"**Примеры для {service_display}:**\n"
+            "• \"Сделай в стиле аниме\"\n"
+            "• \"Преобразуй в акварельный рисунок\"\n"
+            "• \"Сделай фон космическим\"\n"
+            "• \"Преобразуй в стиль Ван Гога\""
+        )
 
 
 @router.message(MediaState.waiting_for_image_prompt, F.text)
