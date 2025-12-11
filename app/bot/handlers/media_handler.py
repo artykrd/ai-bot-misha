@@ -44,6 +44,8 @@ class MediaState(StatesGroup):
     waiting_for_photo_replace_bg = State()
     waiting_for_photo_remove_bg = State()
     waiting_for_photo_vectorize = State()
+    # Smart input handling states
+    waiting_for_photo_action_choice = State()  # User sent photo, need to choose what to do
 
 
 # ======================
@@ -2323,5 +2325,426 @@ async def _process_photo_with_path(message: Message, state: FSMContext, user: Us
         except Exception:
             # Ignore errors when message is not modified
             pass
+
+    await state.clear()
+
+# ======================
+# SMART INPUT HANDLING - No model selected
+# ======================
+
+@router.message(F.photo, ~F.state(None))
+async def handle_photo_in_wrong_state(message: Message, state: FSMContext):
+    """Handle photo sent in unsupported state - redirect to correct handler."""
+    current_state = await state.get_state()
+
+    # If in video/image prompt state, pass to existing handlers
+    if current_state in [MediaState.waiting_for_video_prompt, MediaState.waiting_for_image_prompt]:
+        return  # Let other handlers process it
+
+    # Otherwise, clear state and treat as new photo
+    await state.clear()
+    await handle_photo_no_model(message, state)
+
+
+@router.message(F.photo)
+async def handle_photo_no_model(message: Message, state: FSMContext):
+    """Handle photo sent without selecting a model first."""
+    # Download and save photo
+    photo = message.photo[-1]
+    file = await message.bot.get_file(photo.file_id)
+
+    # Create temp path
+    temp_dir = Path("./storage/temp")
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    temp_path = temp_dir / f"unsorted_{photo.file_id}.jpg"
+
+    await message.bot.download_file(file.file_path, temp_path)
+
+    # Save to state
+    await state.update_data(saved_photo_path=str(temp_path))
+    await state.set_state(MediaState.waiting_for_photo_action_choice)
+
+    # Create inline keyboard for choosing action
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🎬 Создать видео", callback_data="photo_action:video"),
+            InlineKeyboardButton(text="🖼 Создать изображение", callback_data="photo_action:image")
+        ],
+        [
+            InlineKeyboardButton(text="👁 Анализ фото", callback_data="photo_action:vision"),
+            InlineKeyboardButton(text="🎨 Обработка фото", callback_data="photo_action:tools")
+        ],
+        [
+            InlineKeyboardButton(text="❌ Отмена", callback_data="photo_action:cancel")
+        ]
+    ])
+
+    await message.answer_photo(
+        photo=photo.file_id,
+        caption="📸 **Фото получено!**\n\n"
+                "Что вы хотите сделать с этим фото?\n\n"
+                "🎬 **Создать видео** - генерация видео на основе фото\n"
+                "🖼 **Создать изображение** - трансформация фото в новое изображение\n"
+                "👁 **Анализ фото** - детальное описание содержимого\n"
+                "🎨 **Обработка фото** - удаление фона, улучшение и т.д.",
+        reply_markup=keyboard
+    )
+
+
+@router.callback_query(F.data.startswith("photo_action:"))
+async def handle_photo_action_choice(callback: CallbackQuery, state: FSMContext):
+    """Handle user's choice of what to do with the photo."""
+    action = callback.data.split(":")[1]
+
+    data = await state.get_data()
+    saved_photo_path = data.get("saved_photo_path")
+
+    if action == "cancel":
+        # Clean up photo
+        if saved_photo_path and os.path.exists(saved_photo_path):
+            try:
+                os.remove(saved_photo_path)
+            except Exception:
+                pass
+        await state.clear()
+        await callback.message.edit_caption(
+            caption="❌ Операция отменена."
+        )
+        await callback.answer()
+        return
+
+    if action == "video":
+        # Show video models
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🌊 Veo 3.1", callback_data="photo_video:veo"),
+                InlineKeyboardButton(text="🌙 Luma", callback_data="photo_video:luma")
+            ],
+            [
+                InlineKeyboardButton(text="✨ Kling AI", callback_data="photo_video:kling")
+            ],
+            [
+                InlineKeyboardButton(text="◀️ Назад", callback_data="photo_action:back")
+            ]
+        ])
+
+        await callback.message.edit_caption(
+            caption="🎬 **Выберите модель для генерации видео:**\n\n"
+                    "• **Veo 3.1** - Google, HD качество (~15,000 токенов)\n"
+                    "• **Luma** - Dream Machine (~8,000 токенов)\n"
+                    "• **Kling AI** - Высокое качество (~9,000 токенов)",
+            reply_markup=keyboard
+        )
+        await callback.answer()
+
+    elif action == "image":
+        # Show image models
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🍌 Nano Banana", callback_data="photo_image:nano"),
+                InlineKeyboardButton(text="🖼 DALL-E", callback_data="photo_image:dalle")
+            ],
+            [
+                InlineKeyboardButton(text="◀️ Назад", callback_data="photo_action:back")
+            ]
+        ])
+
+        await callback.message.edit_caption(
+            caption="🖼 **Выберите модель для генерации изображения:**\n\n"
+                    "• **Nano Banana** - Gemini 2.5 Flash, image-to-image (~3,000 токенов)\n"
+                    "• **DALL-E** - Image variation (~2,000 токенов)",
+            reply_markup=keyboard
+        )
+        await callback.answer()
+
+    elif action == "vision":
+        # Move photo to vision state and start analysis
+        if saved_photo_path:
+            # Actually process vision directly
+            from app.database.models.user import User
+            async with async_session_maker() as session:
+                from sqlalchemy import select
+                result = await session.execute(select(User).where(User.telegram_id == callback.from_user.id))
+                user = result.scalar_one_or_none()
+
+                if user:
+                    # Default prompt for analysis
+                    prompt = "Provide a detailed analysis of this image. Describe what you see, including objects, people, scenery, colors, composition, and any notable details."
+                    await _process_vision_with_path(callback.message, state, user, saved_photo_path, prompt)
+                else:
+                    await callback.message.edit_caption("❌ Ошибка: пользователь не найден")
+                    await state.clear()
+        else:
+            await callback.answer("❌ Фото не найдено. Попробуйте еще раз.", show_alert=True)
+            await state.clear()
+
+    elif action == "tools":
+        # Show photo tools
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🚫 Удалить фон", callback_data="photo_tool:remove_bg")
+            ],
+            [
+                InlineKeyboardButton(text="◀️ Назад", callback_data="photo_action:back")
+            ]
+        ])
+
+        await callback.message.edit_caption(
+            caption="🎨 **Выберите инструмент обработки:**\n\n"
+                    "• **Удалить фон** - прозрачный фон (~1,000 токенов)",
+            reply_markup=keyboard
+        )
+        await callback.answer()
+
+    elif action == "back":
+        # Go back to main choice - resend the photo with choices
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🎬 Создать видео", callback_data="photo_action:video"),
+                InlineKeyboardButton(text="🖼 Создать изображение", callback_data="photo_action:image")
+            ],
+            [
+                InlineKeyboardButton(text="👁 Анализ фото", callback_data="photo_action:vision"),
+                InlineKeyboardButton(text="🎨 Обработка фото", callback_data="photo_action:tools")
+            ],
+            [
+                InlineKeyboardButton(text="❌ Отмена", callback_data="photo_action:cancel")
+            ]
+        ])
+
+        await callback.message.edit_caption(
+            caption="📸 **Фото получено!**\n\n"
+                    "Что вы хотите сделать с этим фото?\n\n"
+                    "🎬 **Создать видео** - генерация видео на основе фото\n"
+                    "🖼 **Создать изображение** - трансформация фото в новое изображение\n"
+                    "👁 **Анализ фото** - детальное описание содержимого\n"
+                    "🎨 **Обработка фото** - удаление фона, улучшение и т.д.",
+            reply_markup=keyboard
+        )
+        await callback.answer()
+
+
+@router.callback_query(F.data.startswith("photo_video:"))
+async def handle_photo_video_model_choice(callback: CallbackQuery, state: FSMContext):
+    """Handle video model choice after photo upload."""
+    model = callback.data.split(":")[1]
+
+    data = await state.get_data()
+    saved_photo_path = data.get("saved_photo_path")
+
+    # Move photo to image_path for video generation
+    await state.update_data(image_path=saved_photo_path, service=model)
+    await state.set_state(MediaState.waiting_for_video_prompt)
+
+    model_names = {
+        "veo": "Veo 3.1",
+        "luma": "Luma Dream Machine",
+        "kling": "Kling AI"
+    }
+
+    await callback.message.edit_caption(
+        caption=f"✅ Фото сохранено!\n\n"
+                f"🎬 **{model_names.get(model, model)}**\n\n"
+                f"📝 Теперь отправьте описание видео, которое вы хотите создать на основе этого фото.\n\n"
+                f"**Примеры:**\n"
+                f"• \"Оживи это фото, добавь плавное движение\"\n"
+                f"• \"Сделай так, чтобы волосы развевались на ветру\"\n"
+                f"• \"Добавь падающие снежинки и плавное движение камеры\""
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("photo_image:"))
+async def handle_photo_image_model_choice(callback: CallbackQuery, state: FSMContext):
+    """Handle image model choice after photo upload."""
+    model = callback.data.split(":")[1]
+
+    data = await state.get_data()
+    saved_photo_path = data.get("saved_photo_path")
+
+    # Map service names
+    service_map = {
+        "nano": "nano_banana",
+        "dalle": "dalle"
+    }
+
+    # Move photo to reference_image_path for image generation
+    await state.update_data(reference_image_path=saved_photo_path, service=service_map.get(model, model))
+    await state.set_state(MediaState.waiting_for_image_prompt)
+
+    model_names = {
+        "nano": "Nano Banana",
+        "dalle": "DALL-E"
+    }
+
+    examples = {
+        "nano": "• \"Сделай в стиле аниме\"\n• \"Преобразуй в акварельный рисунок\"\n• \"Сделай фон космическим\"",
+        "dalle": "• Отправьте любой текст для создания вариации"
+    }
+
+    await callback.message.edit_caption(
+        caption=f"✅ Фото сохранено!\n\n"
+                f"🖼 **{model_names.get(model, model)}**\n\n"
+                f"📝 Теперь отправьте описание изображения, которое вы хотите создать на основе этого фото.\n\n"
+                f"**Примеры:**\n{examples.get(model, '')}"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("photo_tool:"))
+async def handle_photo_tool_choice(callback: CallbackQuery, state: FSMContext):
+    """Handle photo tool choice."""
+    tool = callback.data.split(":")[1]
+
+    data = await state.get_data()
+    saved_photo_path = data.get("saved_photo_path")
+
+    if tool == "remove_bg":
+        # Trigger processing with saved photo
+        if saved_photo_path and os.path.exists(saved_photo_path):
+            from app.database.models.user import User
+            async with async_session_maker() as session:
+                from sqlalchemy import select
+                result = await session.execute(select(User).where(User.telegram_id == callback.from_user.id))
+                user = result.scalar_one_or_none()
+
+                if user:
+                    await _process_remove_bg_with_path(callback.message, state, user, saved_photo_path)
+                else:
+                    await callback.message.edit_caption("❌ Ошибка: пользователь не найден")
+                    await state.clear()
+        else:
+            await callback.answer("❌ Фото не найдено", show_alert=True)
+            await state.clear()
+
+    await callback.answer()
+
+
+async def _process_remove_bg_with_path(message: Message, state: FSMContext, user: User, image_path: str):
+    """Process background removal with given path."""
+    estimated_tokens = 1000
+
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+
+        try:
+            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+        except InsufficientTokensError as e:
+            await message.answer(
+                f"❌ Недостаточно токенов для удаления фона!\n\n"
+                f"Требуется: {estimated_tokens:,} токенов\n"
+                f"Доступно: {e.details['available']:,} токенов\n\n"
+                f"Купите подписку: /start → 💎 Подписка"
+            )
+            await state.clear()
+            return
+
+    progress_msg = await message.answer("🚫 Удаляю фон...")
+
+    async def update_progress(text: str):
+        try:
+            await progress_msg.edit_text(text, parse_mode=None)
+        except Exception:
+            pass
+
+    removebg_service = RemoveBgService()
+    result = await removebg_service.process_image(
+        image_path=image_path,
+        progress_callback=update_progress,
+        size="auto",
+        type="auto"
+    )
+
+    # Clean up temp file
+    try:
+        os.remove(image_path)
+    except Exception:
+        pass
+
+    if result.success:
+        result_file = FSInputFile(result.image_path)
+
+        try:
+            await message.answer_photo(
+                photo=result_file,
+                caption=f"✅ Фон удалён!\n\nИспользовано токенов: {estimated_tokens:,}"
+            )
+        except Exception:
+            await message.answer_document(
+                document=result_file,
+                caption=f"✅ Фон удалён!\n\nИзображение с прозрачным фоном (PNG).\n\nИспользовано токенов: {estimated_tokens:,}"
+            )
+
+        try:
+            os.remove(result.image_path)
+        except Exception:
+            pass
+
+        await progress_msg.delete()
+    else:
+        await progress_msg.edit_text(f"❌ Ошибка удаления фона:\n{result.error}")
+
+    await state.clear()
+
+
+async def _process_vision_with_path(message: Message, state: FSMContext, user: User, image_path: str, prompt: str):
+    """Process vision analysis with given path."""
+    estimated_tokens = 1500
+
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+
+        try:
+            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+        except InsufficientTokensError as e:
+            await message.answer(
+                f"❌ Недостаточно токенов!\n\n"
+                f"Требуется: {estimated_tokens:,} токенов\n"
+                f"Доступно: {e.details['available']:,} токенов\n\n"
+                f"Купите подписку: /start → 💎 Подписка"
+            )
+            try:
+                os.remove(image_path)
+            except Exception:
+                pass
+            await state.clear()
+            return
+
+    progress_msg = await message.answer("👁 Анализирую изображение...")
+
+    vision_service = VisionService()
+    result = await vision_service.analyze_image(
+        image_path=image_path,
+        prompt=prompt,
+        model="gpt-4o",
+        max_tokens=1500,
+        detail="high"
+    )
+
+    # Clean up temp file
+    try:
+        os.remove(image_path)
+    except Exception:
+        pass
+
+    if result.success:
+        await message.answer(
+            f"✅ **Анализ изображения готов!**\n\n"
+            f"{result.content}\n\n"
+            f"💰 Использовано токенов: {result.tokens_used:,}"
+        )
+        await progress_msg.delete()
+    else:
+        await progress_msg.edit_text(f"❌ Ошибка анализа:\n{result.error}")
 
     await state.clear()
