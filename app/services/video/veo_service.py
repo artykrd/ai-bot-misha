@@ -250,69 +250,102 @@ class VeoService(BaseVideoProvider):
                     config_params["duration_seconds"] = str(duration)
 
                 # Prepare image parameter if provided
-                # According to Veo 3.1 docs, we need to upload the file first
+                # API requires Image with bytesBase64Encoded and mimeType
                 image_obj = None
-                uploaded_image_file = None
                 if image_path:
                     try:
-                        # Upload image file to Google using Files API
-                        # This returns a File object that can be used in generate_videos
-                        uploaded_image_file = self.client.files.upload(file=image_path)
+                        import base64
+                        from google.genai import types
+                        from PIL import Image
+                        import mimetypes
 
-                        # The uploaded file can be used directly as image parameter
-                        image_obj = uploaded_image_file
+                        # Read and encode image to base64
+                        with open(image_path, 'rb') as f:
+                            image_bytes = f.read()
 
-                        logger.info("veo_image_uploaded", path=image_path, file_uri=uploaded_image_file.name)
+                        # Encode to base64
+                        image_b64 = base64.b64encode(image_bytes).decode('utf-8')
+
+                        # Detect mime type
+                        mime_type = mimetypes.guess_type(image_path)[0] or 'image/jpeg'
+
+                        # Create Image object with base64 and mime_type
+                        image_obj = types.Image(
+                            bytes_base64_encoded=image_b64,
+                            mime_type=mime_type
+                        )
+
+                        logger.info("veo_image_prepared", path=image_path, mime_type=mime_type)
                     except Exception as img_error:
-                        logger.error("veo_image_upload_failed", error=str(img_error))
-                        raise Exception(f"Failed to upload image: {img_error}")
+                        logger.error("veo_image_prepare_failed", error=str(img_error))
+                        raise Exception(f"Failed to prepare image: {img_error}")
 
                 # Prepare reference images if provided (Veo 3.1 only)
                 ref_images_objs = None
-                uploaded_ref_files = []
                 if reference_images and len(reference_images) > 0:
                     try:
+                        import base64
                         from google.genai import types
+                        import mimetypes
 
                         ref_images_objs = []
                         for idx, ref_img_path in enumerate(reference_images[:3]):  # Max 3 images
-                            # Upload reference image file to Google
-                            uploaded_ref_file = self.client.files.upload(file=ref_img_path)
-                            uploaded_ref_files.append(uploaded_ref_file)
+                            # Read and encode reference image to base64
+                            with open(ref_img_path, 'rb') as f:
+                                ref_img_bytes = f.read()
 
-                            # Create VideoGenerationReferenceImage with uploaded file
+                            ref_img_b64 = base64.b64encode(ref_img_bytes).decode('utf-8')
+                            ref_mime_type = mimetypes.guess_type(ref_img_path)[0] or 'image/jpeg'
+
+                            # Create Image object
+                            ref_image_obj = types.Image(
+                                bytes_base64_encoded=ref_img_b64,
+                                mime_type=ref_mime_type
+                            )
+
+                            # Create VideoGenerationReferenceImage
                             ref_img = types.VideoGenerationReferenceImage(
-                                image=uploaded_ref_file,
+                                image=ref_image_obj,
                                 reference_type="asset"  # asset or style
                             )
                             ref_images_objs.append(ref_img)
-                            logger.info("veo_reference_image_uploaded", index=idx, path=ref_img_path, file_uri=uploaded_ref_file.name)
+                            logger.info("veo_reference_image_prepared", index=idx, path=ref_img_path, mime_type=ref_mime_type)
 
                         # Add reference images to config
                         config_params["reference_images"] = ref_images_objs
                     except Exception as ref_error:
-                        logger.error("veo_reference_images_upload_failed", error=str(ref_error))
-                        raise Exception(f"Failed to upload reference images: {ref_error}")
+                        logger.error("veo_reference_images_prepare_failed", error=str(ref_error))
+                        raise Exception(f"Failed to prepare reference images: {ref_error}")
 
                 # Prepare last frame for interpolation (Veo 3.1 only)
                 # Requires both image_path and last_frame_path
                 last_frame_obj = None
-                uploaded_last_frame_file = None
                 if last_frame_path and image_path:
                     try:
+                        import base64
                         from google.genai import types
+                        import mimetypes
 
-                        # Upload last frame file to Google
-                        uploaded_last_frame_file = self.client.files.upload(file=last_frame_path)
-                        last_frame_obj = uploaded_last_frame_file
+                        # Read and encode last frame to base64
+                        with open(last_frame_path, 'rb') as f:
+                            last_frame_bytes = f.read()
+
+                        last_frame_b64 = base64.b64encode(last_frame_bytes).decode('utf-8')
+                        last_frame_mime = mimetypes.guess_type(last_frame_path)[0] or 'image/jpeg'
+
+                        # Create Image object for last frame
+                        last_frame_obj = types.Image(
+                            bytes_base64_encoded=last_frame_b64,
+                            mime_type=last_frame_mime
+                        )
 
                         # Add last_frame to config
                         config_params["last_frame"] = last_frame_obj
 
-                        logger.info("veo_last_frame_uploaded", path=last_frame_path, file_uri=uploaded_last_frame_file.name)
+                        logger.info("veo_last_frame_prepared", path=last_frame_path, mime_type=last_frame_mime)
                     except Exception as last_error:
-                        logger.error("veo_last_frame_upload_failed", error=str(last_error))
-                        raise Exception(f"Failed to upload last frame: {last_error}")
+                        logger.error("veo_last_frame_prepare_failed", error=str(last_error))
+                        raise Exception(f"Failed to prepare last frame: {last_error}")
 
                 # Prepare video for extension (Veo 3.1 only)
                 # Must be a video from a previous Veo generation
