@@ -239,12 +239,28 @@ class VeoService(BaseVideoProvider):
                 if image_path:
                     try:
                         from PIL import Image
+                        import base64
+                        import io
+
                         # Load image using PIL
                         img = Image.open(image_path)
                         # Convert to RGB if needed
                         if img.mode != 'RGB':
                             img = img.convert('RGB')
-                        image_obj = img
+
+                        # Convert to base64 as required by Veo API
+                        buffer = io.BytesIO()
+                        img.save(buffer, format='JPEG')
+                        buffer.seek(0)
+                        image_bytes = buffer.read()
+                        image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+
+                        # Create proper image dict for Veo API
+                        image_obj = {
+                            "bytesBase64Encoded": image_base64,
+                            "mimeType": "image/jpeg"
+                        }
+
                         logger.info("veo_image_loaded", path=image_path, size=img.size)
                     except Exception as img_error:
                         logger.error("veo_image_load_failed", error=str(img_error))
