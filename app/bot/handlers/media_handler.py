@@ -565,7 +565,7 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
         # Get user's remaining tokens
         async with async_session_maker() as session:
             sub_service = SubscriptionService(session)
-            user_tokens = await sub_service.get_tokens(user.id)
+            user_tokens = await sub_service.get_user_total_tokens(user.id)
 
         # Send video with improved message and buttons
         from aiogram.utils.keyboard import InlineKeyboardBuilder
