@@ -416,8 +416,24 @@ class VeoService(BaseVideoProvider):
                     # Refresh operation status
                     operation = self.client.operations.get(operation)
 
+                # Check if operation completed with error
+                if hasattr(operation, 'error') and operation.error:
+                    error_msg = str(operation.error)
+                    logger.error("veo_operation_error", error=error_msg)
+                    raise Exception(f"Video generation failed: {error_msg}")
+
                 # Get the generated video from response
                 # According to docs: operation.response.generated_videos[0]
+                if not operation.response:
+                    logger.error("veo_no_response", operation_name=operation.name if hasattr(operation, 'name') else 'unknown')
+                    raise Exception("Video generation completed but no response received. The operation may have failed.")
+
+                if not hasattr(operation.response, 'generated_videos') or not operation.response.generated_videos:
+                    logger.error("veo_no_generated_videos",
+                               has_response=bool(operation.response),
+                               response_type=type(operation.response).__name__)
+                    raise Exception("Video generation completed but no videos were generated in the response.")
+
                 generated_video = operation.response.generated_videos[0]
 
                 # Save video to storage
