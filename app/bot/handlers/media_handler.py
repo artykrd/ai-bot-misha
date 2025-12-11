@@ -527,9 +527,13 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
             await state.clear()
             return
 
-    # Send progress message
+    # Send improved progress message
     mode_text = "image-to-video" if image_path else "text-to-video"
-    progress_msg = await message.answer(f"🎬 Инициализация Veo 3.1 ({mode_text})...")
+    progress_msg = await message.answer(
+        f"🎬 Создаю видео в Veo 3.1 ({mode_text})...\n\n"
+        f"⏱ Создание может занять ~2-10 минут.\n"
+        f"⚡️ Очень сильная нагрузка на сервис, но результат может появиться намного быстрее."
+    )
 
     # Create service
     veo_service = VeoService()
@@ -552,16 +556,33 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
     )
 
     if result.success:
+        # Get user's remaining tokens
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            user_tokens = await sub_service.get_tokens(user.id)
 
-        # Send video
+        # Send video with improved message and buttons
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+        builder = InlineKeyboardBuilder()
+        builder.button(text="🎬 Создать новое видео", callback_data="bot.veo")
+        builder.button(text="🏠 В главное меню", callback_data="main_menu")
+        builder.adjust(1)  # 1 button per row
+
         video_file = FSInputFile(result.video_path)
-        mode_info = "Image-to-Video" if image_path else "Text-to-Video"
+        mode_info = "image-to-video" if image_path else "text-to-video"
+
+        caption = (
+            f"✅ Сгенерировал видео по вашему запросу в Veo 3.1 ({mode_info}).\n\n"
+            f"💰 Запрос стоил: {result.tokens_used:,} токенов\n"
+            f"📊 Остаток: {user_tokens:,} токенов\n\n"
+            f"📝 Промпт: {prompt[:150]}{'...' if len(prompt) > 150 else ''}"
+        )
+
         await message.answer_video(
             video=video_file,
-            caption=f"✅ Видео готово!\n\n"
-                    f"Режим: {mode_info}\n"
-                    f"Промпт: {prompt[:200]}\n"
-                    f"Использовано токенов: {result.tokens_used:,}"
+            caption=caption,
+            reply_markup=builder.as_markup()
         )
 
         # Clean up
@@ -578,6 +599,9 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
                 logger.error("input_image_cleanup_failed", error=str(e))
 
         await progress_msg.delete()
+
+        # Keep state - don't clear so user stays in Veo
+        # User can send another prompt/image to generate again
     else:
         # Clean up input image if exists
         if image_path and os.path.exists(image_path):
@@ -595,7 +619,8 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
             # Ignore errors when message is not modified
             pass
 
-    await state.clear()
+    # Don't clear state - keep user in Veo for next generation
+    # await state.clear()  # Commented out to allow continuous generation
 
 
 async def process_sora_video(message: Message, user: User, state: FSMContext):
