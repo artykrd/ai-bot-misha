@@ -428,11 +428,25 @@ class VeoService(BaseVideoProvider):
                     logger.error("veo_no_response", operation_name=operation.name if hasattr(operation, 'name') else 'unknown')
                     raise Exception("Video generation completed but no response received. The operation may have failed.")
 
-                if not hasattr(operation.response, 'generated_videos') or not operation.response.generated_videos:
-                    logger.error("veo_no_generated_videos",
-                               has_response=bool(operation.response),
-                               response_type=type(operation.response).__name__)
-                    raise Exception("Video generation completed but no videos were generated in the response.")
+                # Log response structure for debugging
+                logger.info("veo_response_received",
+                          has_response=bool(operation.response),
+                          response_type=type(operation.response).__name__,
+                          response_attrs=dir(operation.response) if operation.response else [])
+
+                # Try to access generated_videos
+                if not hasattr(operation.response, 'generated_videos'):
+                    logger.error("veo_no_generated_videos_attr",
+                               response_attrs=dir(operation.response))
+                    raise Exception("Response doesn't have 'generated_videos' attribute. Check API response structure.")
+
+                if not operation.response.generated_videos:
+                    # Check if there are other video-related attributes
+                    video_attrs = [attr for attr in dir(operation.response) if 'video' in attr.lower()]
+                    logger.error("veo_generated_videos_empty",
+                               video_related_attrs=video_attrs,
+                               all_attrs=[attr for attr in dir(operation.response) if not attr.startswith('_')])
+                    raise Exception("generated_videos list is empty. Video may still be processing or generation failed.")
 
                 generated_video = operation.response.generated_videos[0]
 
@@ -458,8 +472,8 @@ class VeoService(BaseVideoProvider):
                 raise
 
         try:
-            if progress_callback:
-                await progress_callback("⏳ Обработка запроса... это может занять 1-6 минут")
+            # Don't override the initial progress message from media_handler
+            # The improved message is already shown there
 
             # Generate video in executor to not block async event loop
             video_path = await loop.run_in_executor(None, _generate)
