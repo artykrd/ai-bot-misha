@@ -257,7 +257,7 @@ class VeoService(BaseVideoProvider):
                     try:
                         # Upload image file to Google using Files API
                         # This returns a File object that can be used in generate_videos
-                        uploaded_image_file = self.client.files.upload(path=image_path)
+                        uploaded_image_file = self.client.files.upload(file=image_path)
 
                         # The uploaded file can be used directly as image parameter
                         image_obj = uploaded_image_file
@@ -277,7 +277,7 @@ class VeoService(BaseVideoProvider):
                         ref_images_objs = []
                         for idx, ref_img_path in enumerate(reference_images[:3]):  # Max 3 images
                             # Upload reference image file to Google
-                            uploaded_ref_file = self.client.files.upload(path=ref_img_path)
+                            uploaded_ref_file = self.client.files.upload(file=ref_img_path)
                             uploaded_ref_files.append(uploaded_ref_file)
 
                             # Create VideoGenerationReferenceImage with uploaded file
@@ -303,7 +303,7 @@ class VeoService(BaseVideoProvider):
                         from google.genai import types
 
                         # Upload last frame file to Google
-                        uploaded_last_frame_file = self.client.files.upload(path=last_frame_path)
+                        uploaded_last_frame_file = self.client.files.upload(file=last_frame_path)
                         last_frame_obj = uploaded_last_frame_file
 
                         # Add last_frame to config
@@ -321,7 +321,7 @@ class VeoService(BaseVideoProvider):
                     try:
                         # For video extension, we need to upload the video file
                         # The video must be from a previous Veo generation
-                        uploaded_video_file = self.client.files.upload(path=input_video_path)
+                        uploaded_video_file = self.client.files.upload(file=input_video_path)
                         video_obj = uploaded_video_file
 
                         logger.info("veo_input_video_uploaded", path=input_video_path, file_uri=uploaded_video_file.name)
