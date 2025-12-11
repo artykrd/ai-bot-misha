@@ -103,6 +103,7 @@ class NanoBananaService(BaseImageProvider):
             **kwargs: Additional parameters:
                 - aspect_ratio: Image aspect ratio (1:1, 16:9, 9:16, 3:4, 4:3, default: 1:1)
                 - number_of_images: Number of images to generate (1-4, default: 1)
+                - reference_image_path: Path to reference image (optional, for image-to-image)
 
         Returns:
             ImageResponse with image path or error
@@ -133,15 +134,21 @@ class NanoBananaService(BaseImageProvider):
             # Get parameters
             aspect_ratio = kwargs.get("aspect_ratio", "1:1")
             number_of_images = kwargs.get("number_of_images", 1)
+            reference_image_path = kwargs.get("reference_image_path", None)
+
+            mode = "text-to-image"
+            if reference_image_path:
+                mode = "image-to-image"
 
             if progress_callback:
-                await progress_callback(f"🎨 Генерирую изображение ({aspect_ratio})...")
+                await progress_callback(f"🎨 Генерирую изображение ({mode}, {aspect_ratio})...")
 
             # Generate image
             image_path = await self._generate_nano_image(
                 prompt=prompt,
                 aspect_ratio=aspect_ratio,
                 number_of_images=number_of_images,
+                reference_image_path=reference_image_path,
                 progress_callback=progress_callback
             )
 
@@ -168,6 +175,7 @@ class NanoBananaService(BaseImageProvider):
                     "provider": "nano_banana",
                     "model": "gemini-2.5-flash-image",
                     "aspect_ratio": aspect_ratio,
+                    "mode": mode,
                     "prompt": prompt,
                     "tokens_used": tokens_used
                 }
@@ -202,6 +210,7 @@ class NanoBananaService(BaseImageProvider):
         prompt: str,
         aspect_ratio: str,
         number_of_images: int,
+        reference_image_path: Optional[str] = None,
         progress_callback: Optional[Callable[[str], Awaitable[None]]] = None
     ) -> str:
         """Generate image using Nano Banana model."""
@@ -212,6 +221,7 @@ class NanoBananaService(BaseImageProvider):
             try:
                 # Import types for proper config structure
                 from google.genai import types
+                from PIL import Image
 
                 # Build config according to Gemini documentation
                 config_params = {
@@ -227,9 +237,24 @@ class NanoBananaService(BaseImageProvider):
                 # Generate image with proper types
                 config = types.GenerateContentConfig(**config_params)
 
+                # Prepare contents - can be text only or text + image
+                if reference_image_path:
+                    # Load reference image
+                    ref_image = Image.open(reference_image_path)
+                    # Convert to RGB if needed
+                    if ref_image.mode != 'RGB':
+                        ref_image = ref_image.convert('RGB')
+
+                    # Create multimodal content: image + text prompt
+                    contents = [ref_image, prompt]
+                    logger.info("nano_banana_using_reference_image", path=reference_image_path)
+                else:
+                    # Text-only generation
+                    contents = prompt
+
                 response = self.client.models.generate_content(
                     model="gemini-2.5-flash-image",
-                    contents=prompt,
+                    contents=contents,
                     config=config
                 )
 
