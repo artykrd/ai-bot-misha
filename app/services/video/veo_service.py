@@ -131,8 +131,8 @@ class VeoService(BaseVideoProvider):
             elif reference_images:
                 mode = "reference-images"
 
-            if progress_callback:
-                await progress_callback(f"🎥 Генерирую видео ({mode}) {duration}с, {aspect_ratio}, {resolution}...")
+            # Don't update progress here - keep the initial message from media_handler
+            # The detailed progress message is already shown and should not be changed
 
             # Generate video using Veo model
             output_video_path = await self._generate_veo_video(
@@ -150,8 +150,8 @@ class VeoService(BaseVideoProvider):
 
             processing_time = time.time() - start_time
 
-            if progress_callback:
-                await progress_callback("✅ Видео готово!")
+            # Don't update progress here - the video result will be sent by media_handler
+            # and the progress message will be deleted there
 
             logger.info(
                 "veo_video_generated",

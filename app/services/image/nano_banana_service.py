@@ -224,8 +224,9 @@ class NanoBananaService(BaseImageProvider):
                 from PIL import Image
 
                 # Build config according to Gemini documentation
+                # Note: response_modalities must be uppercase 'IMAGE' per API spec
                 config_params = {
-                    "response_modalities": ['Image']
+                    "response_modalities": ['IMAGE']
                 }
 
                 # Add image config with aspect ratio if specified
@@ -298,7 +299,7 @@ class NanoBananaService(BaseImageProvider):
                         # Custom image object - convert to real PIL Image via buffer
                         # First save to buffer
                         buffer = io.BytesIO()
-                        pil_image.save(buffer)
+                        pil_image.save(buffer, format='PNG')
                         buffer.seek(0)
 
                         # Load as real PIL Image
