@@ -103,13 +103,24 @@ async def cmd_promocode(message: Message):
 
 # Media generation commands
 @router.message(Command("sora"))
-async def cmd_sora(message: Message):
-    """Sora 2 command."""
-    await message.answer(
-        "🎬 <b>Sora 2</b>\n\n⚠️ Функционал в разработке\n\nСтоимость: 50,000 токенов за запрос",
-        reply_markup=main_menu_keyboard(),
-        parse_mode=ParseMode.HTML
+async def cmd_sora(message: Message, state):
+    """Sora 2 command - directly open Sora interface."""
+    from app.bot.keyboards.inline import back_to_main_keyboard
+    from app.bot.handlers.media_handler import MediaState
+
+    text = (
+        "**Sora 2 - Video Generation**\n\n"
+        "Sora 2 может создавать реалистичные видео длительностью до 20 секунд по вашему описанию.\n\n"
+        "💰 **Стоимость:** ~15,000 токенов за видео\n\n"
+        "✏️ **Отправьте текстовое описание видео, которое вы хотите создать**"
     )
+
+    await state.set_state(MediaState.waiting_for_video_prompt)
+    # Clear old data when starting fresh session
+    await state.update_data(service="sora", image_path=None, photo_caption_prompt=None)
+
+    await message.answer(text, reply_markup=back_to_main_keyboard())
+
 
 
 @router.message(Command("veo"))
@@ -254,33 +265,69 @@ async def cmd_mvideo(message: Message):
 
 
 @router.message(Command("luma"))
-async def cmd_luma(message: Message):
-    """Luma Dream Machine command."""
-    await message.answer(
-        "🎬 <b>Luma Dream Machine</b>\n\n⚠️ Функционал в разработке\n\nСтоимость: 30,000 токенов за запрос",
-        reply_markup=main_menu_keyboard(),
-        parse_mode=ParseMode.HTML
+async def cmd_luma(message: Message, state):
+    """Luma Dream Machine command - directly open Luma interface."""
+    from app.bot.keyboards.inline import back_to_main_keyboard
+    from app.bot.handlers.media_handler import MediaState
+
+    text = (
+        "🌙 **Luma Dream Machine**\n\n"
+        "Luma создаёт качественные видео по вашему описанию.\n\n"
+        "💰 **Стоимость:** ~8,000 токенов за видео\n\n"
+        "🎨 **Режимы работы:**\n"
+        "• **Text-to-Video:** Просто отправьте описание видео\n"
+        "• **Image-to-Video:** Отправьте фото, затем описание\n\n"
+        "✏️ **Отправьте описание видео ИЛИ фото**"
     )
+
+    await state.set_state(MediaState.waiting_for_video_prompt)
+    # Clear old data when starting fresh session
+    await state.update_data(service="luma", image_path=None, photo_caption_prompt=None)
+
+    await message.answer(text, reply_markup=back_to_main_keyboard())
 
 
 @router.message(Command("kling"))
-async def cmd_kling(message: Message):
-    """Kling command."""
-    await message.answer(
-        "🎬 <b>Kling</b>\n\n⚠️ Функционал в разработке\n\nСтоимость: 30,000 токенов за запрос",
-        reply_markup=main_menu_keyboard(),
-        parse_mode=ParseMode.HTML
+async def cmd_kling(message: Message, state):
+    """Kling command - directly open Kling interface."""
+    from app.bot.keyboards.inline import back_to_main_keyboard
+    from app.bot.handlers.media_handler import MediaState
+
+    text = (
+        "✨ **Kling AI**\n\n"
+        "Kling создаёт высококачественные видео.\n\n"
+        "💰 **Стоимость:** ~9,000 токенов за видео\n\n"
+        "🎨 **Режимы работы:**\n"
+        "• **Text-to-Video:** Просто отправьте описание видео\n"
+        "• **Image-to-Video:** Отправьте фото, затем описание\n\n"
+        "✏️ **Отправьте описание видео ИЛИ фото**"
     )
+
+    await state.set_state(MediaState.waiting_for_video_prompt)
+    # Clear old data when starting fresh session
+    await state.update_data(service="kling", image_path=None, photo_caption_prompt=None)
+
+    await message.answer(text, reply_markup=back_to_main_keyboard())
 
 
 @router.message(Command("hailuo"))
-async def cmd_hailuo(message: Message):
-    """Hailuo command."""
-    await message.answer(
-        "🎬 <b>Hailuo</b>\n\n⚠️ Функционал в разработке\n\nСтоимость: 30,000 токенов за запрос",
-        reply_markup=main_menu_keyboard(),
-        parse_mode=ParseMode.HTML
+async def cmd_hailuo(message: Message, state):
+    """Hailuo command - directly open Hailuo interface."""
+    from app.bot.keyboards.inline import back_to_main_keyboard
+    from app.bot.handlers.media_handler import MediaState
+
+    text = (
+        "**Hailuo (MiniMax)**\n\n"
+        "Hailuo создаёт реалистичные видео.\n\n"
+        "💰 **Стоимость:** ~7,000 токенов за видео\n\n"
+        "✏️ **Отправьте текстовое описание видео**"
     )
+
+    await state.set_state(MediaState.waiting_for_video_prompt)
+    # Clear old data when starting fresh session
+    await state.update_data(service="hailuo", image_path=None, photo_caption_prompt=None)
+
+    await message.answer(text, reply_markup=back_to_main_keyboard())
 
 
 # Callback handlers
