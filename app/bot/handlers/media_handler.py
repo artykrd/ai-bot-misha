@@ -600,8 +600,8 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
 
         await progress_msg.delete()
 
-        # Keep state - don't clear so user stays in Veo
-        # User can send another prompt/image to generate again
+        # Clear image_path from state but keep service to allow new generation
+        await state.update_data(image_path=None, photo_caption_prompt=None)
     else:
         # Clean up input image if exists
         if image_path and os.path.exists(image_path):
@@ -619,8 +619,8 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
             # Ignore errors when message is not modified
             pass
 
-    # Don't clear state - keep user in Veo for next generation
-    # await state.clear()  # Commented out to allow continuous generation
+        # Clear image_path from state but keep service to allow retry
+        await state.update_data(image_path=None, photo_caption_prompt=None)
 
 
 async def process_sora_video(message: Message, user: User, state: FSMContext):
