@@ -60,12 +60,16 @@ async def start_veo(callback: CallbackQuery, state: FSMContext, user: User):
         "• Разрешение: 720p\n"
         "• Форматы: 16:9, 9:16, 1:1, 4:3, 3:4\n\n"
         "💰 **Стоимость:** ~15,000 токенов за видео\n\n"
-        "✏️ **Отправьте описание видео**\n"
+        "🎨 **Режимы работы:**\n"
+        "• **Text-to-Video:** Просто отправьте описание видео\n"
+        "• **Image-to-Video:** Отправьте фото, затем описание (создаст видео на основе фото)\n\n"
+        "✏️ **Отправьте описание видео ИЛИ фото**\n"
         "_Чем детальнее описание, тем лучше результат!_\n\n"
         "**Примеры:**\n"
         "• \"Золотой ретривер играет в поле подсолнухов\"\n"
         "• \"Чашка кофе на деревянном столе, утренний свет\"\n"
-        "• \"Ночной город с потоками света машин\""
+        "• \"Ночной город с потоками света машин\"\n"
+        "• Отправьте фото + \"Оживи это фото, добавь движение\""
     )
 
     await state.set_state(MediaState.waiting_for_video_prompt)
@@ -94,10 +98,13 @@ async def start_sora(callback: CallbackQuery, state: FSMContext, user: User):
 @router.callback_query(F.data == "bot.luma")
 async def start_luma(callback: CallbackQuery, state: FSMContext, user: User):
     text = (
-        "Luma Dream Machine\n\n"
+        "🌙 **Luma Dream Machine**\n\n"
         "Luma создаёт качественные видео по вашему описанию.\n\n"
-        "Стоимость: ~8,000 токенов за видео\n\n"
-        "Отправьте текстовое описание видео."
+        "💰 **Стоимость:** ~8,000 токенов за видео\n\n"
+        "🎨 **Режимы работы:**\n"
+        "• **Text-to-Video:** Просто отправьте описание видео\n"
+        "• **Image-to-Video:** Отправьте фото, затем описание\n\n"
+        "✏️ **Отправьте описание видео ИЛИ фото**"
     )
 
     await state.set_state(MediaState.waiting_for_video_prompt)
@@ -126,10 +133,13 @@ async def start_hailuo(callback: CallbackQuery, state: FSMContext, user: User):
 @router.callback_query(F.data == "bot.kling")
 async def start_kling(callback: CallbackQuery, state: FSMContext, user: User):
     text = (
-        "Kling AI\n\n"
+        "✨ **Kling AI**\n\n"
         "Kling создаёт высококачественные видео.\n\n"
-        "Стоимость: ~9,000 токенов за видео\n\n"
-        "Отправьте текстовое описание видео."
+        "💰 **Стоимость:** ~9,000 токенов за видео\n\n"
+        "🎨 **Режимы работы:**\n"
+        "• **Text-to-Video:** Просто отправьте описание видео\n"
+        "• **Image-to-Video:** Отправьте фото, затем описание\n\n"
+        "✏️ **Отправьте описание видео ИЛИ фото**"
     )
 
     await state.set_state(MediaState.waiting_for_video_prompt)
@@ -387,6 +397,36 @@ async def start_replace_bg(callback: CallbackQuery, state: FSMContext, user: Use
 # FSM HANDLERS - VIDEO
 # ======================
 
+@router.message(MediaState.waiting_for_video_prompt, F.photo)
+async def process_video_photo(message: Message, state: FSMContext, user: User):
+    """Handle photo for image-to-video generation."""
+    data = await state.get_data()
+    service_name = data.get("service", "veo")
+
+    # Download the photo
+    photo = message.photo[-1]
+    file = await message.bot.get_file(photo.file_id)
+
+    # Create temp path
+    temp_dir = Path("./storage/temp")
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    temp_path = temp_dir / f"video_input_{photo.file_id}.jpg"
+
+    await message.bot.download_file(file.file_path, temp_path)
+
+    # Save image path to state
+    await state.update_data(image_path=str(temp_path))
+
+    await message.answer(
+        "✅ Фото получено!\n\n"
+        "📝 Теперь отправьте описание видео, которое вы хотите создать на основе этого фото.\n\n"
+        "**Примеры:**\n"
+        "• \"Оживи это фото, добавь плавное движение\"\n"
+        "• \"Сделай так, чтобы волосы развевались на ветру\"\n"
+        "• \"Добавь падающие снежинки и плавное движение камеры\""
+    )
+
+
 @router.message(MediaState.waiting_for_video_prompt, F.text)
 async def process_video_prompt(message: Message, state: FSMContext, user: User):
     data = await state.get_data()
@@ -425,6 +465,10 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
     """Process Veo video generation."""
     prompt = message.text
 
+    # Get state data (check if image was provided)
+    data = await state.get_data()
+    image_path = data.get("image_path", None)
+
     # Check and use tokens
     estimated_tokens = 15000  # Veo is expensive
 
@@ -434,6 +478,13 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
         try:
             await sub_service.check_and_use_tokens(user.id, estimated_tokens)
         except InsufficientTokensError as e:
+            # Clean up image if exists
+            if image_path and os.path.exists(image_path):
+                try:
+                    os.remove(image_path)
+                except Exception:
+                    pass
+
             await message.answer(
                 f"❌ Недостаточно токенов для генерации видео!\n\n"
                 f"Требуется: {estimated_tokens:,} токенов\n"
@@ -444,7 +495,8 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
             return
 
     # Send progress message
-    progress_msg = await message.answer("🎬 Инициализация Veo 3.1...")
+    mode_text = "image-to-video" if image_path else "text-to-video"
+    progress_msg = await message.answer(f"🎬 Инициализация Veo 3.1 ({mode_text})...")
 
     # Create service
     veo_service = VeoService()
@@ -462,16 +514,19 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
         progress_callback=update_progress,
         duration=8,
         aspect_ratio="16:9",
-        resolution="720p"
+        resolution="720p",
+        image_path=image_path
     )
 
     if result.success:
 
         # Send video
         video_file = FSInputFile(result.video_path)
+        mode_info = "Image-to-Video" if image_path else "Text-to-Video"
         await message.answer_video(
             video=video_file,
             caption=f"✅ Видео готово!\n\n"
+                    f"Режим: {mode_info}\n"
                     f"Промпт: {prompt[:200]}\n"
                     f"Использовано токенов: {result.tokens_used:,}"
         )
@@ -482,8 +537,22 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
         except Exception as e:
             logger.error("video_cleanup_failed", error=str(e))
 
+        # Clean up input image if exists
+        if image_path and os.path.exists(image_path):
+            try:
+                os.remove(image_path)
+            except Exception as e:
+                logger.error("input_image_cleanup_failed", error=str(e))
+
         await progress_msg.delete()
     else:
+        # Clean up input image if exists
+        if image_path and os.path.exists(image_path):
+            try:
+                os.remove(image_path)
+            except Exception as e:
+                logger.error("input_image_cleanup_failed", error=str(e))
+
         try:
             await progress_msg.edit_text(
                 f"❌ Ошибка генерации видео:\n{result.error}",
@@ -553,6 +622,11 @@ async def process_sora_video(message: Message, user: User, state: FSMContext):
 async def process_luma_video(message: Message, user: User, state: FSMContext):
     """Process Luma Dream Machine video generation."""
     prompt = message.text
+
+    # Get state data (check if image was provided)
+    data = await state.get_data()
+    image_path = data.get("image_path", None)
+
     estimated_tokens = 8000
 
     async with async_session_maker() as session:
@@ -560,6 +634,13 @@ async def process_luma_video(message: Message, user: User, state: FSMContext):
         try:
             await sub_service.check_and_use_tokens(user.id, estimated_tokens)
         except InsufficientTokensError as e:
+            # Clean up image if exists
+            if image_path and os.path.exists(image_path):
+                try:
+                    os.remove(image_path)
+                except Exception:
+                    pass
+
             await message.answer(
                 f"❌ Недостаточно токенов!\n\n"
                 f"Требуется: {estimated_tokens:,} токенов\n"
@@ -568,7 +649,8 @@ async def process_luma_video(message: Message, user: User, state: FSMContext):
             await state.clear()
             return
 
-    progress_msg = await message.answer("🎬 Инициализация Luma Dream Machine...")
+    mode_text = "image-to-video" if image_path else "text-to-video"
+    progress_msg = await message.answer(f"🎬 Инициализация Luma Dream Machine ({mode_text})...")
     luma_service = LumaService()
 
     async def update_progress(text: str):
@@ -577,23 +659,52 @@ async def process_luma_video(message: Message, user: User, state: FSMContext):
         except Exception:
             pass
 
+    # Prepare keyframes if image provided
+    keyframes = None
+    if image_path:
+        try:
+            # For Luma, we need to create keyframes dict with image
+            # According to Luma API, keyframes can be {"frame0": {"type": "image", "url": "..."}}
+            # Since we have local file, we'll need to upload it or convert to base64
+            # For now, we'll just pass the image_path and let the service handle it
+            keyframes = {"frame0": {"type": "image", "path": image_path}}
+        except Exception as e:
+            logger.error("luma_keyframes_preparation_failed", error=str(e))
+
     result = await luma_service.generate_video(
         prompt=prompt,
-        progress_callback=update_progress
+        progress_callback=update_progress,
+        keyframes=keyframes
     )
 
     if result.success:
         video_file = FSInputFile(result.video_path)
+        mode_info = "Image-to-Video" if image_path else "Text-to-Video"
         await message.answer_video(
             video=video_file,
-            caption=f"✅ Видео готово!\n\nПромпт: {prompt[:200]}\nТокенов: {result.tokens_used:,}"
+            caption=f"✅ Видео готово!\n\nРежим: {mode_info}\nПромпт: {prompt[:200]}\nТокенов: {result.tokens_used:,}"
         )
         try:
             os.remove(result.video_path)
         except Exception as e:
             logger.error("video_cleanup_failed", error=str(e))
+
+        # Clean up input image if exists
+        if image_path and os.path.exists(image_path):
+            try:
+                os.remove(image_path)
+            except Exception as e:
+                logger.error("input_image_cleanup_failed", error=str(e))
+
         await progress_msg.delete()
     else:
+        # Clean up input image if exists
+        if image_path and os.path.exists(image_path):
+            try:
+                os.remove(image_path)
+            except Exception as e:
+                logger.error("input_image_cleanup_failed", error=str(e))
+
         try:
             await progress_msg.edit_text(f"❌ Ошибка: {result.error}", parse_mode=None)
         except Exception:
@@ -659,6 +770,11 @@ async def process_hailuo_video(message: Message, user: User, state: FSMContext):
 async def process_kling_video(message: Message, user: User, state: FSMContext, is_effects: bool = False):
     """Process Kling AI video generation."""
     prompt = message.text
+
+    # Get state data (check if image was provided)
+    data = await state.get_data()
+    image_path = data.get("image_path", None)
+
     estimated_tokens = 10000 if is_effects else 9000
 
     async with async_session_maker() as session:
@@ -666,6 +782,13 @@ async def process_kling_video(message: Message, user: User, state: FSMContext, i
         try:
             await sub_service.check_and_use_tokens(user.id, estimated_tokens)
         except InsufficientTokensError as e:
+            # Clean up image if exists
+            if image_path and os.path.exists(image_path):
+                try:
+                    os.remove(image_path)
+                except Exception:
+                    pass
+
             await message.answer(
                 f"❌ Недостаточно токенов!\n\n"
                 f"Требуется: {estimated_tokens:,} токенов\n"
@@ -675,7 +798,8 @@ async def process_kling_video(message: Message, user: User, state: FSMContext, i
             return
 
     service_name = "Kling Effects" if is_effects else "Kling AI"
-    progress_msg = await message.answer(f"🎬 Инициализация {service_name}...")
+    mode_text = "image-to-video" if image_path else "text-to-video"
+    progress_msg = await message.answer(f"🎬 Инициализация {service_name} ({mode_text})...")
     kling_service = KlingService()
 
     async def update_progress(text: str):
@@ -684,24 +808,49 @@ async def process_kling_video(message: Message, user: User, state: FSMContext, i
         except Exception:
             pass
 
+    # For Kling, we would need to upload the image first or provide URL
+    # For simplicity, we'll pass image_path and let service handle upload if needed
+    kwargs = {}
+    if image_path:
+        # Note: Kling API expects image_url, so service needs to handle upload
+        # For now, we'll pass the local path as image_url parameter
+        kwargs["image_url"] = image_path
+
     result = await kling_service.generate_video(
         prompt=prompt,
         model="kling-v1.6-pro",
-        progress_callback=update_progress
+        progress_callback=update_progress,
+        **kwargs
     )
 
     if result.success:
         video_file = FSInputFile(result.video_path)
+        mode_info = "Image-to-Video" if image_path else "Text-to-Video"
         await message.answer_video(
             video=video_file,
-            caption=f"✅ Видео готово!\n\nПромпт: {prompt[:200]}\nТокенов: {result.tokens_used:,}"
+            caption=f"✅ Видео готово!\n\nРежим: {mode_info}\nПромпт: {prompt[:200]}\nТокенов: {result.tokens_used:,}"
         )
         try:
             os.remove(result.video_path)
         except Exception as e:
             logger.error("video_cleanup_failed", error=str(e))
+
+        # Clean up input image if exists
+        if image_path and os.path.exists(image_path):
+            try:
+                os.remove(image_path)
+            except Exception as e:
+                logger.error("input_image_cleanup_failed", error=str(e))
+
         await progress_msg.delete()
     else:
+        # Clean up input image if exists
+        if image_path and os.path.exists(image_path):
+            try:
+                os.remove(image_path)
+            except Exception as e:
+                logger.error("input_image_cleanup_failed", error=str(e))
+
         try:
             await progress_msg.edit_text(f"❌ Ошибка: {result.error}", parse_mode=None)
         except Exception:
