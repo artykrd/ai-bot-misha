@@ -79,6 +79,8 @@ class VeoService(BaseVideoProvider):
                 - aspect_ratio: Video aspect ratio (1:1, 16:9, 9:16, 4:3, 3:4, default: 16:9)
                 - negative_prompt: Things to avoid in the video
                 - resolution: Video resolution (720p, 1080p, default: 720p)
+                - image_path: Path to image for image-to-video generation (optional)
+                - reference_images: List of up to 3 reference image paths (optional, Veo 3.1 only)
 
         Returns:
             VideoResponse with video path or error
@@ -111,9 +113,17 @@ class VeoService(BaseVideoProvider):
             aspect_ratio = kwargs.get("aspect_ratio", "16:9")
             negative_prompt = kwargs.get("negative_prompt", None)
             resolution = kwargs.get("resolution", "720p")
+            image_path = kwargs.get("image_path", None)
+            reference_images = kwargs.get("reference_images", None)
+
+            mode = "text-to-video"
+            if image_path:
+                mode = "image-to-video"
+            elif reference_images:
+                mode = "reference-images"
 
             if progress_callback:
-                await progress_callback(f"🎥 Генерирую видео {duration}с, {aspect_ratio}, {resolution}...")
+                await progress_callback(f"🎥 Генерирую видео ({mode}) {duration}с, {aspect_ratio}, {resolution}...")
 
             # Generate video using Veo model
             video_path = await self._generate_veo_video(
@@ -122,6 +132,8 @@ class VeoService(BaseVideoProvider):
                 aspect_ratio=aspect_ratio,
                 negative_prompt=negative_prompt,
                 resolution=resolution,
+                image_path=image_path,
+                reference_images=reference_images,
                 progress_callback=progress_callback
             )
 
@@ -192,6 +204,8 @@ class VeoService(BaseVideoProvider):
         aspect_ratio: str,
         negative_prompt: Optional[str],
         resolution: str,
+        image_path: Optional[str] = None,
+        reference_images: Optional[list] = None,
         progress_callback: Optional[Callable[[str], Awaitable[None]]] = None
     ) -> str:
         """Generate video using Veo 3.1 model via Gemini API."""
@@ -220,12 +234,56 @@ class VeoService(BaseVideoProvider):
                 if duration:
                     config_params["duration_seconds"] = str(duration)
 
+                # Prepare image parameter if provided
+                image_obj = None
+                if image_path:
+                    try:
+                        from PIL import Image
+                        # Load image using PIL
+                        img = Image.open(image_path)
+                        # Convert to RGB if needed
+                        if img.mode != 'RGB':
+                            img = img.convert('RGB')
+                        image_obj = img
+                        logger.info("veo_image_loaded", path=image_path, size=img.size)
+                    except Exception as img_error:
+                        logger.error("veo_image_load_failed", error=str(img_error))
+                        raise Exception(f"Failed to load image: {img_error}")
+
+                # Prepare reference images if provided
+                ref_images_objs = None
+                if reference_images and len(reference_images) > 0:
+                    try:
+                        from google.genai import types
+                        from PIL import Image
+
+                        ref_images_objs = []
+                        for idx, ref_img_path in enumerate(reference_images[:3]):  # Max 3 images
+                            img = Image.open(ref_img_path)
+                            if img.mode != 'RGB':
+                                img = img.convert('RGB')
+
+                            # Create VideoGenerationReferenceImage
+                            ref_img = types.VideoGenerationReferenceImage(
+                                image=img,
+                                reference_type="asset"  # asset or style
+                            )
+                            ref_images_objs.append(ref_img)
+                            logger.info("veo_reference_image_loaded", index=idx, path=ref_img_path)
+
+                        # Add reference images to config
+                        config_params["reference_images"] = ref_images_objs
+                    except Exception as ref_error:
+                        logger.error("veo_reference_images_load_failed", error=str(ref_error))
+                        raise Exception(f"Failed to load reference images: {ref_error}")
+
                 # Generate video using Veo 3.1 according to official Python example
                 # from google import genai
                 # client = genai.Client()
                 operation = self.client.models.generate_videos(
                     model="veo-3.1-generate-preview",
                     prompt=prompt,
+                    image=image_obj if image_obj else None,
                     config=config_params if config_params else None,
                 )
 
