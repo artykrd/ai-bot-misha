@@ -7,6 +7,7 @@ from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message
 from aiogram.filters import Command
 from aiogram.enums import ParseMode
+from aiogram.fsm.context import FSMContext
 
 from app.bot.keyboards.inline import back_to_main_keyboard, main_menu_keyboard, subscription_keyboard
 
@@ -209,19 +210,6 @@ async def cmd_dalle(message: Message, state: FSMContext):
     """DALLE 3 command."""
     from app.bot.states import MediaState
 
-    text = (
-        "**GPT Image (DALL-E 3)**\n\n"
-        "Создайте уникальные изображения по текстовому описанию.\n\n"
-        "📊 **Модели:**\n"
-        "• DALL-E 3 (HD качество)\n"
-        "• DALL-E 3 (стандарт)\n"
-        "• DALL-E 2\n\n"
-        "**Размеры:** 1024x1024, 1792x1024, 1024x1792\n\n"
-        "💰 **Стоимость:** 4,000-8,000 токенов\n\n"
-        "🎨 **Режимы работы:**\n"
-        "• **Text-to-Image:** Отправьте описание изображения\n"
-        "• **Image Variation (DALL-E 2):** Отправьте фото для создания вариаций\n\n"
-        "✏️ **Отправьте описание изображения ИЛИ фото**"
     )
 
     await state.set_state(MediaState.waiting_for_image_prompt)

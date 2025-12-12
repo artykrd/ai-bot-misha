@@ -97,7 +97,7 @@ class VeoService(BaseVideoProvider):
             )
 
         try:
-            # Don't update progress - keep the message from media_handler
+
 
             if not self._genai:
                 self._genai = _get_genai()
