@@ -210,6 +210,9 @@ async def cmd_dalle(message: Message, state: FSMContext):
     """DALLE 3 command."""
     from app.bot.states import MediaState
 
+    text = (
+        "🎨 Генерация изображений через DALL·E 3\n\n"
+        "Отправьте текстовый промпт, и я сгенерирую изображение."
     )
 
     await state.set_state(MediaState.waiting_for_image_prompt)
@@ -400,7 +403,7 @@ async def audio_tools(callback: CallbackQuery):
 async def referral(callback: CallbackQuery):
     """Referral program (not implemented)."""
     await callback.message.edit_text(
-        "🤝🏼 **Партнерство**\n\n⚠️ Функционал в разработке",
+        "🤝�� **Партнерство**\n\n⚠️ Функционал в разработке",
         reply_markup=back_to_main_keyboard()
     )
     await callback.answer()

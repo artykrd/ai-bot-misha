@@ -1256,23 +1256,19 @@ async def process_gemini_image(message: Message, user: User, state: FSMContext):
 
 async def process_nano_image(message: Message, user: User, state: FSMContext):
     """Process Nano Banana (Gemini 2.5 Flash Image) image generation."""
-    # Get state data (check if reference image was provided)
     data = await state.get_data()
 
-    # Get prompt from caption if available, otherwise from message text
     prompt = data.get("photo_caption_prompt") or message.text
     reference_image_path = data.get("reference_image_path", None)
 
-    # Check and use tokens
     estimated_tokens = 3000  # Nano Banana cost
 
+    # Check and reserve tokens
     async with async_session_maker() as session:
         sub_service = SubscriptionService(session)
-
         try:
             await sub_service.check_and_use_tokens(user.id, estimated_tokens)
         except InsufficientTokensError as e:
-            # Clean up reference image if exists
             if reference_image_path and os.path.exists(reference_image_path):
                 try:
                     os.remove(reference_image_path)
@@ -1288,14 +1284,14 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
             await state.clear()
             return
 
-    # Send progress message
+    # Progress message
     mode_text = "image-to-image" if reference_image_path else "text-to-image"
-    progress_msg = await message.answer(f"🍌 Генерирую изображение с Nano Banana ({mode_text})...")
+    progress_msg = await message.answer(
+        f"🍌 Генерирую изображение с Nano Banana ({mode_text})..."
+    )
 
-    # Create service
     nano_service = NanoBananaService()
 
-    # Progress callback
     async def update_progress(text: str):
         try:
             await progress_msg.edit_text(text, parse_mode=None)
@@ -1313,113 +1309,99 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
     if result.success:
         tokens_used = result.metadata.get("tokens_used", estimated_tokens)
 
-        # Get user's remaining tokens
         async with async_session_maker() as session:
             sub_service = SubscriptionService(session)
             user_tokens = await sub_service.get_user_total_tokens(user.id)
 
+        info_text = (
             f"💰 Запрос стоил: {tokens_used:,} токенов\n"
             f"📊 Остаток: {user_tokens:,} токенов\n\n"
             f"📝 Промпт: {prompt[:150]}{'...' if len(prompt) > 150 else ''}"
         )
 
-        # Optimize and send image
         try:
-            # Check file size
             file_size = os.path.getsize(result.image_path)
             logger.info("nano_image_file_size", path=result.image_path, size=file_size)
 
-            # If file is too large (>2MB) or to ensure compatibility, optimize it
-            if file_size > 2 * 1024 * 1024:  # 2MB
+            if file_size > 2 * 1024 * 1024:
                 logger.info("nano_image_optimizing", original_size=file_size)
 
-                # Open image with PIL
                 img = Image.open(result.image_path)
 
-                # Convert RGBA to RGB if needed (for JPEG)
-                if img.mode in ('RGBA', 'LA', 'P'):
-                    background = Image.new('RGB', img.size, (255, 255, 255))
-                    if img.mode == 'P':
-                        img = img.convert('RGBA')
-                    background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+                if img.mode in ("RGBA", "LA", "P"):
+                    background = Image.new("RGB", img.size, (255, 255, 255))
+                    if img.mode == "P":
+                        img = img.convert("RGBA")
+                    background.paste(
+                        img,
+                        mask=img.split()[-1] if img.mode == "RGBA" else None
+                    )
                     img = background
 
-                # Save as JPEG with quality reduction
                 buffer = io.BytesIO()
-                quality = 85
-                img.save(buffer, format='JPEG', quality=quality, optimize=True)
+                img.save(buffer, format="JPEG", quality=85, optimize=True)
                 buffer.seek(0)
 
-                optimized_size = buffer.getbuffer().nbytes
-                logger.info("nano_image_optimized", original_size=file_size, new_size=optimized_size, quality=quality)
-
-                # Send optimized image
                 photo = BufferedInputFile(buffer.read(), filename="image.jpg")
                 await message.answer_photo(
                     photo=photo,
-
+                    caption=info_text,
                     reply_markup=builder.as_markup()
                 )
             else:
-                # Try sending original PNG first
                 try:
                     image_file = FSInputFile(result.image_path)
                     await message.answer_photo(
                         photo=image_file,
-
+                        caption=info_text,
                         reply_markup=builder.as_markup()
                     )
-                except Exception as send_error:
-                    logger.warning("nano_image_send_as_photo_failed", error=str(send_error))
-
-                    # If sending as photo fails, try optimizing and re-sending
+                except Exception:
                     img = Image.open(result.image_path)
 
-                    # Convert to RGB if needed
-                    if img.mode in ('RGBA', 'LA', 'P'):
-                        background = Image.new('RGB', img.size, (255, 255, 255))
-                        if img.mode == 'P':
-                            img = img.convert('RGBA')
-                        background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+                    if img.mode in ("RGBA", "LA", "P"):
+                        background = Image.new("RGB", img.size, (255, 255, 255))
+                        if img.mode == "P":
+                            img = img.convert("RGBA")
+                        background.paste(
+                            img,
+                            mask=img.split()[-1] if img.mode == "RGBA" else None
+                        )
                         img = background
 
-                    # Save as JPEG
                     buffer = io.BytesIO()
-                    img.save(buffer, format='JPEG', quality=90, optimize=True)
+                    img.save(buffer, format="JPEG", quality=90, optimize=True)
                     buffer.seek(0)
-
-                    logger.info("nano_image_converted_to_jpeg", original_format="PNG")
 
                     photo = BufferedInputFile(buffer.read(), filename="image.jpg")
                     await message.answer_photo(
                         photo=photo,
+                        caption=info_text,
                         reply_markup=builder.as_markup()
                     )
 
         except Exception as send_error:
             logger.error("nano_image_send_failed", error=str(send_error))
-            # Last resort: try sending as document
             try:
                 doc_file = FSInputFile(result.image_path)
                 await message.answer_document(
                     document=doc_file,
-
+                    caption=info_text,
                     reply_markup=builder.as_markup()
                 )
             except Exception as doc_error:
                 logger.error("nano_image_send_as_document_failed", error=str(doc_error))
                 await message.answer(
-                    caption_text,
+                    info_text,
                     reply_markup=builder.as_markup()
                 )
 
-        # Clean up
+        # Cleanup
         try:
             os.remove(result.image_path)
         except Exception as e:
             logger.error("nano_image_cleanup_failed", error=str(e))
 
-        # Clean up reference image if exists
         if reference_image_path and os.path.exists(reference_image_path):
             try:
                 os.remove(reference_image_path)
@@ -1427,11 +1409,9 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
                 logger.error("reference_image_cleanup_failed", error=str(e))
 
         await progress_msg.delete()
-
-        # Clear reference_image_path but keep service to allow new generation
         await state.update_data(reference_image_path=None, photo_caption_prompt=None)
+
     else:
-        # Clean up reference image if exists
         if reference_image_path and os.path.exists(reference_image_path):
             try:
                 os.remove(reference_image_path)
@@ -1444,10 +1424,7 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
                 parse_mode=None
             )
         except Exception:
-            # Ignore errors when message is not modified
             pass
-
-
 
 
 # ======================
