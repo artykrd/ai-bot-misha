@@ -8,13 +8,19 @@ Media handlers for video, audio, and image generation.
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message, FSInputFile, BufferedInputFile
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
 import os
 from pathlib import Path
 from PIL import Image
 import io
 
 from app.bot.keyboards.inline import back_to_main_keyboard
+from app.bot.states import MediaState
+from app.bot.utils.notifications import (
+    format_generation_message,
+    create_action_keyboard,
+    CONTENT_TYPES,
+    MODEL_ACTIONS,
+)
 from app.database.models.user import User
 from app.database.database import async_session_maker
 from app.core.logger import get_logger
@@ -28,24 +34,6 @@ from app.services.subscription.subscription_service import SubscriptionService
 logger = get_logger(__name__)
 
 router = Router(name="media")
-
-
-class MediaState(StatesGroup):
-    waiting_for_video_prompt = State()
-    waiting_for_audio_prompt = State()
-    waiting_for_image_prompt = State()
-    waiting_for_image = State()
-    waiting_for_upscale_image = State()
-    waiting_for_whisper_audio = State()
-    waiting_for_vision_image = State()
-    waiting_for_vision_prompt = State()
-    # Photo tools states
-    waiting_for_photo_upscale = State()
-    waiting_for_photo_replace_bg = State()
-    waiting_for_photo_remove_bg = State()
-    waiting_for_photo_vectorize = State()
-    # Smart input handling states
-    waiting_for_photo_action_choice = State()  # User sent photo, need to choose what to do
 
 
 # ======================
@@ -571,24 +559,24 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
             sub_service = SubscriptionService(session)
             user_tokens = await sub_service.get_user_total_tokens(user.id)
 
-        # Send video with improved message and buttons
-        from aiogram.utils.keyboard import InlineKeyboardBuilder
-
-        builder = InlineKeyboardBuilder()
-        builder.button(text="🎬 Создать новое видео", callback_data="bot.veo")
-        builder.button(text="🏠 В главное меню", callback_data="main_menu")
-        builder.adjust(1)  # 1 button per row
-
-        video_file = FSInputFile(result.video_path)
+        # Generate unified notification message
         mode_info = "image-to-video" if image_path else "text-to-video"
-
-        caption = (
-            f"✅ Сгенерировал видео по вашему запросу в Veo 3.1 ({mode_info}).\n\n"
-            f"💰 Запрос стоил: {result.tokens_used:,} токенов\n"
-            f"📊 Остаток: {user_tokens:,} токенов\n\n"
-            f"📝 Промпт: {prompt[:150]}{'...' if len(prompt) > 150 else ''}"
+        caption = format_generation_message(
+            content_type=CONTENT_TYPES["video"],
+            model_name="Veo 3.1",
+            tokens_used=result.tokens_used,
+            user_tokens=user_tokens,
+            prompt=prompt,
+            mode=mode_info
         )
 
+        # Create action keyboard
+        builder = create_action_keyboard(
+            action_text=MODEL_ACTIONS["veo"]["text"],
+            action_callback=MODEL_ACTIONS["veo"]["callback"]
+        )
+
+        video_file = FSInputFile(result.video_path)
         await message.answer_video(
             video=video_file,
             caption=caption,
@@ -675,19 +663,19 @@ async def process_sora_video(message: Message, user: User, state: FSMContext):
             sub_service = SubscriptionService(session)
             user_tokens = await sub_service.get_user_total_tokens(user.id)
 
-        # Build keyboard with buttons
-        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        # Generate unified notification message
+        caption = format_generation_message(
+            content_type=CONTENT_TYPES["video"],
+            model_name="Sora 2",
+            tokens_used=result.tokens_used,
+            user_tokens=user_tokens,
+            prompt=prompt
+        )
 
-        builder = InlineKeyboardBuilder()
-        builder.button(text="🎬 Создать новое видео", callback_data="bot.sora")
-        builder.button(text="🏠 В главное меню", callback_data="main_menu")
-        builder.adjust(1)  # 1 button per row
-
-        caption = (
-            f"✅ Сгенерировал видео по вашему запросу в Sora 2.\n\n"
-            f"💰 Запрос стоил: {result.tokens_used:,} токенов\n"
-            f"📊 Остаток: {user_tokens:,} токенов\n\n"
-            f"📝 Промпт: {prompt[:150]}{'...' if len(prompt) > 150 else ''}"
+        # Create action keyboard
+        builder = create_action_keyboard(
+            action_text=MODEL_ACTIONS["sora"]["text"],
+            action_callback=MODEL_ACTIONS["sora"]["callback"]
         )
 
         video_file = FSInputFile(result.video_path)
@@ -771,11 +759,33 @@ async def process_luma_video(message: Message, user: User, state: FSMContext):
     )
 
     if result.success:
+        # Get user's remaining tokens
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            user_tokens = await sub_service.get_user_total_tokens(user.id)
+
+        # Generate unified notification message
+        mode_info = "image-to-video" if image_path else "text-to-video"
+        caption = format_generation_message(
+            content_type=CONTENT_TYPES["video"],
+            model_name="Luma Dream Machine",
+            tokens_used=result.tokens_used,
+            user_tokens=user_tokens,
+            prompt=prompt,
+            mode=mode_info
+        )
+
+        # Create action keyboard
+        builder = create_action_keyboard(
+            action_text=MODEL_ACTIONS["luma"]["text"],
+            action_callback=MODEL_ACTIONS["luma"]["callback"]
+        )
+
         video_file = FSInputFile(result.video_path)
-        mode_info = "Image-to-Video" if image_path else "Text-to-Video"
         await message.answer_video(
             video=video_file,
-            caption=f"✅ Видео готово!\n\nРежим: {mode_info}\nПромпт: {prompt[:200]}\nТокенов: {result.tokens_used:,}"
+            caption=caption,
+            reply_markup=builder.as_markup()
         )
         try:
             os.remove(result.video_path)
@@ -843,10 +853,31 @@ async def process_hailuo_video(message: Message, user: User, state: FSMContext):
     )
 
     if result.success:
+        # Get user's remaining tokens
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            user_tokens = await sub_service.get_user_total_tokens(user.id)
+
+        # Generate unified notification message
+        caption = format_generation_message(
+            content_type=CONTENT_TYPES["video"],
+            model_name="Hailuo AI",
+            tokens_used=result.tokens_used,
+            user_tokens=user_tokens,
+            prompt=prompt
+        )
+
+        # Create action keyboard
+        builder = create_action_keyboard(
+            action_text=MODEL_ACTIONS["hailuo"]["text"],
+            action_callback=MODEL_ACTIONS["hailuo"]["callback"]
+        )
+
         video_file = FSInputFile(result.video_path)
         await message.answer_video(
             video=video_file,
-            caption=f"✅ Видео готово!\n\nПромпт: {prompt[:200]}\nТокенов: {result.tokens_used:,}"
+            caption=caption,
+            reply_markup=builder.as_markup()
         )
         try:
             os.remove(result.video_path)
@@ -921,11 +952,34 @@ async def process_kling_video(message: Message, user: User, state: FSMContext, i
     )
 
     if result.success:
+        # Get user's remaining tokens
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            user_tokens = await sub_service.get_user_total_tokens(user.id)
+
+        # Generate unified notification message
+        mode_info = "image-to-video" if image_path else "text-to-video"
+        caption = format_generation_message(
+            content_type=CONTENT_TYPES["video"],
+            model_name=service_name,  # "Kling AI" or "Kling Effects"
+            tokens_used=result.tokens_used,
+            user_tokens=user_tokens,
+            prompt=prompt,
+            mode=mode_info
+        )
+
+        # Create action keyboard
+        callback_key = "kling_effects" if is_effects else "kling"
+        builder = create_action_keyboard(
+            action_text=MODEL_ACTIONS[callback_key]["text"],
+            action_callback=MODEL_ACTIONS[callback_key]["callback"]
+        )
+
         video_file = FSInputFile(result.video_path)
-        mode_info = "Image-to-Video" if image_path else "Text-to-Video"
         await message.answer_video(
             video=video_file,
-            caption=f"✅ Видео готово!\n\nРежим: {mode_info}\nПромпт: {prompt[:200]}\nТокенов: {result.tokens_used:,}"
+            caption=caption,
+            reply_markup=builder.as_markup()
         )
         try:
             os.remove(result.video_path)
@@ -1116,23 +1170,22 @@ async def process_dalle_image(message: Message, user: User, state: FSMContext):
             sub_service = SubscriptionService(session)
             user_tokens = await sub_service.get_user_total_tokens(user.id)
 
-        # Build keyboard with buttons
-        from aiogram.utils.keyboard import InlineKeyboardBuilder
-
-        builder = InlineKeyboardBuilder()
-        builder.button(text="🎨 Создать новое изображение", callback_data="bot.gpt_image")
-        builder.button(text="🏠 В главное меню", callback_data="main_menu")
-        builder.adjust(1)  # 1 button per row
-
         # Build caption in unified format
         image_type = "изображение" if not reference_image_path else "вариацию изображения"
         model_name = "DALL·E 3" if not reference_image_path else "DALL·E 2"
 
-        caption_text = (
-            f"✅ Сгенерировал {image_type} по вашему запросу в {model_name}.\n\n"
-            f"💰 Запрос стоил: {tokens_used:,} токенов\n"
-            f"📊 Остаток: {user_tokens:,} токенов\n\n"
-            f"📝 Промпт: {prompt[:150]}{'...' if len(prompt) > 150 else ''}"
+        caption_text = format_generation_message(
+            content_type=image_type,
+            model_name=model_name,
+            tokens_used=tokens_used,
+            user_tokens=user_tokens,
+            prompt=prompt
+        )
+
+        # Create action keyboard
+        builder = create_action_keyboard(
+            action_text=MODEL_ACTIONS["gpt_image"]["text"],
+            action_callback=MODEL_ACTIONS["gpt_image"]["callback"]
         )
 
         # Send image
@@ -1313,10 +1366,19 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
             sub_service = SubscriptionService(session)
             user_tokens = await sub_service.get_user_total_tokens(user.id)
 
-        info_text = (
-            f"💰 Запрос стоил: {tokens_used:,} токенов\n"
-            f"📊 Остаток: {user_tokens:,} токенов\n\n"
-            f"📝 Промпт: {prompt[:150]}{'...' if len(prompt) > 150 else ''}"
+        # Generate unified notification message
+        info_text = format_generation_message(
+            content_type=CONTENT_TYPES["image"],
+            model_name="Nano Banana",
+            tokens_used=tokens_used,
+            user_tokens=user_tokens,
+            prompt=prompt
+        )
+
+        # Create action keyboard
+        builder = create_action_keyboard(
+            action_text=MODEL_ACTIONS["nano_banana"]["text"],
+            action_callback=MODEL_ACTIONS["nano_banana"]["callback"]
         )
 
         try:
@@ -1495,13 +1557,25 @@ async def process_suno_audio(message: Message, user: User, state: FSMContext):
     )
 
     if result.success:
+        # Get user's remaining tokens
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            user_tokens = await sub_service.get_user_total_tokens(user.id)
+
+        # Generate unified notification message
+        caption = format_generation_message(
+            content_type=CONTENT_TYPES["audio"],
+            model_name="Suno AI",
+            tokens_used=estimated_tokens,
+            user_tokens=user_tokens,
+            prompt=prompt
+        )
+
         # Send audio
         audio_file = FSInputFile(result.audio_path)
         await message.answer_audio(
             audio=audio_file,
-            caption=f"✅ Музыка готова!\n\n"
-                    f"Промпт: {prompt[:200]}\n"
-                    f"Использовано токенов: {estimated_tokens:,}",
+            caption=caption,
             title=f"Suno AI - {prompt[:50]}"
         )
 
