@@ -19,14 +19,18 @@ class KlingImageService(BaseImageProvider):
     Kling AI API integration for image generation.
 
     Supports text-to-image and image-to-image generation.
+    Can use official Kling API or third-party providers like AI/ML API.
     """
 
-    # Using official Kling API
-    BASE_URL = "https://api.klingai.com/v1"
+    # Using AI/ML API as default provider (same as video service)
+    BASE_URL = "https://api.aimlapi.com"
 
-    def __init__(self, api_key: Optional[str] = None):
-        # Kling uses dedicated API key
-        super().__init__(api_key or getattr(settings, 'kling_api_key', None))
+    def __init__(self, api_key: Optional[str] = None, use_official: bool = False):
+        # Kling can use a dedicated API key or fall back to AIMLAPI
+        super().__init__(api_key or getattr(settings, 'kling_api_key', None) or getattr(settings, 'aimlapi_key', None))
+
+        if use_official:
+            self.BASE_URL = "https://api.klingai.com/v1"
 
         if not self.api_key:
             logger.warning("kling_api_key_missing")
@@ -136,7 +140,13 @@ class KlingImageService(BaseImageProvider):
 
     async def _create_generation(self, prompt: str, model: str, **kwargs) -> str:
         """Create image generation request and return task ID."""
-        url = f"{self.BASE_URL}/images/generations"
+        # Use different endpoints based on provider
+        if "aimlapi.com" in self.BASE_URL:
+            # AI/ML API endpoint for Kling image generation
+            url = f"{self.BASE_URL}/generate/image/kling-ai/v1/generations"
+        else:
+            # Official Kling API endpoint
+            url = f"{self.BASE_URL}/images/generations"
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -198,7 +208,11 @@ class KlingImageService(BaseImageProvider):
         Returns:
             URL of the generated image
         """
-        url = f"{self.BASE_URL}/images/generations/{task_id}"
+        # Use different endpoints based on provider
+        if "aimlapi.com" in self.BASE_URL:
+            url = f"{self.BASE_URL}/generate/image/kling-ai/v1/generations/{task_id}"
+        else:
+            url = f"{self.BASE_URL}/images/generations/{task_id}"
         headers = {
             "Authorization": f"Bearer {self.api_key}"
         }
