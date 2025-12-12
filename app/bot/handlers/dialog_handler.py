@@ -398,12 +398,38 @@ async def process_deepseek_message(
     system_prompt: str = None
 ) -> dict:
     """Process message with DeepSeek models."""
-    # TODO: Implement DeepSeek service
-    return {
-        "success": True,
-        "content": f"🐳 DeepSeek ответ (тестовый режим):\n\nОбработано сообщение типа '{message_type}' с моделью {model_id}",
-        "mock": True
-    }
+    from app.services.ai.deepseek_service import DeepSeekService
+
+    try:
+        service = DeepSeekService()
+
+        # Map model names to API model IDs
+        model_map = {
+            "deepseek-chat": "deepseek-chat",
+            "deepseek-r1": "deepseek-reasoner"
+        }
+
+        api_model = model_map.get(model_id, "deepseek-chat")
+
+        if message_type == "text":
+            result = await service.generate_text(
+                model=api_model,
+                prompt=content,
+                system_prompt=system_prompt
+            )
+        else:
+            return {"success": False, "error": f"Message type {message_type} not yet implemented for DeepSeek"}
+
+        return {
+            "success": result.success,
+            "content": result.content if result.success else result.error,
+            "error": result.error if not result.success else None,
+            "tokens_used": result.tokens_used if result.success else 0,
+            "model": api_model
+        }
+    except Exception as e:
+        logger.error(f"DeepSeek processing error: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
 
 
 async def process_perplexity_message(

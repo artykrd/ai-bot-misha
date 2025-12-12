@@ -119,7 +119,7 @@ class NanoBananaService(BaseImageProvider):
 
         try:
             if progress_callback:
-                await progress_callback("🍌 Инициализация Nano Banana...")
+                await progress_callback("🍌 Генерирую изображение...")
 
             if not self._genai:
                 self._genai = _get_genai()
@@ -365,7 +365,7 @@ class NanoBananaService(BaseImageProvider):
 
         try:
             if progress_callback:
-                await progress_callback("⏳ Обработка запроса... (10-30 секунд)")
+                await progress_callback("🎨 Генерирую изображение...")
 
             # Generate image in executor
             image_path = await loop.run_in_executor(None, _generate)
