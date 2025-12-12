@@ -13,7 +13,7 @@ from pathlib import Path
 from PIL import Image
 import io
 
-from app.bot.keyboards.inline import back_to_main_keyboard
+from app.bot.keyboards.inline import back_to_main_keyboard, kling_choice_keyboard
 from app.bot.states import MediaState
 from app.bot.utils.notifications import (
     format_generation_message,
@@ -26,7 +26,7 @@ from app.database.database import async_session_maker
 from app.core.logger import get_logger
 from app.core.exceptions import InsufficientTokensError
 from app.services.video import VeoService, SoraService, LumaService, HailuoService, KlingService
-from app.services.image import DalleService, GeminiImageService, StabilityService, RemoveBgService, NanoBananaService
+from app.services.image import DalleService, GeminiImageService, StabilityService, RemoveBgService, NanoBananaService, KlingImageService
 from app.services.audio import SunoService, OpenAIAudioService
 from app.services.ai.vision_service import VisionService
 from app.services.subscription.subscription_service import SubscriptionService
@@ -124,26 +124,6 @@ async def start_hailuo(callback: CallbackQuery, state: FSMContext, user: User):
     await callback.answer()
 
 
-@router.callback_query(F.data == "bot.kling")
-async def start_kling(callback: CallbackQuery, state: FSMContext, user: User):
-    text = (
-        "✨ **Kling AI**\n\n"
-        "Kling создаёт высококачественные видео.\n\n"
-        "💰 **Стоимость:** ~9,000 токенов за видео\n\n"
-        "🎨 **Режимы работы:**\n"
-        "• **Text-to-Video:** Просто отправьте описание видео\n"
-        "• **Image-to-Video:** Отправьте фото, затем описание\n\n"
-        "✏️ **Отправьте описание видео ИЛИ фото**"
-    )
-
-    await state.set_state(MediaState.waiting_for_video_prompt)
-    # Clear old data when starting fresh session
-    await state.update_data(service="kling", image_path=None, photo_caption_prompt=None)
-
-    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
-    await callback.answer()
-
-
 @router.callback_query(F.data == "bot.kling_effects")
 async def start_kling_effects(callback: CallbackQuery, state: FSMContext, user: User):
     text = (
@@ -156,6 +136,69 @@ async def start_kling_effects(callback: CallbackQuery, state: FSMContext, user: 
     await state.set_state(MediaState.waiting_for_video_prompt)
     # Clear old data when starting fresh session
     await state.update_data(service="kling_effects", image_path=None, photo_caption_prompt=None)
+
+    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
+    await callback.answer()
+
+
+# Handler for when user clicks "Kling" from main menu - show choice
+@router.callback_query(F.data == "bot.kling_main")
+async def start_kling_choice(callback: CallbackQuery, state: FSMContext, user: User):
+    """Show Kling AI choice menu (photo or video)."""
+    text = (
+        "🎞 **Kling AI**\n\n"
+        "Выберите тип генерации:\n\n"
+        "🌄 **Создать фото** - генерация изображений\n"
+        "🎬 **Создать видео** - генерация видео\n\n"
+        "Kling AI создаёт высококачественный контент с помощью передовых алгоритмов."
+    )
+
+    await state.clear()  # Clear any previous state
+    await callback.message.edit_text(text, reply_markup=kling_choice_keyboard())
+    await callback.answer()
+
+
+# Handler for Kling Image generation
+@router.callback_query(F.data == "bot.kling_image")
+async def start_kling_image(callback: CallbackQuery, state: FSMContext, user: User):
+    """Start Kling image generation."""
+    text = (
+        "🎞 **Kling AI - Генерация изображений**\n\n"
+        "Kling создаёт высококачественные изображения.\n\n"
+        "💰 **Стоимость:** ~3,000-5,000 токенов за изображение\n\n"
+        "🎨 **Режимы работы:**\n"
+        "• **Text-to-Image:** Просто отправьте описание изображения\n"
+        "• **Image-to-Image:** Отправьте фото, затем описание трансформации\n\n"
+        "📊 **Параметры:**\n"
+        "• Форматы: 1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3, 21:9\n"
+        "• Разрешение: 1K или 2K\n\n"
+        "✏️ **Отправьте описание изображения ИЛИ фото**"
+    )
+
+    await state.set_state(MediaState.waiting_for_image_prompt)
+    await state.update_data(service="kling_image", reference_image_path=None)
+
+    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
+    await callback.answer()
+
+
+# Handler for Kling Video generation (renamed from bot.kling)
+@router.callback_query(F.data == "bot.kling_video")
+async def start_kling_video(callback: CallbackQuery, state: FSMContext, user: User):
+    """Start Kling video generation."""
+    text = (
+        "🎬 **Kling AI - Генерация видео**\n\n"
+        "Kling создаёт высококачественные видео.\n\n"
+        "💰 **Стоимость:** ~9,000 токенов за видео\n\n"
+        "🎨 **Режимы работы:**\n"
+        "• **Text-to-Video:** Просто отправьте описание видео\n"
+        "• **Image-to-Video:** Отправьте фото, затем описание\n\n"
+        "✏️ **Отправьте описание видео ИЛИ фото**"
+    )
+
+    await state.set_state(MediaState.waiting_for_video_prompt)
+    # Clear old data when starting fresh session
+    await state.update_data(service="kling", image_path=None, photo_caption_prompt=None)
 
     await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
     await callback.answer()
@@ -1077,6 +1120,8 @@ async def process_image_prompt(message: Message, state: FSMContext, user: User):
         await process_gemini_image(message, user, state)
     elif service_name == "nano_banana":
         await process_nano_image(message, user, state)
+    elif service_name == "kling_image":
+        await process_kling_image(message, user, state)
     else:
         await message.answer(
             f"Функция генерации изображений находится в разработке.\n"
@@ -1487,6 +1532,139 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
             )
         except Exception:
             pass
+
+
+async def process_kling_image(message: Message, user: User, state: FSMContext):
+    """Process Kling AI image generation."""
+    data = await state.get_data()
+
+    prompt = data.get("photo_caption_prompt") or message.text
+    reference_image_path = data.get("reference_image_path", None)
+
+    estimated_tokens = 5000 if reference_image_path else 3000  # Kling image cost
+
+    # Check and reserve tokens
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+        try:
+            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+        except InsufficientTokensError as e:
+            if reference_image_path and os.path.exists(reference_image_path):
+                try:
+                    os.remove(reference_image_path)
+                except Exception:
+                    pass
+
+            await message.answer(
+                f"❌ Недостаточно токенов для генерации изображения!\n\n"
+                f"Требуется: {estimated_tokens:,} токенов\n"
+                f"Доступно: {e.details['available']:,} токенов\n\n"
+                f"Купите подписку: /start → 💎 Подписка"
+            )
+            await state.clear()
+            return
+
+    # Progress message
+    mode_text = "image-to-image" if reference_image_path else "text-to-image"
+    progress_msg = await message.answer(
+        f"🎞 Генерирую изображение с Kling AI ({mode_text})..."
+    )
+
+    kling_service = KlingImageService()
+
+    async def update_progress(text: str):
+        try:
+            await progress_msg.edit_text(text, parse_mode=None)
+        except Exception:
+            pass
+
+    # Generate image
+    result = await kling_service.generate_image(
+        prompt=prompt,
+        model="kling-v1",  # Default model
+        progress_callback=update_progress,
+        aspect_ratio="1:1",  # Default aspect ratio
+        resolution="1k"  # Default resolution
+    )
+
+    if result.success:
+        tokens_used = result.metadata.get("tokens_used", estimated_tokens)
+
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            user_tokens = await sub_service.get_user_total_tokens(user.id)
+
+        # Generate unified notification message
+        info_text = format_generation_message(
+            content_type=CONTENT_TYPES["image"],
+            model_name="Kling AI",
+            mode="text-to-image" if not reference_image_path else "image-to-image",
+            tokens_used=tokens_used,
+            user_tokens=user_tokens,
+            prompt=prompt
+        )
+
+        # Create action keyboard
+        builder = create_action_keyboard(
+            action_text="🎞 Создать новое изображение",
+            action_callback="bot.kling_image"
+        )
+
+        try:
+            photo = FSInputFile(result.image_path)
+            await message.answer_photo(
+                photo=photo,
+                caption=info_text,
+                reply_markup=builder.as_markup()
+            )
+
+        except Exception as send_error:
+            logger.error("kling_image_send_failed", error=str(send_error))
+            try:
+                doc_file = FSInputFile(result.image_path)
+                await message.answer_document(
+                    document=doc_file,
+                    caption=info_text,
+                    reply_markup=builder.as_markup()
+                )
+            except Exception as doc_error:
+                logger.error("kling_image_send_as_document_failed", error=str(doc_error))
+                await message.answer(
+                    info_text,
+                    reply_markup=builder.as_markup()
+                )
+
+        # Cleanup
+        try:
+            os.remove(result.image_path)
+        except Exception as e:
+            logger.error("kling_image_cleanup_failed", error=str(e))
+
+        if reference_image_path and os.path.exists(reference_image_path):
+            try:
+                os.remove(reference_image_path)
+            except Exception as e:
+                logger.error("reference_image_cleanup_failed", error=str(e))
+
+        await progress_msg.delete()
+        await state.update_data(reference_image_path=None, photo_caption_prompt=None)
+
+    else:
+        if reference_image_path and os.path.exists(reference_image_path):
+            try:
+                os.remove(reference_image_path)
+            except Exception as e:
+                logger.error("reference_image_cleanup_failed", error=str(e))
+
+        try:
+            await progress_msg.edit_text(
+                f"❌ Ошибка генерации изображения:\n{result.error}",
+                parse_mode=None
+            )
+        except Exception:
+            pass
+
+    await state.clear()
 
 
 # ======================

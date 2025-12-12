@@ -205,6 +205,7 @@ def create_photo_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🎨 Recraft", callback_data="bot.recraft")
     )
     builder.row(
+        InlineKeyboardButton(text="🎞 Kling AI", callback_data="bot.kling_image"),
         InlineKeyboardButton(text="🎭 Замена лиц", callback_data="bot.faceswap")
     )
     builder.row(
@@ -228,7 +229,7 @@ def create_video_keyboard() -> InlineKeyboardMarkup:
     )
     builder.row(
         InlineKeyboardButton(text="📹 Luma", callback_data="bot.luma"),
-        InlineKeyboardButton(text="🎞 Kling", callback_data="bot.kling")
+        InlineKeyboardButton(text="🎞 Kling", callback_data="bot.kling_video")
     )
     builder.row(
         InlineKeyboardButton(text="🧙 Kling Эффекты", callback_data="bot.kling_effects")
@@ -422,6 +423,21 @@ def referral_keyboard(user_telegram_id: int = None) -> InlineKeyboardMarkup:
 
     builder.row(
         InlineKeyboardButton(text="⬅️ Назад", callback_data="bot.profile")
+    )
+
+    return builder.as_markup()
+
+
+def kling_choice_keyboard() -> InlineKeyboardMarkup:
+    """Kling AI choice keyboard for photo or video generation."""
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(text="🌄 Создать фото", callback_data="bot.kling_image"),
+        InlineKeyboardButton(text="🎬 Создать видео", callback_data="bot.kling_video")
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ В главное меню", callback_data="bot.back")
     )
 
     return builder.as_markup()
