@@ -1,0 +1,109 @@
+"""
+Unified notification messages for media generation.
+"""
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+
+def format_generation_message(
+    content_type: str,
+    model_name: str,
+    tokens_used: int,
+    user_tokens: int,
+    prompt: str,
+    mode: str = None
+) -> str:
+    """
+    Format a unified generation success message.
+
+    Args:
+        content_type: Type of content (видео, изображение, музыку)
+        model_name: Name of the model/service used
+        tokens_used: Number of tokens used for this request
+        user_tokens: User's remaining tokens
+        prompt: The prompt used for generation
+        mode: Optional mode info (e.g., "text-to-video", "image-to-video")
+
+    Returns:
+        Formatted message string
+    """
+    mode_info = f" ({mode})" if mode else ""
+
+    message = (
+        f"✅ Сгенерировал {content_type} по вашему запросу в {model_name}{mode_info}.\n\n"
+        f"💰 Запрос стоил: {tokens_used:,} токенов\n"
+        f"📊 Остаток: {user_tokens:,} токенов\n\n"
+        f"📝 Промпт: {prompt[:150]}{'...' if len(prompt) > 150 else ''}"
+    )
+
+    return message
+
+
+def create_action_keyboard(action_text: str, action_callback: str) -> InlineKeyboardBuilder:
+    """
+    Create a standard keyboard with action and home buttons.
+
+    Args:
+        action_text: Text for the action button (e.g., "🎬 Создать новое видео")
+        action_callback: Callback data for the action button
+
+    Returns:
+        InlineKeyboardBuilder instance
+    """
+    builder = InlineKeyboardBuilder()
+    builder.button(text=action_text, callback_data=action_callback)
+    builder.button(text="🏠 В главное меню", callback_data="main_menu")
+    builder.adjust(1)  # 1 button per row
+
+    return builder
+
+
+# Content type translations
+CONTENT_TYPES = {
+    "video": "видео",
+    "image": "изображение",
+    "audio": "музыку",
+}
+
+# Model-specific action buttons configuration
+MODEL_ACTIONS = {
+    "veo": {
+        "text": "🎬 Создать новое видео",
+        "callback": "bot.veo"
+    },
+    "sora": {
+        "text": "🎬 Создать новое видео",
+        "callback": "bot.sora"
+    },
+    "luma": {
+        "text": "🎬 Создать новое видео",
+        "callback": "bot.luma_video"
+    },
+    "hailuo": {
+        "text": "🎬 Создать новое видео",
+        "callback": "bot.hailuo"
+    },
+    "kling": {
+        "text": "🎬 Создать новое видео",
+        "callback": "bot.kling"
+    },
+    "kling_effects": {
+        "text": "🎬 Создать новое видео",
+        "callback": "bot.kling_effects"
+    },
+    "gpt_image": {
+        "text": "🎨 Создать новое изображение",
+        "callback": "bot.gpt_image"
+    },
+    "nano_banana": {
+        "text": "🎨 Создать новое изображение",
+        "callback": "bot.nano_banana"
+    },
+    "dalle": {
+        "text": "🎨 Создать новое изображение",
+        "callback": "bot.dalle"
+    },
+    "suno": {
+        "text": "🎵 Создать новую музыку",
+        "callback": "bot.suno"
+    },
+}
