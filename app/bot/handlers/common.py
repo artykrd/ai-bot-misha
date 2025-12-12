@@ -210,15 +210,12 @@ async def cmd_dalle(message: Message, state: FSMContext):
     """DALLE 3 command."""
     from app.bot.states import MediaState
 
-    await state.set_state(MediaState.waiting_for_dalle_prompt)
+    )
+
+    await state.set_state(MediaState.waiting_for_image_prompt)
     await state.update_data(service="dalle")
 
-    await message.answer(
-        "🎨 <b>DALL·E 3</b>\n\n"
-        "Отправьте текстовый запрос для генерации изображения.\n\n"
-        "💰 Стоимость: ~4,000 токенов за запрос",
-        parse_mode=ParseMode.HTML
-    )
+    await message.answer(text, reply_markup=back_to_main_keyboard())
 
 
 @router.message(Command("recraft"))

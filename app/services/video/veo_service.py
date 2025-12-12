@@ -97,8 +97,7 @@ class VeoService(BaseVideoProvider):
             )
 
         try:
-            if progress_callback:
-                await progress_callback("🎬 Генерирую видео...")
+
 
             if not self._genai:
                 self._genai = _get_genai()

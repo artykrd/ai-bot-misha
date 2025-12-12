@@ -246,9 +246,15 @@ class NanoBananaService(BaseImageProvider):
                     if ref_image.mode != 'RGB':
                         ref_image = ref_image.convert('RGB')
 
-                    # Create multimodal content: image + text prompt
-                    contents = [ref_image, prompt]
-                    logger.info("nano_banana_using_reference_image", path=reference_image_path)
+                    # Enhance prompt for image-to-image to get better transformations
+                    enhanced_prompt = (
+                        f"Generate a NEW image based on this reference image with the following transformation: {prompt}. "
+                        f"Create a completely transformed version, not just minor adjustments. "
+                        f"Make significant creative changes while following the instruction."
+                    )
+                    # Create multimodal content: image + enhanced text prompt
+                    contents = [ref_image, enhanced_prompt]
+                    logger.info("nano_banana_using_reference_image", path=reference_image_path, enhanced=True)
                 else:
                     # Text-only generation
                     contents = prompt
@@ -364,8 +370,6 @@ class NanoBananaService(BaseImageProvider):
                 raise
 
         try:
-            if progress_callback:
-                await progress_callback("🎨 Генерирую изображение...")
 
             # Generate image in executor
             image_path = await loop.run_in_executor(None, _generate)
