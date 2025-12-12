@@ -26,7 +26,7 @@ from app.database.database import async_session_maker
 from app.core.logger import get_logger
 from app.core.exceptions import InsufficientTokensError
 from app.services.video import VeoService, SoraService, LumaService, HailuoService, KlingService
-from app.services.image import DalleService, GeminiImageService, StabilityService, RemoveBgService, NanoBananaService, KlingImageService
+from app.services.image import DalleService, GeminiImageService, StabilityService, RemoveBgService, NanoBananaService, KlingImageService, RecraftService
 from app.services.audio import SunoService, OpenAIAudioService
 from app.services.ai.vision_service import VisionService
 from app.services.subscription.subscription_service import SubscriptionService
@@ -110,10 +110,23 @@ async def start_luma(callback: CallbackQuery, state: FSMContext, user: User):
 @router.callback_query(F.data == "bot.hailuo")
 async def start_hailuo(callback: CallbackQuery, state: FSMContext, user: User):
     text = (
-        "Hailuo (MiniMax)\n\n"
-        "Hailuo создаёт реалистичные видео.\n\n"
-        "Стоимость: ~7,000 токенов за видео\n\n"
-        "Отправьте текстовое описание видео."
+        "🎥 **Hailuo (MiniMax) - Video Generation**\n\n"
+        "Hailuo создаёт реалистичные видео высокого качества по вашему описанию.\n\n"
+        "📊 **Параметры:**\n"
+        "• Длительность: 6-10 секунд\n"
+        "• Разрешение: 768P, 1080P\n"
+        "• Модели: MiniMax-Hailuo-2.3 (лучшее качество)\n\n"
+        "💰 **Стоимость:** ~7,000 токенов за видео\n\n"
+        "🎨 **Режимы работы:**\n"
+        "• **Text-to-Video:** Просто отправьте описание видео\n"
+        "• **Image-to-Video:** Отправьте фото, затем описание (оживит изображение)\n\n"
+        "✏️ **Отправьте описание видео ИЛИ фото**\n"
+        "_Чем детальнее описание, тем лучше результат!_\n\n"
+        "**Примеры:**\n"
+        "• \"Собака бежит по пляжу на закате\"\n"
+        "• \"Летящие птицы над океаном\"\n"
+        "• \"Горящий костёр в ночном лесу\"\n"
+        "• Отправьте фото + \"Оживи это фото, добавь плавное движение\""
     )
 
     await state.set_state(MediaState.waiting_for_video_prompt)
@@ -294,19 +307,34 @@ async def start_stable_diffusion(callback: CallbackQuery):
 
 
 @router.callback_query(F.data == "bot.recraft")
-async def start_recraft(callback: CallbackQuery):
-    """Recraft stub - under development."""
+async def start_recraft(callback: CallbackQuery, state: FSMContext, user: User):
+    """Recraft AI image generation."""
     text = (
-        "🎨 **Recraft**\n\n"
-        "⚠️ **Функционал в разработке**\n\n"
-        "Интеграция с Recraft находится в процессе разработки.\n"
-        "Пожалуйста, используйте альтернативные сервисы:\n\n"
-        "• 🍌 Nano Banana (Gemini 2.5 Flash)\n"
-        "• 🖼 DALL·E 3\n\n"
-        "Следите за обновлениями!"
+        "🎨 **Recraft AI - Image Generation**\n\n"
+        "Recraft создаёт высококачественные изображения в различных стилях.\n\n"
+        "📊 **Параметры:**\n"
+        "• Модель: Recraft V2 (оптимальное соотношение цена/качество)\n"
+        "• Стили: реалистичные, иллюстрации, векторная графика, иконки\n"
+        "• Размеры: 1024x1024 и другие соотношения\n\n"
+        "💰 **Стоимость:** ~2,200 токенов (дешевле DALL-E 3)\n\n"
+        "🎨 **Доступные стили:**\n"
+        "• **Realistic Image** (по умолчанию) - фотореалистичные изображения\n"
+        "• **Digital Illustration** - цифровые иллюстрации\n"
+        "• **Vector Illustration** - векторная графика\n"
+        "• **Icon** - иконки и символы\n\n"
+        "✏️ **Отправьте описание изображения**\n\n"
+        "**Примеры:**\n"
+        "• \"Реалистичный портрет кота в космосе\"\n"
+        "• \"Цифровая иллюстрация дракона в стиле фэнтези\"\n"
+        "• \"Векторная иконка дома в минималистичном стиле\"\n"
+        "• \"Закат на берегу океана с пальмами\""
     )
+
+    await state.set_state(MediaState.waiting_for_image_prompt)
+    await state.update_data(service="recraft")
+
     await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
-    await callback.answer("⚠️ Функционал в разработке", show_alert=False)
+    await callback.answer()
 
 
 # ======================
@@ -316,14 +344,25 @@ async def start_recraft(callback: CallbackQuery):
 @router.callback_query(F.data == "bot.suno")
 async def start_suno(callback: CallbackQuery, state: FSMContext, user: User):
     text = (
-        "Suno AI – Music Generation\n\n"
-        "Suno создаёт уникальную музыку и песни по вашему описанию.\n\n"
-        "Стоимость: ~5,000 токенов за трек\n\n"
-        "Отправьте описание музыки.\n\n"
-        "Примеры:\n"
-        "- Энергичная рок-композиция\n"
-        "- Спокойная джазовая мелодия\n"
-        "- Танцевальный электро-трек"
+        "🎵 **Suno AI - Music Generation**\n\n"
+        "Suno создаёт уникальную музыку и песни по вашему описанию с профессиональным качеством.\n\n"
+        "📊 **Параметры:**\n"
+        "• Модель: V4 (оптимальное качество)\n"
+        "• Длительность: до 4 минут\n"
+        "• Стили: любые музыкальные жанры\n"
+        "• Вокал: мужской/женский или инструментал\n\n"
+        "💰 **Стоимость:** ~5,000 токенов за трек\n\n"
+        "🎼 **Режимы работы:**\n"
+        "• **Custom Mode:** Создаёт песню с указанным стилем и названием\n"
+        "• **Instrumental:** Музыка без вокала\n"
+        "• **With Vocals:** Песня с текстом и вокалом\n\n"
+        "✏️ **Отправьте описание музыки**\n\n"
+        "**Примеры:**\n"
+        "• \"Энергичная рок-композиция с электрогитарой\"\n"
+        "• \"Спокойная джазовая мелодия с саксофоном\"\n"
+        "• \"Танцевальный электро-трек в стиле EDM\"\n"
+        "• \"Романтическая баллада о любви\"\n"
+        "• \"Мощный оркестровый эпик\""
     )
 
     await state.set_state(MediaState.waiting_for_audio_prompt)
@@ -1122,6 +1161,8 @@ async def process_image_prompt(message: Message, state: FSMContext, user: User):
         await process_nano_image(message, user, state)
     elif service_name == "kling_image":
         await process_kling_image(message, user, state)
+    elif service_name == "recraft":
+        await process_recraft_image(message, user, state)
     else:
         await message.answer(
             f"Функция генерации изображений находится в разработке.\n"
@@ -1665,6 +1706,118 @@ async def process_kling_image(message: Message, user: User, state: FSMContext):
             pass
 
     await state.clear()
+
+
+async def process_recraft_image(message: Message, user: User, state: FSMContext):
+    """Process Recraft AI image generation."""
+    data = await state.get_data()
+    prompt = data.get("photo_caption_prompt") or message.text
+
+    estimated_tokens = 2200  # Recraft V2 cost (cheaper than DALL-E 3)
+
+    # Check and reserve tokens
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+        try:
+            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+        except InsufficientTokensError as e:
+            await message.answer(
+                f"❌ Недостаточно токенов для генерации изображения!\n\n"
+                f"Требуется: {estimated_tokens:,} токенов\n"
+                f"Доступно: {e.details['available']:,} токенов\n\n"
+                f"Купите подписку: /start → 💎 Подписка"
+            )
+            await state.clear()
+            return
+
+    # Progress message
+    progress_msg = await message.answer(
+        "🎨 Генерирую изображение с Recraft AI..."
+    )
+
+    recraft_service = RecraftService()
+
+    async def update_progress(text: str):
+        try:
+            await progress_msg.edit_text(text, parse_mode=None)
+        except Exception:
+            pass
+
+    # Generate image
+    result = await recraft_service.generate_image(
+        prompt=prompt,
+        progress_callback=update_progress,
+        model="recraftv2",  # Use V2 for better price
+        style="realistic_image",  # Default style
+        size="1024x1024"
+    )
+
+    if result.success:
+        tokens_used = result.metadata.get("tokens_used", estimated_tokens)
+
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            user_tokens = await sub_service.get_user_total_tokens(user.id)
+
+        # Generate unified notification message
+        info_text = format_generation_message(
+            content_type=CONTENT_TYPES["image"],
+            model_name="Recraft AI",
+            tokens_used=tokens_used,
+            user_tokens=user_tokens,
+            prompt=prompt
+        )
+
+        # Create action keyboard
+        builder = create_action_keyboard(
+            action_text="🎨 Создать новое изображение",
+            action_callback="bot.recraft"
+        )
+
+        try:
+            photo = FSInputFile(result.image_path)
+            await message.answer_photo(
+                photo=photo,
+                caption=info_text,
+                reply_markup=builder.as_markup()
+            )
+
+        except Exception as send_error:
+            logger.error("recraft_image_send_failed", error=str(send_error))
+            try:
+                doc_file = FSInputFile(result.image_path)
+                await message.answer_document(
+                    document=doc_file,
+                    caption=info_text,
+                    reply_markup=builder.as_markup()
+                )
+            except Exception as doc_error:
+                logger.error("recraft_image_send_as_document_failed", error=str(doc_error))
+                await message.answer(
+                    info_text,
+                    reply_markup=builder.as_markup()
+                )
+
+        # Cleanup
+        try:
+            os.remove(result.image_path)
+        except Exception as e:
+            logger.error("recraft_image_cleanup_failed", error=str(e))
+
+        await progress_msg.delete()
+        await state.update_data(photo_caption_prompt=None)
+
+    else:
+        try:
+            await progress_msg.edit_text(
+                f"❌ Ошибка генерации изображения:\n{result.error}",
+                parse_mode=None
+            )
+        except Exception:
+            pass
+
+    # Don't clear state - keep service so user can generate more images
+    await state.update_data(photo_caption_prompt=None)
 
 
 # ======================

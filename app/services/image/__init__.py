@@ -7,6 +7,7 @@ from app.services.image.dalle_service import DalleService
 from app.services.image.gemini_image_service import GeminiImageService
 from app.services.image.nano_banana_service import NanoBananaService
 from app.services.image.kling_image_service import KlingImageService
+from app.services.image.recraft_service import RecraftService
 
 __all__ = [
     "RemoveBgService",
@@ -14,5 +15,6 @@ __all__ = [
     "DalleService",
     "GeminiImageService",
     "NanoBananaService",
-    "KlingImageService"
+    "KlingImageService",
+    "RecraftService"
 ]
