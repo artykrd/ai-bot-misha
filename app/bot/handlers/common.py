@@ -7,6 +7,7 @@ from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message
 from aiogram.filters import Command
 from aiogram.enums import ParseMode
+from aiogram.fsm.context import FSMContext
 
 from app.bot.keyboards.inline import back_to_main_keyboard, main_menu_keyboard, subscription_keyboard
 
