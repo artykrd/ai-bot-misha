@@ -125,7 +125,7 @@ class SunoService(BaseAudioProvider):
             "prompt": prompt,
             "customMode": kwargs.get("custom_mode", True),
             "instrumental": kwargs.get("instrumental", False),
-            "model": kwargs.get("model", "V3_5"),  # V3_5, V4, V4_5, V4_5PLUS, V5
+            "model": kwargs.get("model", "V4"),  # V4, V4_5, V4_5PLUS, V4_5ALL, V5 (V4 - оптимальное соотношение цена/качество)
             "callBackUrl": kwargs.get("callBackUrl", "https://webhook.site/suno-callback")  # Required by API
         }
 
