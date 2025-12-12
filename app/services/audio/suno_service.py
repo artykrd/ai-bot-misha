@@ -193,46 +193,51 @@ class SunoService(BaseAudioProvider):
                 all_completed = True
 
                 for task_id in task_ids:
-                    url = f"{self.BASE_URL}/task/{task_id}"
+                    url = f"{self.BASE_URL}/generate/record-info"
                     headers = {
                         "Authorization": f"Bearer {self.api_key}"
                     }
 
+                    params = {
+                        "taskId": task_id
+                    }
+
                     async with aiohttp.ClientSession() as session:
-                        async with session.get(url, headers=headers) as response:
+                        async with session.get(url, headers=headers, params=params) as response:
                             if response.status != 200:
                                 error_text = await response.text()
                                 raise Exception(f"Status check failed: {response.status} - {error_text}")
 
                             data = await response.json()
 
-                            # Response format: {"code": 200, "data": [...]}
+                            # Response format: {"code": 200, "msg": "success", "data": {"taskId": "...", "status": "...", "response": {"sunoData": [...]}}}
                             if data.get("code") == 200 and "data" in data:
-                                # data is a list of track results
-                                tracks = data["data"] if isinstance(data["data"], list) else [data["data"]]
+                                task_data = data["data"]
+                                status = task_data.get("status", "unknown")
 
-                                for track in tracks:
-                                    status = track.get("status", "unknown")
+                                # Update user if status changed
+                                if status != last_status and progress_callback:
+                                    if status == "PENDING":
+                                        await progress_callback("⏳ Задача в очереди...")
+                                    elif status == "TEXT_SUCCESS" or status == "FIRST_SUCCESS":
+                                        await progress_callback("🎼 Создаю музыку...")
+                                    elif status == "SUCCESS":
+                                        await progress_callback("🎵 Почти готово...")
 
-                                    # Update user if status changed
-                                    if status != last_status and progress_callback:
-                                        if status == "submitted" or status == "queued":
-                                            await progress_callback("⏳ Задача в очереди...")
-                                        elif status == "processing" or status == "streaming":
-                                            await progress_callback("🎼 Создаю музыку...")
-                                        elif status == "complete" or status == "success":
-                                            await progress_callback("🎵 Почти готово...")
+                                last_status = status
 
-                                    last_status = status
+                                # Check if this task is complete
+                                if status == "SUCCESS":
+                                    # Get audio URLs from response.sunoData
+                                    response_data = task_data.get("response", {})
+                                    suno_data = response_data.get("sunoData", [])
 
-                                    # Check if this task is complete
-                                    if status == "complete" or status == "success":
-                                        # Get audio URL from track
-                                        audio_url = track.get("audio_url") or track.get("audioUrl")
+                                    for track in suno_data:
+                                        audio_url = track.get("audioUrl") or track.get("audio_url")
                                         if audio_url:
                                             audio_urls.append(audio_url)
-                                    else:
-                                        all_completed = False
+                                else:
+                                    all_completed = False
 
                 # If all tasks completed, return URLs
                 if all_completed and audio_urls:

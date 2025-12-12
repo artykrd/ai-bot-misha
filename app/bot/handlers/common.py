@@ -177,11 +177,17 @@ async def cmd_nano(message: Message, state):
 
 @router.message(Command("suno"))
 async def cmd_suno(message: Message):
-    """Suno command."""
+    """Suno command - redirect to audio instruments menu."""
+    from app.bot.keyboards.inline import audio_tools_keyboard
+
+    text = """🎙 **Работа с аудио**
+
+__ℹ️ Выберите нейросеть для работы с аудио по кнопке ниже. После выбора – можете сразу отправлять запрос.__"""
+
     await message.answer(
-        "🎵 <b>Suno - создание музыки</b>\n\n⚠️ Функционал в разработке\n\nСтоимость: 20,000 токенов за запрос",
-        reply_markup=main_menu_keyboard(),
-        parse_mode=ParseMode.HTML
+        text,
+        reply_markup=audio_tools_keyboard(),
+        parse_mode=ParseMode.MARKDOWN
     )
 
 
