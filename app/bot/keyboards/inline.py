@@ -558,9 +558,6 @@ def suno_style_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="✏️ Ввести свой стиль", callback_data="suno.custom_style")
     )
     builder.row(
-        InlineKeyboardButton(text="🎵 Создать песню", callback_data="suno.generate_song")
-    )
-    builder.row(
         InlineKeyboardButton(text="⬅️ Назад", callback_data="suno.settings")
     )
 
@@ -593,6 +590,21 @@ def suno_lyrics_choice_keyboard(song_title: str) -> InlineKeyboardMarkup:
 def suno_back_keyboard() -> InlineKeyboardMarkup:
     """Simple back to Suno keyboard."""
     builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Вернуться к Suno", callback_data="bot.suno")
+    )
+    return builder.as_markup()
+
+
+def suno_final_keyboard() -> InlineKeyboardMarkup:
+    """Final screen keyboard with generate button."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="🎵 Создать песню", callback_data="suno.generate_song")
+    )
+    builder.row(
+        InlineKeyboardButton(text="↻ Начать заново", callback_data="suno.step_by_step")
+    )
     builder.row(
         InlineKeyboardButton(text="⬅️ Вернуться к Suno", callback_data="bot.suno")
     )

@@ -19,6 +19,7 @@ from app.bot.keyboards.inline import (
     suno_style_keyboard,
     suno_lyrics_choice_keyboard,
     suno_back_keyboard,
+    suno_final_keyboard,
 )
 from app.bot.states.media import SunoState
 from app.database.models.user import User
@@ -59,6 +60,58 @@ async def calculate_balance_songs(user_id: int, tokens_per_song: int) -> int:
         sub_service = SubscriptionService(session)
         user_tokens = await sub_service.get_user_total_tokens(user_id)
     return user_tokens // tokens_per_song
+
+
+async def show_suno_final_summary(callback_or_message, state: FSMContext):
+    """Show final summary screen before generation."""
+    data = await state.get_data()
+
+    # Get all parameters
+    song_title = data.get("suno_song_title", "Без названия")
+    lyrics = data.get("suno_lyrics", None)
+    style = data.get("suno_style", DEFAULT_SUNO_SETTINGS["style"])
+    model_version = data.get("suno_model_version", DEFAULT_SUNO_SETTINGS["model_version"])
+    is_instrumental = data.get("suno_is_instrumental", DEFAULT_SUNO_SETTINGS["is_instrumental"])
+    melody_prompt = data.get("suno_melody_prompt", None)
+
+    # Determine type and voice
+    if is_instrumental:
+        song_type = "инструментал"
+        voice = "—"
+    else:
+        song_type = "песня"
+        voice = "мужской"  # Default, can be enhanced later
+
+    # Build summary text
+    text = f"⚡ **Мы готовы к созданию, давайте всё проверим:**\n\n"
+    text += f"**Название:** {song_title}\n"
+    text += f"**Тип:** {song_type}\n"
+    text += f"**Голос:** {voice}\n"
+    text += f"**Стили:** {style}\n\n"
+
+    # Add lyrics or melody prompt
+    if is_instrumental and melody_prompt:
+        text += f"🎹 **Описание мелодии:**\n{melody_prompt[:300]}{'...' if len(melody_prompt) > 300 else ''}\n\n"
+    elif lyrics:
+        text += f"📜 **Текст:**\n{lyrics[:500]}{'...' if len(lyrics) > 500 else ''}\n\n"
+
+    # Show version info
+    text += f"📀 Версия модели: {model_version}"
+
+    # Send or edit message
+    if isinstance(callback_or_message, CallbackQuery):
+        await callback_or_message.message.edit_text(
+            text,
+            reply_markup=suno_final_keyboard(),
+            parse_mode=ParseMode.MARKDOWN
+        )
+        await callback_or_message.answer()
+    else:
+        await callback_or_message.answer(
+            text,
+            reply_markup=suno_final_keyboard(),
+            parse_mode=ParseMode.MARKDOWN
+        )
 
 
 @router.callback_query(F.data == "bot.suno")
@@ -192,12 +245,12 @@ async def suno_change_style(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("suno.set_style_"))
 async def suno_set_style(callback: CallbackQuery, state: FSMContext, user: User):
-    """Set music style."""
+    """Set music style and show final summary."""
     style = callback.data.replace("suno.set_style_", "")
     await state.update_data(suno_style=style)
 
-    await callback.answer(f"✅ Стиль изменен на '{style}'")
-    await suno_settings(callback, state, user)
+    # Show final summary screen
+    await show_suno_final_summary(callback, state)
 
 
 @router.callback_query(F.data == "suno.custom_style")
@@ -219,32 +272,12 @@ async def suno_custom_style(callback: CallbackQuery, state: FSMContext):
 
 @router.message(SunoState.waiting_for_style, F.text)
 async def process_custom_style(message: Message, state: FSMContext, user: User):
-    """Process custom style input."""
+    """Process custom style input and show final summary."""
     style = message.text.strip()
     await state.update_data(suno_style=style)
 
-    await message.answer(f"✅ Стиль установлен: {style}")
-
-    # Show settings menu again
-    settings = await get_suno_settings(state)
-    type_text = "инструментал (без слов)" if settings["is_instrumental"] else "с текстом песни"
-
-    text = (
-        f"⚙️ **Параметры Suno**\n\n"
-        f"📀 Версия: **{settings['model_version']}**\n"
-        f"🎵 Тип: **{type_text}**\n"
-        f"🎨 Стиль: **{settings['style']}**"
-    )
-
-    await message.answer(
-        text,
-        reply_markup=suno_settings_keyboard(
-            model_version=settings["model_version"],
-            is_instrumental=settings["is_instrumental"],
-            style=settings["style"]
-        ),
-        parse_mode=ParseMode.MARKDOWN
-    )
+    # Show final summary screen
+    await show_suno_final_summary(message, state)
 
 
 # ======================
