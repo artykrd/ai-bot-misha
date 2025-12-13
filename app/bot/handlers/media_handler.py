@@ -37,6 +37,92 @@ router = Router(name="media")
 
 
 # ======================
+# UTILITY FUNCTIONS
+# ======================
+
+async def cleanup_temp_images(state: FSMContext):
+    """Clean up temporary image files from state."""
+    data = await state.get_data()
+    for key in ["image_path", "reference_image_path"]:
+        file_path = data.get(key)
+        if file_path and os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+                logger.info("temp_image_cleaned", path=file_path)
+            except Exception as e:
+                logger.error("temp_image_cleanup_failed", path=file_path, error=str(e))
+
+
+def resize_image_if_needed(image_path: str, max_size_mb: float = 2.0, max_dimension: int = 2048) -> str:
+    """
+    Resize image if it's too large.
+
+    Args:
+        image_path: Path to the image file
+        max_size_mb: Maximum file size in MB
+        max_dimension: Maximum width or height in pixels
+
+    Returns:
+        Path to the resized image (same as input if no resize needed)
+    """
+    try:
+        file_size_mb = os.path.getsize(image_path) / (1024 * 1024)
+
+        img = Image.open(image_path)
+        needs_resize = False
+
+        # Check if file size is too large
+        if file_size_mb > max_size_mb:
+            needs_resize = True
+            logger.info("image_too_large", size_mb=file_size_mb)
+
+        # Check if dimensions are too large
+        if img.width > max_dimension or img.height > max_dimension:
+            needs_resize = True
+            logger.info("image_dimensions_too_large", width=img.width, height=img.height)
+
+        if not needs_resize:
+            return image_path
+
+        # Calculate new dimensions maintaining aspect ratio
+        ratio = min(max_dimension / img.width, max_dimension / img.height, 1.0)
+        new_width = int(img.width * ratio)
+        new_height = int(img.height * ratio)
+
+        # Convert RGBA to RGB if needed
+        if img.mode in ("RGBA", "LA", "P"):
+            background = Image.new("RGB", img.size, (255, 255, 255))
+            if img.mode == "P":
+                img = img.convert("RGBA")
+            background.paste(
+                img,
+                mask=img.split()[-1] if img.mode == "RGBA" else None
+            )
+            img = background
+
+        # Resize image
+        img_resized = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+        # Save with optimization
+        img_resized.save(image_path, "JPEG", quality=85, optimize=True)
+
+        new_size_mb = os.path.getsize(image_path) / (1024 * 1024)
+        logger.info(
+            "image_resized",
+            old_size_mb=file_size_mb,
+            new_size_mb=new_size_mb,
+            old_dimensions=f"{img.width}x{img.height}",
+            new_dimensions=f"{new_width}x{new_height}"
+        )
+
+        return image_path
+
+    except Exception as e:
+        logger.error("image_resize_failed", error=str(e))
+        return image_path
+
+
+# ======================
 # VIDEO SERVICES
 # ======================
 
@@ -175,6 +261,9 @@ async def start_kling_choice(callback: CallbackQuery, state: FSMContext, user: U
 @router.callback_query(F.data == "bot.kling_image")
 async def start_kling_image(callback: CallbackQuery, state: FSMContext, user: User):
     """Start Kling image generation."""
+    # Clean up any old images
+    await cleanup_temp_images(state)
+
     text = (
         "🎞 **Kling AI - Генерация изображений**\n\n"
         "Kling создаёт высококачественные изображения.\n\n"
@@ -189,7 +278,7 @@ async def start_kling_image(callback: CallbackQuery, state: FSMContext, user: Us
     )
 
     await state.set_state(MediaState.waiting_for_image_prompt)
-    await state.update_data(service="kling_image", reference_image_path=None)
+    await state.update_data(service="kling_image", reference_image_path=None, photo_caption_prompt=None)
 
     await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
     await callback.answer()
@@ -223,6 +312,9 @@ async def start_kling_video(callback: CallbackQuery, state: FSMContext, user: Us
 
 @router.callback_query(F.data == "bot.gpt_image")
 async def start_gpt_image(callback: CallbackQuery, state: FSMContext, user: User):
+    # Clean up any old images
+    await cleanup_temp_images(state)
+
     text = (
         "**GPT Image (DALL-E 3)**\n\n"
         "Создайте уникальные изображения по текстовому описанию.\n\n"
@@ -239,7 +331,7 @@ async def start_gpt_image(callback: CallbackQuery, state: FSMContext, user: User
     )
 
     await state.set_state(MediaState.waiting_for_image_prompt)
-    await state.update_data(service="dalle")
+    await state.update_data(service="dalle", reference_image_path=None, photo_caption_prompt=None)
 
     await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
     await callback.answer()
@@ -247,6 +339,9 @@ async def start_gpt_image(callback: CallbackQuery, state: FSMContext, user: User
 
 @router.callback_query(F.data == "bot.nano")
 async def start_nano(callback: CallbackQuery, state: FSMContext, user: User):
+    # Clean up any old images
+    await cleanup_temp_images(state)
+
     text = (
         "🍌 **Nano Banana (Gemini 2.5 Flash Image)**\n\n"
         "Gemini 2.5 Flash Image создаёт изображения по текстовому описанию.\n\n"
@@ -268,7 +363,7 @@ async def start_nano(callback: CallbackQuery, state: FSMContext, user: User):
     )
 
     await state.set_state(MediaState.waiting_for_image_prompt)
-    await state.update_data(service="nano_banana")
+    await state.update_data(service="nano_banana", reference_image_path=None, photo_caption_prompt=None)
 
     await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
     await callback.answer()
@@ -309,6 +404,9 @@ async def start_stable_diffusion(callback: CallbackQuery):
 @router.callback_query(F.data == "bot.recraft")
 async def start_recraft(callback: CallbackQuery, state: FSMContext, user: User):
     """Recraft AI image generation."""
+    # Clean up any old images
+    await cleanup_temp_images(state)
+
     text = (
         "🎨 **Recraft AI - Image Generation**\n\n"
         "Recraft создаёт высококачественные изображения в различных стилях.\n\n"
@@ -331,7 +429,7 @@ async def start_recraft(callback: CallbackQuery, state: FSMContext, user: User):
     )
 
     await state.set_state(MediaState.waiting_for_image_prompt)
-    await state.update_data(service="recraft")
+    await state.update_data(service="recraft", reference_image_path=None, photo_caption_prompt=None)
 
     await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
     await callback.answer()
@@ -341,35 +439,7 @@ async def start_recraft(callback: CallbackQuery, state: FSMContext, user: User):
 # AUDIO SERVICES
 # ======================
 
-@router.callback_query(F.data == "bot.suno")
-async def start_suno(callback: CallbackQuery, state: FSMContext, user: User):
-    text = (
-        "🎵 **Suno AI - Music Generation**\n\n"
-        "Suno создаёт уникальную музыку и песни по вашему описанию с профессиональным качеством.\n\n"
-        "📊 **Параметры:**\n"
-        "• Модель: V4 (оптимальное качество)\n"
-        "• Длительность: до 4 минут\n"
-        "• Стили: любые музыкальные жанры\n"
-        "• Вокал: мужской/женский или инструментал\n\n"
-        "💰 **Стоимость:** ~5,000 токенов за трек\n\n"
-        "🎼 **Режимы работы:**\n"
-        "• **Custom Mode:** Создаёт песню с указанным стилем и названием\n"
-        "• **Instrumental:** Музыка без вокала\n"
-        "• **With Vocals:** Песня с текстом и вокалом\n\n"
-        "✏️ **Отправьте описание музыки**\n\n"
-        "**Примеры:**\n"
-        "• \"Энергичная рок-композиция с электрогитарой\"\n"
-        "• \"Спокойная джазовая мелодия с саксофоном\"\n"
-        "• \"Танцевальный электро-трек в стиле EDM\"\n"
-        "• \"Романтическая баллада о любви\"\n"
-        "• \"Мощный оркестровый эпик\""
-    )
-
-    await state.set_state(MediaState.waiting_for_audio_prompt)
-    await state.update_data(service="suno")
-
-    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
-    await callback.answer()
+# Note: Suno handler moved to suno_handler.py for better organization and step-by-step creation
 
 
 @router.callback_query(F.data == "bot.whisper")
@@ -1113,6 +1183,9 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
     temp_path = temp_dir / f"image_input_{photo.file_id}.jpg"
 
     await message.bot.download_file(file.file_path, temp_path)
+
+    # Resize image if needed (before sending to API)
+    resize_image_if_needed(str(temp_path), max_size_mb=2.0, max_dimension=2048)
 
     # Save image path to state
     await state.update_data(reference_image_path=str(temp_path.resolve()))
