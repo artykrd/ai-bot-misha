@@ -8,6 +8,7 @@ Suno music generation handlers with step-by-step creation.
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
+from aiogram.enums import ParseMode
 import os
 
 from app.bot.keyboards.inline import (
@@ -90,7 +91,8 @@ async def start_suno(callback: CallbackQuery, state: FSMContext, user: User):
             style=settings["style"],
             balance_songs=balance_songs,
             tokens_per_song=settings["tokens_per_song"]
-        )
+        ),
+        parse_mode=ParseMode.MARKDOWN
     )
     await callback.answer()
 
@@ -118,7 +120,8 @@ async def suno_settings(callback: CallbackQuery, state: FSMContext, user: User):
             model_version=settings["model_version"],
             is_instrumental=settings["is_instrumental"],
             style=settings["style"]
-        )
+        ),
+        parse_mode=ParseMode.MARKDOWN
     )
     await callback.answer()
 
@@ -135,7 +138,7 @@ async def suno_change_version(callback: CallbackQuery, state: FSMContext):
         "• **V4** - улучшенное качество вокала, до 4 минут"
     )
 
-    await callback.message.edit_text(text, reply_markup=suno_version_keyboard())
+    await callback.message.edit_text(text, reply_markup=suno_version_keyboard(), parse_mode=ParseMode.MARKDOWN)
     await callback.answer()
 
 
@@ -158,7 +161,7 @@ async def suno_change_type(callback: CallbackQuery, state: FSMContext):
         "• **Инструментал (без слов)** - только музыка без вокала"
     )
 
-    await callback.message.edit_text(text, reply_markup=suno_type_keyboard())
+    await callback.message.edit_text(text, reply_markup=suno_type_keyboard(), parse_mode=ParseMode.MARKDOWN)
     await callback.answer()
 
 
@@ -183,7 +186,7 @@ async def suno_change_style(callback: CallbackQuery, state: FSMContext):
     """Show style selection menu."""
     text = "🎨 **Выберите стиль музыки**\n\nВыберите из предложенных вариантов или введите свой:"
 
-    await callback.message.edit_text(text, reply_markup=suno_style_keyboard())
+    await callback.message.edit_text(text, reply_markup=suno_style_keyboard(), parse_mode=ParseMode.MARKDOWN)
     await callback.answer()
 
 
@@ -210,7 +213,7 @@ async def suno_custom_style(callback: CallbackQuery, state: FSMContext):
     )
 
     await state.set_state(SunoState.waiting_for_style)
-    await callback.message.edit_text(text, reply_markup=suno_back_keyboard())
+    await callback.message.edit_text(text, reply_markup=suno_back_keyboard(), parse_mode=ParseMode.MARKDOWN)
     await callback.answer()
 
 
@@ -239,7 +242,8 @@ async def process_custom_style(message: Message, state: FSMContext, user: User):
             model_version=settings["model_version"],
             is_instrumental=settings["is_instrumental"],
             style=settings["style"]
-        )
+        ),
+        parse_mode=ParseMode.MARKDOWN
     )
 
 
@@ -256,7 +260,7 @@ async def suno_step_by_step(callback: CallbackQuery, state: FSMContext):
     )
 
     await state.set_state(SunoState.waiting_for_song_title)
-    await callback.message.edit_text(text, reply_markup=suno_back_keyboard())
+    await callback.message.edit_text(text, reply_markup=suno_back_keyboard(), parse_mode=ParseMode.MARKDOWN)
     await callback.answer()
 
 
@@ -276,7 +280,7 @@ async def process_song_title(message: Message, state: FSMContext):
         f"– **Создать без слов**: вы сможете управлять мелодией с помощью промпта или сразу перейти к выбору стиля."
     )
 
-    await message.answer(text, reply_markup=suno_lyrics_choice_keyboard(song_title))
+    await message.answer(text, reply_markup=suno_lyrics_choice_keyboard(song_title), parse_mode=ParseMode.MARKDOWN)
 
 
 @router.callback_query(F.data == "suno.lyrics_by_title")
@@ -306,7 +310,7 @@ async def suno_lyrics_by_title(callback: CallbackQuery, state: FSMContext, user:
             f"Теперь выберите стиль или начните генерацию."
         )
 
-        await progress_msg.edit_text(text, reply_markup=suno_style_keyboard())
+        await progress_msg.edit_text(text, reply_markup=suno_style_keyboard(), parse_mode=ParseMode.MARKDOWN)
 
     except Exception as e:
         logger.error("suno_lyrics_generation_failed", error=str(e))
@@ -330,7 +334,7 @@ async def suno_lyrics_by_description(callback: CallbackQuery, state: FSMContext)
     )
 
     await state.set_state(SunoState.waiting_for_lyrics_description)
-    await callback.message.edit_text(text, reply_markup=suno_back_keyboard())
+    await callback.message.edit_text(text, reply_markup=suno_back_keyboard(), parse_mode=ParseMode.MARKDOWN)
     await callback.answer()
 
 
@@ -378,7 +382,7 @@ async def process_lyrics_description(message: Message, state: FSMContext, user: 
             f"Теперь выберите стиль или начните генерацию."
         )
 
-        await progress_msg.edit_text(text, reply_markup=suno_style_keyboard())
+        await progress_msg.edit_text(text, reply_markup=suno_style_keyboard(), parse_mode=ParseMode.MARKDOWN)
 
     except Exception as e:
         logger.error("suno_lyrics_generation_failed", error=str(e))
@@ -402,7 +406,7 @@ async def suno_lyrics_custom(callback: CallbackQuery, state: FSMContext):
     )
 
     await state.set_state(SunoState.waiting_for_lyrics_text)
-    await callback.message.edit_text(text, reply_markup=suno_back_keyboard())
+    await callback.message.edit_text(text, reply_markup=suno_back_keyboard(), parse_mode=ParseMode.MARKDOWN)
     await callback.answer()
 
 
@@ -433,7 +437,7 @@ async def suno_lyrics_instrumental(callback: CallbackQuery, state: FSMContext):
 
     await state.update_data(suno_is_instrumental=True, suno_lyrics=None)
     await state.set_state(SunoState.waiting_for_melody_prompt)
-    await callback.message.edit_text(text, reply_markup=suno_style_keyboard())
+    await callback.message.edit_text(text, reply_markup=suno_style_keyboard(), parse_mode=ParseMode.MARKDOWN)
     await callback.answer()
 
 
@@ -447,3 +451,126 @@ async def process_melody_prompt(message: Message, state: FSMContext):
         f"✅ Описание мелодии сохранено! Теперь выберите стиль:",
         reply_markup=suno_style_keyboard()
     )
+
+
+# ======================
+# SONG GENERATION
+# ======================
+
+@router.callback_query(F.data == "suno.generate_song")
+async def generate_suno_song(callback: CallbackQuery, state: FSMContext, user: User):
+    """Generate song with Suno AI."""
+    data = await state.get_data()
+
+    # Get all required parameters
+    song_title = data.get("suno_song_title", "Untitled")
+    lyrics = data.get("suno_lyrics", None)
+    style = data.get("suno_style", DEFAULT_SUNO_SETTINGS["style"])
+    model_version = data.get("suno_model_version", DEFAULT_SUNO_SETTINGS["model_version"])
+    is_instrumental = data.get("suno_is_instrumental", DEFAULT_SUNO_SETTINGS["is_instrumental"])
+    melody_prompt = data.get("suno_melody_prompt", None)
+
+    # Validate required data
+    if not is_instrumental and not lyrics:
+        await callback.answer("❌ Не указан текст песни!", show_alert=True)
+        return
+
+    # Check tokens
+    tokens_cost = DEFAULT_SUNO_SETTINGS["tokens_per_song"]
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+        try:
+            await sub_service.check_and_use_tokens(user.id, tokens_cost)
+        except InsufficientTokensError as e:
+            await callback.answer(
+                f"❌ Недостаточно токенов!\n\nТребуется: {tokens_cost:,}\nДоступно: {e.details['available']:,}",
+                show_alert=True
+            )
+            return
+
+    progress_msg = await callback.message.edit_text("🎵 Генерирую песню... Это может занять 1-2 минуты.")
+
+    try:
+        suno_service = SunoService()
+
+        # Prepare generation parameters
+        generation_params = {
+            "title": song_title,
+            "style": style,
+            "model_version": model_version.lower().replace(".", "-").replace(" ", "-"),
+        }
+
+        if is_instrumental and melody_prompt:
+            generation_params["prompt"] = melody_prompt
+            generation_params["instrumental"] = True
+        elif lyrics:
+            generation_params["lyrics"] = lyrics
+            generation_params["instrumental"] = False
+
+        # Generate song
+        result = await suno_service.generate_music(**generation_params)
+
+        if result.success:
+            await progress_msg.edit_text(
+                f"✅ **Песня создана!**\n\n"
+                f"🎵 Название: {song_title}\n"
+                f"🎨 Стиль: {style}\n"
+                f"📀 Версия: {model_version}\n\n"
+                f"Отправляю файлы...",
+                parse_mode=ParseMode.MARKDOWN
+            )
+
+            # Send audio file(s)
+            if result.audio_path:
+                await callback.message.answer_audio(
+                    audio=result.audio_path,
+                    title=song_title,
+                    performer="Suno AI"
+                )
+
+            # Send cover image if available
+            if result.image_path and os.path.exists(result.image_path):
+                await callback.message.answer_photo(photo=result.image_path)
+
+            await progress_msg.delete()
+            await state.clear()
+
+            logger.info(
+                "suno_song_generated",
+                user_id=user.id,
+                title=song_title,
+                style=style,
+                model_version=model_version,
+                is_instrumental=is_instrumental,
+                tokens=tokens_cost
+            )
+        else:
+            await progress_msg.edit_text(
+                f"❌ Ошибка генерации: {result.error}\n\n"
+                f"Токены возвращены на ваш счет."
+            )
+
+            # Refund tokens
+            async with async_session_maker() as session:
+                sub_service = SubscriptionService(session)
+                await sub_service.add_tokens(user.id, tokens_cost)
+
+            logger.error(
+                "suno_generation_failed",
+                user_id=user.id,
+                error=result.error
+            )
+
+    except Exception as e:
+        logger.error("suno_generation_exception", user_id=user.id, error=str(e))
+        await progress_msg.edit_text(
+            f"❌ Произошла ошибка при генерации: {str(e)}\n\n"
+            f"Токены возвращены на ваш счет."
+        )
+
+        # Refund tokens
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            await sub_service.add_tokens(user.id, tokens_cost)
+
+    await callback.answer()
