@@ -297,6 +297,16 @@ class NanoBananaService(BaseImageProvider):
                 if not response.parts or len(response.parts) == 0:
                     # Check if response was blocked by safety filters
                     finish_reason = getattr(response, 'finish_reason', None)
+
+                    # Log response details for debugging
+                    logger.warning(
+                        "nano_banana_empty_response",
+                        finish_reason=str(finish_reason),
+                        has_parts=bool(response.parts),
+                        parts_count=len(response.parts) if response.parts else 0,
+                        response_attrs=dir(response)[:20]  # First 20 attributes
+                    )
+
                     if finish_reason:
                         error_msg = _get_finish_reason_message(finish_reason)
                     else:
@@ -317,6 +327,15 @@ class NanoBananaService(BaseImageProvider):
                 if not image_part:
                     # Check finish reason for more details
                     finish_reason = getattr(response, 'finish_reason', None)
+
+                    # Log for debugging
+                    logger.warning(
+                        "nano_banana_no_image_part",
+                        finish_reason=str(finish_reason),
+                        parts_count=len(response.parts),
+                        parts_types=[type(p).__name__ for p in response.parts[:3]]
+                    )
+
                     if finish_reason:
                         error_msg = _get_finish_reason_message(finish_reason)
                     else:
