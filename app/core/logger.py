@@ -6,6 +6,8 @@ import logging
 import sys
 from pathlib import Path
 from typing import Any
+from logging.handlers import TimedRotatingFileHandler
+from datetime import datetime
 
 import structlog
 from structlog.types import EventDict, Processor
@@ -30,11 +32,32 @@ def setup_logging() -> None:
     # Determine log level
     log_level = getattr(logging, settings.log_level.upper(), logging.INFO)
 
+    # Create handlers
+    handlers = []
+
+    # Console handler (stdout)
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(log_level)
+    handlers.append(console_handler)
+
+    # File handler with daily rotation
+    file_handler = TimedRotatingFileHandler(
+        filename=log_dir / "bot.log",
+        when="midnight",  # Rotate at midnight
+        interval=1,  # Every 1 day
+        backupCount=30,  # Keep 30 days of logs
+        encoding="utf-8",
+    )
+    file_handler.setLevel(log_level)
+    # Add date suffix to rotated files
+    file_handler.suffix = "%Y-%m-%d"
+    handlers.append(file_handler)
+
     # Configure standard logging
     logging.basicConfig(
         format="%(message)s",
         level=log_level,
-        stream=sys.stdout,
+        handlers=handlers,
     )
 
     # Processors for structlog

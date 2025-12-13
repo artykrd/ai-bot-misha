@@ -1385,9 +1385,8 @@ async def process_dalle_image(message: Message, user: User, state: FSMContext):
             # Ignore errors when message is not modified
             pass
 
-    # Don't clear state - keep service so user can generate more images
-    # Just clear reference_image_path and photo_caption_prompt
-    await state.update_data(reference_image_path=None, photo_caption_prompt=None)
+    # Clear state after generation (success or failure)
+    await state.clear()
 
 
 async def process_gemini_image(message: Message, user: User, state: FSMContext):
@@ -1630,7 +1629,6 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
                 logger.error("reference_image_cleanup_failed", error=str(e))
 
         await progress_msg.delete()
-        await state.update_data(reference_image_path=None, photo_caption_prompt=None)
 
     else:
         if reference_image_path and os.path.exists(reference_image_path):
@@ -1646,6 +1644,9 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
             )
         except Exception:
             pass
+
+    # Clear state after generation (success or failure)
+    await state.clear()
 
 
 async def process_kling_image(message: Message, user: User, state: FSMContext):
@@ -1761,7 +1762,6 @@ async def process_kling_image(message: Message, user: User, state: FSMContext):
                 logger.error("reference_image_cleanup_failed", error=str(e))
 
         await progress_msg.delete()
-        await state.update_data(reference_image_path=None, photo_caption_prompt=None)
 
     else:
         if reference_image_path and os.path.exists(reference_image_path):

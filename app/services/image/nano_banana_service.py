@@ -303,9 +303,16 @@ class NanoBananaService(BaseImageProvider):
                         pil_image.save(str(image_path), 'PNG')
                     else:
                         # Custom image object - convert to real PIL Image via buffer
-                        # First save to buffer
+                        # Try different methods to save custom image object
                         buffer = io.BytesIO()
-                        pil_image.save(buffer, format='PNG')
+                        try:
+                            # Try with format parameter first
+                            pil_image.save(buffer, format='PNG')
+                        except TypeError:
+                            # If format parameter not supported, try without it
+                            buffer = io.BytesIO()
+                            pil_image.save(buffer, 'PNG')
+
                         buffer.seek(0)
 
                         # Load as real PIL Image
