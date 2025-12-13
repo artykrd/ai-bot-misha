@@ -296,7 +296,16 @@ class NanoBananaService(BaseImageProvider):
                 # Response contains parts with images
                 if not response.parts or len(response.parts) == 0:
                     # Check if response was blocked by safety filters
-                    finish_reason = getattr(response, 'finish_reason', None)
+                    # Try to get finish_reason from different locations
+                    finish_reason = None
+
+                    # Check direct attribute
+                    if hasattr(response, 'finish_reason') and response.finish_reason:
+                        finish_reason = response.finish_reason
+                    # Check candidates
+                    elif hasattr(response, 'candidates') and response.candidates:
+                        if len(response.candidates) > 0 and hasattr(response.candidates[0], 'finish_reason'):
+                            finish_reason = response.candidates[0].finish_reason
 
                     # Log response details for debugging
                     logger.warning(
@@ -304,7 +313,8 @@ class NanoBananaService(BaseImageProvider):
                         finish_reason=str(finish_reason),
                         has_parts=bool(response.parts),
                         parts_count=len(response.parts) if response.parts else 0,
-                        response_attrs=dir(response)[:20]  # First 20 attributes
+                        has_candidates=hasattr(response, 'candidates'),
+                        candidates_count=len(response.candidates) if hasattr(response, 'candidates') and response.candidates else 0
                     )
 
                     if finish_reason:
@@ -326,7 +336,16 @@ class NanoBananaService(BaseImageProvider):
 
                 if not image_part:
                     # Check finish reason for more details
-                    finish_reason = getattr(response, 'finish_reason', None)
+                    # Try to get finish_reason from different locations
+                    finish_reason = None
+
+                    # Check direct attribute
+                    if hasattr(response, 'finish_reason') and response.finish_reason:
+                        finish_reason = response.finish_reason
+                    # Check candidates
+                    elif hasattr(response, 'candidates') and response.candidates:
+                        if len(response.candidates) > 0 and hasattr(response.candidates[0], 'finish_reason'):
+                            finish_reason = response.candidates[0].finish_reason
 
                     # Log for debugging
                     logger.warning(
