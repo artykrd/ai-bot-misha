@@ -197,8 +197,17 @@ async def show_main_menu(callback: CallbackQuery, user: User):
 – **Whisper** – расшифровка голосовых сообщений;
 – **TTS** – озвучка текста."""
 
-    await callback.message.edit_text(
-        welcome_text,
-        reply_markup=main_menu_keyboard()
-    )
+    # Check if message has photo (e.g., after image generation)
+    # If so, delete and send new message instead of editing
+    if callback.message.photo:
+        await callback.message.delete()
+        await callback.message.answer(
+            welcome_text,
+            reply_markup=main_menu_keyboard()
+        )
+    else:
+        await callback.message.edit_text(
+            welcome_text,
+            reply_markup=main_menu_keyboard()
+        )
     await callback.answer()
