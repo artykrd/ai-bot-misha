@@ -1173,6 +1173,15 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
     data = await state.get_data()
     service_name = data.get("service", "nano_banana")
 
+    # Clean up old reference image if exists
+    old_reference_path = data.get("reference_image_path")
+    if old_reference_path and os.path.exists(old_reference_path):
+        try:
+            os.remove(old_reference_path)
+            logger.info("old_reference_image_cleaned", path=old_reference_path)
+        except Exception as e:
+            logger.error("old_reference_image_cleanup_failed", path=old_reference_path, error=str(e))
+
     # Download the photo
     photo = message.photo[-1]
     file = await message.bot.get_file(photo.file_id)
@@ -1187,7 +1196,7 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
     # Resize image if needed (before sending to API)
     resize_image_if_needed(str(temp_path), max_size_mb=2.0, max_dimension=2048)
 
-    # Save image path to state
+    # Save NEW image path to state
     await state.update_data(reference_image_path=str(temp_path.resolve()))
 
     service_display = {
