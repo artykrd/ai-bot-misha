@@ -38,8 +38,9 @@ ENV/
 *~
 
 # Logs
-logs/
-*.log
+logs/*.log
+logs/*.log.*
+!logs/.gitignore
 
 # Database
 *.db
