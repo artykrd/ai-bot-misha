@@ -280,7 +280,7 @@ async def start_kling_image(callback: CallbackQuery, state: FSMContext, user: Us
     await state.set_state(MediaState.waiting_for_image_prompt)
     await state.update_data(service="kling_image", reference_image_path=None, photo_caption_prompt=None)
 
-    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
+    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard(), parse_mode="Markdown")
     await callback.answer()
 
 
@@ -365,7 +365,7 @@ async def start_nano(callback: CallbackQuery, state: FSMContext, user: User):
     await state.set_state(MediaState.waiting_for_image_prompt)
     await state.update_data(service="nano_banana", reference_image_path=None, photo_caption_prompt=None)
 
-    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
+    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard(), parse_mode="Markdown")
     await callback.answer()
 
 
@@ -431,7 +431,7 @@ async def start_recraft(callback: CallbackQuery, state: FSMContext, user: User):
     await state.set_state(MediaState.waiting_for_image_prompt)
     await state.update_data(service="recraft", reference_image_path=None, photo_caption_prompt=None)
 
-    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
+    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard(), parse_mode="Markdown")
     await callback.answer()
 
 

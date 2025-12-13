@@ -96,11 +96,11 @@ MODEL_ACTIONS = {
     },
     "nano_banana": {
         "text": "🎨 Создать новое изображение",
-        "callback": "bot.nano_banana"
+        "callback": "bot.nano"
     },
     "dalle": {
         "text": "🎨 Создать новое изображение",
-        "callback": "bot.dalle"
+        "callback": "bot.gpt_image"
     },
     "suno": {
         "text": "🎵 Создать новую музыку",
