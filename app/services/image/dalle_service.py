@@ -35,6 +35,38 @@ def _get_openai():
         return None
 
 
+def _get_dalle_error_message(error: Exception) -> str:
+    """Get user-friendly error message for DALL-E errors."""
+    error_str = str(error).lower()
+
+    # Check for specific error types
+    if "content_policy_violation" in error_str or "safety system" in error_str:
+        return (
+            "🛡️ Запрос отклонен системой безопасности OpenAI.\n\n"
+            "Ваш промпт может содержать контент, который не разрешен политикой безопасности. "
+            "Попробуйте:\n"
+            "• Изменить формулировку промпта\n"
+            "• Сделать описание менее детальным\n"
+            "• Использовать другие слова\n\n"
+            "Если вы считаете это ошибкой, попробуйте отправить запрос повторно."
+        )
+
+    if "billing" in error_str or "quota" in error_str or "insufficient" in error_str:
+        return "💳 Проблема с биллингом OpenAI. Обратитесь к администратору."
+
+    if "rate_limit" in error_str or "too many requests" in error_str:
+        return "⏱️ Превышен лимит запросов. Попробуйте через минуту."
+
+    if "invalid" in error_str and "size" in error_str:
+        return "📐 Неверный размер изображения. Попробуйте другой размер."
+
+    if "timeout" in error_str:
+        return "⏰ Превышено время ожидания. Попробуйте еще раз."
+
+    # Return original error for unknown cases
+    return f"❌ Ошибка DALL-E: {error}"
+
+
 class DalleService(BaseImageProvider):
     """OpenAI DALL-E API integration for image generation."""
 
@@ -159,11 +191,11 @@ class DalleService(BaseImageProvider):
             )
 
         except Exception as e:
-            error_msg = str(e)
-            logger.error("dalle_image_generation_failed", error=error_msg, prompt=prompt[:100])
+            error_msg = _get_dalle_error_message(e)
+            logger.error("dalle_image_generation_failed", error=str(e), prompt=prompt[:100])
 
             if progress_callback:
-                await progress_callback(f"❌ Ошибка: {error_msg}")
+                await progress_callback(f"❌ {error_msg}")
 
             return ImageResponse(
                 success=False,
