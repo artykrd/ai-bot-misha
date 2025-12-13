@@ -37,6 +37,33 @@ def _get_genai():
         return None
 
 
+def _get_finish_reason_message(finish_reason: str) -> str:
+    """Get user-friendly error message based on finish_reason."""
+    reason_str = str(finish_reason).upper()
+
+    # Map finish reasons to user-friendly messages
+    reason_messages = {
+        "SAFETY": "🛡️ Генерация заблокирована фильтром безопасности. Попробуйте изменить промпт.",
+        "BLOCKED_REASON": "🛡️ Запрос заблокирован. Попробуйте изменить формулировку.",
+        "RECITATION": "📋 Запрос содержит защищенный контент. Попробуйте другой промпт.",
+        "IMAGE_OTHER": "⚠️ Не удалось сгенерировать изображение. Это может быть из-за:\n"
+                       "• Сложности промпта или референсного изображения\n"
+                       "• Технической проблемы на стороне API\n"
+                       "• Несовместимости параметров\n\n"
+                       "Попробуйте упростить промпт или использовать другое изображение.",
+        "MAX_TOKENS": "📝 Превышен лимит токенов. Попробуйте короче промпт.",
+        "OTHER": "⚠️ Генерация прервана. Попробуйте изменить параметры запроса."
+    }
+
+    # Check for specific reasons
+    for key, message in reason_messages.items():
+        if key in reason_str:
+            return message
+
+    # Default message with finish_reason for debugging
+    return f"⚠️ Генерация прервана (причина: {finish_reason}). Попробуйте изменить промпт или изображение."
+
+
 class NanoBananaService(BaseImageProvider):
     """
     Nano Banana - Gemini 2.5 Flash Image generation via Gemini API.
@@ -271,7 +298,7 @@ class NanoBananaService(BaseImageProvider):
                     # Check if response was blocked by safety filters
                     finish_reason = getattr(response, 'finish_reason', None)
                     if finish_reason:
-                        error_msg = f"Генерация заблокирована (finish_reason: {finish_reason}). Попробуйте изменить промпт или изображение."
+                        error_msg = _get_finish_reason_message(finish_reason)
                     else:
                         error_msg = "API не сгенерировал изображение. Попробуйте изменить промпт."
                     raise ValueError(error_msg)
@@ -291,7 +318,7 @@ class NanoBananaService(BaseImageProvider):
                     # Check finish reason for more details
                     finish_reason = getattr(response, 'finish_reason', None)
                     if finish_reason:
-                        error_msg = f"Генерация заблокирована (finish_reason: {finish_reason}). Попробуйте изменить промпт или изображение."
+                        error_msg = _get_finish_reason_message(finish_reason)
                     else:
                         error_msg = "API не вернул изображение. Попробуйте изменить промпт."
                     raise ValueError(error_msg)

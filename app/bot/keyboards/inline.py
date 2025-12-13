@@ -558,6 +558,9 @@ def suno_style_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="✏️ Ввести свой стиль", callback_data="suno.custom_style")
     )
     builder.row(
+        InlineKeyboardButton(text="🎵 Создать песню", callback_data="suno.generate_song")
+    )
+    builder.row(
         InlineKeyboardButton(text="⬅️ Назад", callback_data="suno.settings")
     )
 

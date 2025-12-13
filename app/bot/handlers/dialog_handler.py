@@ -24,6 +24,48 @@ logger = get_logger(__name__)
 router = Router(name="dialog_handler")
 
 
+def split_long_message(text: str, max_length: int = 4000) -> list[str]:
+    """
+    Split long message into chunks that fit Telegram's message limit.
+    Telegram has a 4096 character limit, but we use 4000 to leave room for formatting.
+    """
+    if len(text) <= max_length:
+        return [text]
+
+    chunks = []
+    current_chunk = ""
+
+    # Split by paragraphs first
+    paragraphs = text.split('\n\n')
+
+    for paragraph in paragraphs:
+        # If adding this paragraph exceeds limit, save current chunk
+        if len(current_chunk) + len(paragraph) + 2 > max_length:
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+                current_chunk = ""
+
+            # If single paragraph is too long, split by sentences
+            if len(paragraph) > max_length:
+                sentences = paragraph.split('. ')
+                for sentence in sentences:
+                    if len(current_chunk) + len(sentence) + 2 > max_length:
+                        if current_chunk:
+                            chunks.append(current_chunk.strip())
+                        current_chunk = sentence + '. '
+                    else:
+                        current_chunk += sentence + '. '
+            else:
+                current_chunk = paragraph + '\n\n'
+        else:
+            current_chunk += paragraph + '\n\n'
+
+    if current_chunk.strip():
+        chunks.append(current_chunk.strip())
+
+    return chunks
+
+
 @router.message(Command("end"))
 async def cmd_end_dialog(message: Message, user: User):
     """End current dialog."""
@@ -248,7 +290,15 @@ async def process_dialog_message(
             if response.get("mock"):
                 response_text += "\n\n⚠️ <i>Используется тестовый режим (API ключи не настроены)</i>"
 
-            await processing_msg.edit_text(response_text, parse_mode=ParseMode.HTML)
+            # Split long messages to fit Telegram's limit
+            message_chunks = split_long_message(response_text)
+
+            # Send first chunk as edit to processing message
+            await processing_msg.edit_text(message_chunks[0], parse_mode=ParseMode.HTML)
+
+            # Send remaining chunks as new messages
+            for chunk in message_chunks[1:]:
+                await message.answer(chunk, parse_mode=ParseMode.HTML)
 
             logger.info(
                 "dialog_message_processed",
