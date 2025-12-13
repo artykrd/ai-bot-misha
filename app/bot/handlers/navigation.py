@@ -74,10 +74,25 @@ def set_dialog_state(user_id: int, dialog_id: int, history: bool = None, show_co
 
 # Main navigation
 @router.callback_query(F.data == "bot.back")
-async def back_to_main(callback: CallbackQuery, user: User):
+async def back_to_main(callback: CallbackQuery, user: User, state: FSMContext):
     """Return to main menu."""
     from app.database.database import async_session_maker
     from app.services.subscription.subscription_service import SubscriptionService
+    import os
+    from pathlib import Path
+
+    # Clean up any temporary files before returning to main menu
+    data = await state.get_data()
+    for key in ["image_path", "reference_image_path"]:
+        file_path = data.get(key)
+        if file_path and os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except Exception:
+                pass
+
+    # Clear state
+    await state.clear()
 
     async with async_session_maker() as session:
         sub_service = SubscriptionService(session)

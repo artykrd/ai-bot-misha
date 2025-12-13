@@ -21,3 +21,14 @@ class MediaState(StatesGroup):
     waiting_for_photo_vectorize = State()
     # Smart input handling states
     waiting_for_photo_action_choice = State()  # User sent photo, need to choose what to do
+
+
+class SunoState(StatesGroup):
+    """States for Suno music generation."""
+    # Step-by-step creation states
+    waiting_for_song_title = State()
+    waiting_for_lyrics_choice = State()  # Choose: by title, by description, or write own
+    waiting_for_lyrics_description = State()  # User describes the song
+    waiting_for_lyrics_text = State()  # User provides lyrics text
+    waiting_for_melody_prompt = State()  # For instrumental mode - melody description
+    waiting_for_style = State()  # Waiting for style selection

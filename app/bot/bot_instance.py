@@ -41,6 +41,7 @@ async def setup_bot() -> Dispatcher:
         start,
         navigation,
         media_handler,
+        suno_handler,
         profile,
         text_ai,
         common
@@ -51,6 +52,7 @@ async def setup_bot() -> Dispatcher:
     dp.include_router(start.router)
     dp.include_router(navigation.router)
     dp.include_router(common.router)  # Commands BEFORE FSM handlers
+    dp.include_router(suno_handler.router)  # Suno handlers
     dp.include_router(media_handler.router)  # FSM state handlers
     dp.include_router(profile.router)
     dp.include_router(text_ai.router)

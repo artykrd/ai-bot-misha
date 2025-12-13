@@ -441,3 +441,156 @@ def kling_choice_keyboard() -> InlineKeyboardMarkup:
     )
 
     return builder.as_markup()
+
+
+# ======================
+# SUNO KEYBOARDS
+# ======================
+
+def suno_main_keyboard(model_version: str = "V5", is_instrumental: bool = False, style: str = "техно, хип-хоп", balance_songs: int = 0, tokens_per_song: int = 17600) -> InlineKeyboardMarkup:
+    """Main Suno keyboard with current settings."""
+    builder = InlineKeyboardBuilder()
+
+    # Type button
+    type_text = "инструментал (без слов)" if is_instrumental else "с текстом песни"
+
+    builder.row(
+        InlineKeyboardButton(text="⚙️ Параметры", callback_data="suno.settings")
+    )
+    builder.row(
+        InlineKeyboardButton(text="📝 Создать песню пошагово", callback_data="suno.step_by_step")
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ В главное меню", callback_data="bot.back")
+    )
+
+    return builder.as_markup()
+
+
+def suno_settings_keyboard(model_version: str = "V5", is_instrumental: bool = False, style: str = "техно, хип-хоп") -> InlineKeyboardMarkup:
+    """Suno settings keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(text="📀 Изменить версию", callback_data="suno.change_version")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🎵 Изменить тип", callback_data="suno.change_type")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🎨 Изменить стиль", callback_data="suno.change_style")
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Вернуться к Suno", callback_data="bot.suno")
+    )
+
+    return builder.as_markup()
+
+
+def suno_version_keyboard() -> InlineKeyboardMarkup:
+    """Suno model version selection keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(text="🎵 V5 (лучшее)", callback_data="suno.set_version_V5")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🎵 V4.5 Plus", callback_data="suno.set_version_V4_5PLUS"),
+        InlineKeyboardButton(text="🎵 V4.5 All", callback_data="suno.set_version_V4_5ALL")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🎵 V4.5", callback_data="suno.set_version_V4_5"),
+        InlineKeyboardButton(text="🎵 V4", callback_data="suno.set_version_V4")
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад", callback_data="suno.settings")
+    )
+
+    return builder.as_markup()
+
+
+def suno_type_keyboard() -> InlineKeyboardMarkup:
+    """Suno type selection keyboard (instrumental or with lyrics)."""
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(text="🎤 С текстом песни", callback_data="suno.set_type_lyrics")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🎹 Инструментал (без слов)", callback_data="suno.set_type_instrumental")
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад", callback_data="suno.settings")
+    )
+
+    return builder.as_markup()
+
+
+def suno_style_keyboard() -> InlineKeyboardMarkup:
+    """Suno style selection keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    styles = [
+        ("🎸 Рок", "рок"),
+        ("🎹 Поп", "поп"),
+        ("🎺 Джаз", "джаз"),
+        ("🎵 Классика", "классическая музыка"),
+        ("🎧 Электроника", "электроника, техно"),
+        ("🎤 Хип-хоп", "хип-хоп, рэп"),
+        ("🎻 Блюз", "блюз"),
+        ("🎼 Кантри", "кантри"),
+        ("🎪 Фолк", "фолк"),
+        ("🎭 Металл", "металл"),
+    ]
+
+    for i in range(0, len(styles), 2):
+        if i + 1 < len(styles):
+            builder.row(
+                InlineKeyboardButton(text=styles[i][0], callback_data=f"suno.set_style_{styles[i][1]}"),
+                InlineKeyboardButton(text=styles[i+1][0], callback_data=f"suno.set_style_{styles[i+1][1]}")
+            )
+        else:
+            builder.row(
+                InlineKeyboardButton(text=styles[i][0], callback_data=f"suno.set_style_{styles[i][1]}")
+            )
+
+    builder.row(
+        InlineKeyboardButton(text="✏️ Ввести свой стиль", callback_data="suno.custom_style")
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад", callback_data="suno.settings")
+    )
+
+    return builder.as_markup()
+
+
+def suno_lyrics_choice_keyboard(song_title: str) -> InlineKeyboardMarkup:
+    """Keyboard for choosing how to create lyrics."""
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(text="🤖 Создать по названию", callback_data="suno.lyrics_by_title")
+    )
+    builder.row(
+        InlineKeyboardButton(text="💬 Создать по описанию", callback_data="suno.lyrics_by_description")
+    )
+    builder.row(
+        InlineKeyboardButton(text="✏️ Написать свой текст", callback_data="suno.lyrics_custom")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🎹 Создать без слов", callback_data="suno.lyrics_instrumental")
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Вернуться к Suno", callback_data="bot.suno")
+    )
+
+    return builder.as_markup()
+
+
+def suno_back_keyboard() -> InlineKeyboardMarkup:
+    """Simple back to Suno keyboard."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Вернуться к Suno", callback_data="bot.suno")
+    )
+    return builder.as_markup()
