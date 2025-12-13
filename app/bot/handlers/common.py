@@ -156,7 +156,10 @@ async def cmd_veo(message: Message, state):
 async def cmd_nano(message: Message, state):
     """Nano Banana command - directly open Nano Banana interface."""
     from app.bot.keyboards.inline import nano_banana_keyboard
-    from app.bot.handlers.media_handler import MediaState
+    from app.bot.handlers.media_handler import MediaState, cleanup_temp_images
+
+    # Clean up any old images from previous sessions
+    await cleanup_temp_images(state)
 
     text = """🍌 **Nano Banana · твори и экспериментируй**
 
@@ -170,7 +173,7 @@ async def cmd_nano(message: Message, state):
 
     # Set FSM state to wait for prompt
     await state.set_state(MediaState.waiting_for_image_prompt)
-    await state.update_data(service="nano_banana")
+    await state.update_data(service="nano_banana", reference_image_path=None, photo_caption_prompt=None)
 
     await message.answer(text, reply_markup=nano_banana_keyboard(), parse_mode=ParseMode.MARKDOWN)
 
@@ -215,6 +218,10 @@ async def cmd_mj(message: Message):
 async def cmd_dalle(message: Message, state: FSMContext):
     """DALLE 3 command."""
     from app.bot.states import MediaState
+    from app.bot.handlers.media_handler import cleanup_temp_images
+
+    # Clean up any old images from previous sessions
+    await cleanup_temp_images(state)
 
     text = (
         "🎨 Генерация изображений через DALL·E 3\n\n"
@@ -222,7 +229,7 @@ async def cmd_dalle(message: Message, state: FSMContext):
     )
 
     await state.set_state(MediaState.waiting_for_image_prompt)
-    await state.update_data(service="dalle")
+    await state.update_data(service="dalle", reference_image_path=None, photo_caption_prompt=None)
 
     await message.answer(text, reply_markup=back_to_main_keyboard())
 
@@ -304,7 +311,10 @@ async def cmd_luma(message: Message, state):
 async def cmd_kling(message: Message, state):
     """Kling command - directly open Kling interface."""
     from app.bot.keyboards.inline import back_to_main_keyboard
-    from app.bot.handlers.media_handler import MediaState
+    from app.bot.handlers.media_handler import MediaState, cleanup_temp_images
+
+    # Clean up any old images from previous sessions
+    await cleanup_temp_images(state)
 
     text = (
         "✨ **Kling AI**\n\n"
@@ -327,7 +337,10 @@ async def cmd_kling(message: Message, state):
 async def cmd_hailuo(message: Message, state):
     """Hailuo command - directly open Hailuo interface."""
     from app.bot.keyboards.inline import back_to_main_keyboard
-    from app.bot.handlers.media_handler import MediaState
+    from app.bot.handlers.media_handler import MediaState, cleanup_temp_images
+
+    # Clean up any old images from previous sessions
+    await cleanup_temp_images(state)
 
     text = (
         "**Hailuo (MiniMax)**\n\n"
