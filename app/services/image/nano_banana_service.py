@@ -268,7 +268,13 @@ class NanoBananaService(BaseImageProvider):
                 # Get the first generated image
                 # Response contains parts with images
                 if not response.parts or len(response.parts) == 0:
-                    raise ValueError("No image generated in response")
+                    # Check if response was blocked by safety filters
+                    finish_reason = getattr(response, 'finish_reason', None)
+                    if finish_reason:
+                        error_msg = f"Генерация заблокирована (finish_reason: {finish_reason}). Попробуйте изменить промпт или изображение."
+                    else:
+                        error_msg = "API не сгенерировал изображение. Попробуйте изменить промпт."
+                    raise ValueError(error_msg)
 
                 # Find the first image part - can be text or inline_data
                 image_part = None
@@ -282,7 +288,13 @@ class NanoBananaService(BaseImageProvider):
                         break
 
                 if not image_part:
-                    raise ValueError("No image part found in response")
+                    # Check finish reason for more details
+                    finish_reason = getattr(response, 'finish_reason', None)
+                    if finish_reason:
+                        error_msg = f"Генерация заблокирована (finish_reason: {finish_reason}). Попробуйте изменить промпт или изображение."
+                    else:
+                        error_msg = "API не вернул изображение. Попробуйте изменить промпт."
+                    raise ValueError(error_msg)
 
                 # Save image to storage
                 filename = self._generate_filename("png")
