@@ -5,6 +5,7 @@ from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message
 from aiogram.filters import Command
 from aiogram.enums import ParseMode
+from aiogram.fsm.context import FSMContext
 
 from app.bot.keyboards.inline import profile_keyboard
 from app.database.models.user import User
@@ -128,8 +129,12 @@ def calculate_service_availability(total_tokens: int) -> str:
 
 @router.callback_query(F.data == "bot.profile")
 @router.message(Command("profile"))
-async def show_profile(event, user: User):
+async def show_profile(event, user: User, state: FSMContext):
     """Show user profile with detailed token breakdown."""
+
+    # CRITICAL FIX: Always clear FSM state when entering profile
+    # This prevents state conflicts (e.g., hailuo video generation continuing after entering profile)
+    await state.clear()
 
     # Handle both callback and message
     is_callback = isinstance(event, CallbackQuery)
@@ -174,3 +179,44 @@ async def show_profile(event, user: User):
             reply_markup=profile_keyboard(),
             parse_mode=ParseMode.HTML
         )
+
+
+@router.callback_query(F.data == "bot.profile_tokens")
+async def show_tokens_info(callback: CallbackQuery, user: User):
+    """Show detailed tokens information."""
+    from app.bot.keyboards.inline import back_to_main_keyboard
+
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+        total_tokens = await sub_service.get_user_total_tokens(user.id)
+
+    text = f"""💎 **Токены**
+
+**Что такое токены?**
+Токены — это внутренняя валюта бота. За токены вы можете использовать все AI-модели: ChatGPT, генерацию изображений, видео, музыки и многое другое.
+
+💰 **Ваш баланс:** {total_tokens:,} токенов
+
+**Как получить токены?**
+• Купить подписку через /shop
+• Пригласить друзей (реферальная программа)
+• Активировать промокод
+
+**Стоимость запросов:**
+• ChatGPT 4 Mini — 500 токенов
+• Nano Banana (фото) — 6,380 токенов
+• DALL-E 3 — 5,300 токенов
+• Sora 2 (видео) — 50,600 токенов
+• Hailuo (видео) — 90,000 токенов
+• Kling (видео) — 80,000 токенов
+• Suno (музыка) — 17,600 токенов
+• Whisper (расшифровка) — 1,200 токенов/мин
+
+**Токены не сгорают** и доступны бессрочно (для вечных токенов)."""
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=back_to_main_keyboard(),
+        parse_mode=ParseMode.MARKDOWN
+    )
+    await callback.answer()

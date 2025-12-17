@@ -221,17 +221,14 @@ def create_video_keyboard() -> InlineKeyboardMarkup:
 
     builder.row(
         InlineKeyboardButton(text="☁️ Sora 2", callback_data="bot.sora"),
-        InlineKeyboardButton(text="🌊 Veo 3.1", callback_data="bot.veo")
-    )
-    builder.row(
-        InlineKeyboardButton(text="🗾 Midjourney Video", callback_data="bot.mjvideo"),
         InlineKeyboardButton(text="🎥 Hailuo", callback_data="bot.hailuo")
     )
     builder.row(
-        InlineKeyboardButton(text="📹 Luma", callback_data="bot.luma"),
-        InlineKeyboardButton(text="🎞 Kling", callback_data="bot.kling_video")
+        InlineKeyboardButton(text="🗾 Midjourney Video", callback_data="bot.mjvideo"),
+        InlineKeyboardButton(text="📹 Luma", callback_data="bot.luma")
     )
     builder.row(
+        InlineKeyboardButton(text="🎞 Kling", callback_data="bot.kling_video"),
         InlineKeyboardButton(text="🧙 Kling Эффекты", callback_data="bot.kling_effects")
     )
     builder.row(
@@ -382,6 +379,9 @@ def profile_keyboard() -> InlineKeyboardMarkup:
     """Profile keyboard with additional options."""
     builder = InlineKeyboardBuilder()
 
+    builder.row(
+        InlineKeyboardButton(text="💎 Токены", callback_data="bot.profile_tokens")
+    )
     builder.row(
         InlineKeyboardButton(text="🌎 Изменить язык", callback_data="bot.change_language")
     )

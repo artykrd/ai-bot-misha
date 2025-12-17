@@ -195,13 +195,25 @@ __ℹ️ Выберите нейросеть для работы с аудио �
 
 
 @router.message(Command("image"))
-async def cmd_image(message: Message):
-    """GPT Image command."""
-    await message.answer(
-        "🖼 <b>GPT Image 1</b>\n\n⚠️ Функционал в разработке\n\nСтоимость: 8,000 токенов за запрос",
-        reply_markup=main_menu_keyboard(),
-        parse_mode=ParseMode.HTML
+async def cmd_image(message: Message, state: FSMContext):
+    """GPT Image command - DALL-E image generation."""
+    from app.bot.states import MediaState
+    from app.bot.handlers.media_handler import cleanup_temp_images
+
+    # Clean up any old images from previous sessions
+    await cleanup_temp_images(state)
+
+    text = (
+        "🖼 **GPT Image 1 (DALL-E 3)**\n\n"
+        "Создайте уникальные изображения по текстовому описанию.\n\n"
+        "💰 **Стоимость:** 5,300 токенов за запрос\n\n"
+        "✏️ **Отправьте описание изображения**"
     )
+
+    await state.set_state(MediaState.waiting_for_image_prompt)
+    await state.update_data(service="dalle", reference_image_path=None, photo_caption_prompt=None)
+
+    await message.answer(text, reply_markup=back_to_main_keyboard(), parse_mode=ParseMode.MARKDOWN)
 
 
 @router.message(Command("mj"))
@@ -256,22 +268,44 @@ async def cmd_faceswap(message: Message):
 
 @router.message(Command("instruments"))
 async def cmd_instruments(message: Message):
-    """Photo instruments command."""
+    """Photo instruments command - redirect to photo tools menu."""
+    from app.bot.keyboards.inline import photo_tools_keyboard
+
+    text = """✂️ **Инструменты для работы с фото**
+
+ℹ️ В этот раздел мы добавили инструменты, которые помогут вам эффективно работать с вашими фотографиями. Выберите интересующий вас инструмент по кнопке ниже.
+
+🔎 **Улучшить качество** — 2,000 токенов
+🪄 **Заменить фон** — 15,000 токенов
+🪞 **Удалить фон** — 5,000 токенов
+📐 **Векторизация** — 5,000 токенов"""
+
     await message.answer(
-        "✂️ <b>Работа с фото</b>\n\n⚠️ Функционал в разработке\n\nДоступные инструменты:\n• Улучшение фото\n• Удаление фона\n• Замена фона\n• Векторизация",
-        reply_markup=main_menu_keyboard(),
-        parse_mode=ParseMode.HTML
+        text,
+        reply_markup=photo_tools_keyboard(),
+        parse_mode=ParseMode.MARKDOWN
     )
 
 
 @router.message(Command("whisper"))
-async def cmd_whisper(message: Message):
-    """Whisper command."""
-    await message.answer(
-        "🎙 <b>Расшифровка голоса</b>\n\n⚠️ Функционал в разработке\n\nСтоимость: 1,000 токенов за минуту",
-        reply_markup=main_menu_keyboard(),
-        parse_mode=ParseMode.HTML
+async def cmd_whisper(message: Message, state: FSMContext):
+    """Whisper command - voice transcription."""
+    from app.bot.states import MediaState
+
+    text = (
+        "🎙 **Whisper - Расшифровка голоса**\n\n"
+        "OpenAI Whisper распознает речь и превращает её в текст.\n\n"
+        "📊 **Возможности:**\n"
+        "• Точная расшифровка на русском и других языках\n"
+        "• Поддержка различных аудио форматов\n"
+        "• Высокая точность распознавания\n\n"
+        "💰 **Стоимость:** 1,200 токенов за минуту аудио\n\n"
+        "🎵 **Отправьте аудио или голосовое сообщение**"
     )
+
+    await state.set_state(MediaState.waiting_for_whisper_audio)
+
+    await message.answer(text, reply_markup=back_to_main_keyboard(), parse_mode=ParseMode.MARKDOWN)
 
 
 @router.message(Command("mvideo"))
