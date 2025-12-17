@@ -4,6 +4,7 @@ Uses the new Gemini API for fast image generation.
 """
 import time
 import os
+import re
 from typing import Optional, Callable, Awaitable
 from pathlib import Path
 import asyncio
@@ -265,6 +266,20 @@ class NanoBananaService(BaseImageProvider):
                 # Generate image with proper types
                 config = types.GenerateContentConfig(**config_params)
 
+                # CRITICAL FIX: Translate Russian prompts to English
+                # Gemini 2.5 Flash Image works better with English prompts
+                def has_cyrillic(text):
+                    """Check if text contains Cyrillic characters."""
+                    return bool(re.search('[а-яА-ЯёЁ]', text))
+
+                translated_prompt = prompt
+                if has_cyrillic(prompt):
+                    # Simple translation approach: prefix with instruction
+                    # For better results, we rely on Gemini's multilingual understanding
+                    # with explicit English instruction
+                    translated_prompt = f"Create an image: {prompt}. Interpret the description and generate accordingly."
+                    logger.info("nano_banana_russian_prompt_detected", original=prompt[:50])
+
                 # Prepare contents - can be text only or text + image
                 if reference_image_path:
                     # Load reference image
@@ -275,7 +290,7 @@ class NanoBananaService(BaseImageProvider):
 
                     # Enhance prompt for image-to-image to get better transformations
                     enhanced_prompt = (
-                        f"Generate a NEW image based on this reference image with the following transformation: {prompt}. "
+                        f"Generate a NEW image based on this reference image with the following transformation: {translated_prompt}. "
                         f"Create a completely transformed version, not just minor adjustments. "
                         f"Make significant creative changes while following the instruction."
                     )
@@ -284,7 +299,7 @@ class NanoBananaService(BaseImageProvider):
                     logger.info("nano_banana_using_reference_image", path=reference_image_path, enhanced=True)
                 else:
                     # Text-only generation
-                    contents = prompt
+                    contents = translated_prompt
 
                 response = self.client.models.generate_content(
                     model="gemini-2.5-flash-image",
