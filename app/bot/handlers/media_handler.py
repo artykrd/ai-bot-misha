@@ -25,6 +25,8 @@ from app.database.models.user import User
 from app.database.database import async_session_maker
 from app.core.logger import get_logger
 from app.core.exceptions import InsufficientTokensError
+from app.core.cost_guard import cost_guard
+from app.core.temp_files import get_temp_file_path, cleanup_temp_file
 from app.services.video import VeoService, SoraService, LumaService, HailuoService, KlingService
 from app.services.image import DalleService, GeminiImageService, StabilityService, RemoveBgService, NanoBananaService, KlingImageService, RecraftService
 from app.services.audio import SunoService, OpenAIAudioService
@@ -45,12 +47,8 @@ async def cleanup_temp_images(state: FSMContext):
     data = await state.get_data()
     for key in ["image_path", "reference_image_path"]:
         file_path = data.get(key)
-        if file_path and os.path.exists(file_path):
-            try:
-                os.remove(file_path)
-                logger.info("temp_image_cleaned", path=file_path)
-            except Exception as e:
-                logger.error("temp_image_cleanup_failed", path=file_path, error=str(e))
+        if file_path:
+            cleanup_temp_file(file_path)
 
 
 def resize_image_if_needed(image_path: str, max_size_mb: float = 2.0, max_dimension: int = 2048) -> str:
@@ -568,15 +566,14 @@ async def process_video_photo(message: Message, state: FSMContext, user: User):
     photo = message.photo[-1]
     file = await message.bot.get_file(photo.file_id)
 
-    # Create temp path (use absolute path)
-    temp_dir = Path("./storage/temp").resolve().resolve()
-    temp_dir.mkdir(parents=True, exist_ok=True)
-    temp_path = temp_dir / f"video_input_{photo.file_id}.jpg"
+    # ИСПРАВЛЕНО: используем TempFileManager для генерации уникального пути
+    # вместо file_id который может конфликтовать при повторной загрузке
+    temp_path = get_temp_file_path(prefix="video_input", suffix=".jpg", user_id=user.id)
 
     await message.bot.download_file(file.file_path, temp_path)
 
     # Save absolute image path to state
-    await state.update_data(image_path=str(temp_path.resolve()))
+    await state.update_data(image_path=str(temp_path))
 
     # Check if photo has caption (description)
     if message.caption and message.caption.strip():
@@ -644,7 +641,7 @@ async def process_video_prompt(message: Message, state: FSMContext, user: User):
 
 
 async def process_veo_video(message: Message, user: User, state: FSMContext):
-    """Process Veo video generation."""
+    """Process Veo video generation with cost-guard protection."""
     # Get state data (check if image was provided)
     data = await state.get_data()
 
@@ -652,8 +649,38 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
     prompt = data.get("photo_caption_prompt") or message.text
     image_path = data.get("image_path", None)
 
-    # Check and use tokens
-    estimated_tokens = 15000  # Veo is expensive
+    # COST-GUARD: оценить стоимость с эконом-режимом (4 сек по умолчанию)
+    # Пользователь может явно указать duration, иначе используется безопасный минимум
+    duration = data.get("duration", None)  # None = будет использован default из cost_guard
+    cost_estimate = cost_guard.estimate_cost("veo-3.1", duration=duration)
+
+    # COST-GUARD: проверить rate limit
+    allowed, rate_error = await cost_guard.check_rate_limit(user.id, "veo-3.1")
+    if not allowed:
+        # Clean up image if exists
+        cleanup_temp_file(image_path)
+        await message.answer(rate_error)
+        await state.clear()
+        return
+
+    estimated_tokens = cost_estimate.estimated_tokens
+    actual_duration = cost_estimate.duration_seconds
+
+    # Показать предупреждение о стоимости
+    cost_warning = (
+        f"💰 **Стоимость генерации Veo 3.1:**\n\n"
+        f"Длительность: {actual_duration} сек\n"
+        f"Стоимость: ~{estimated_tokens:,} токенов (≈${cost_estimate.estimated_cost_usd:.2f})\n\n"
+    )
+
+    if cost_estimate.warning_message:
+        cost_warning += f"{cost_estimate.warning_message}\n\n"
+
+    # COST-GUARD: требовать подтверждение для дорогих запросов
+    if cost_estimate.requires_confirmation:
+        # TODO: В будущем добавить inline кнопки подтверждения
+        # Пока просто информируем пользователя
+        cost_warning += "⚠️ Это дорогая операция! Убедитесь что промпт правильный.\n\n"
 
     async with async_session_maker() as session:
         sub_service = SubscriptionService(session)
@@ -662,14 +689,11 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
             await sub_service.check_and_use_tokens(user.id, estimated_tokens)
         except InsufficientTokensError as e:
             # Clean up image if exists
-            if image_path and os.path.exists(image_path):
-                try:
-                    os.remove(image_path)
-                except Exception:
-                    pass
+            cleanup_temp_file(image_path)
 
             await message.answer(
                 f"❌ Недостаточно токенов для генерации видео!\n\n"
+                f"{cost_warning}"
                 f"Требуется: {estimated_tokens:,} токенов\n"
                 f"Доступно: {e.details['available']:,} токенов\n\n"
                 f"Купите подписку: /start → 💎 Подписка"
@@ -677,10 +701,12 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
             await state.clear()
             return
 
-    # Send improved progress message
+    # Send improved progress message with cost info
     mode_text = "image-to-video" if image_path else "text-to-video"
     progress_msg = await message.answer(
         f"🎬 Создаю видео в Veo 3.1 ({mode_text})...\n\n"
+        f"⏱ Длительность: {actual_duration} сек\n"
+        f"💰 Стоимость: ~{estimated_tokens:,} токенов\n\n"
         f"⏱ Создание может занять ~2-10 минут.\n"
         f"⚡️ Очень сильная нагрузка на сервис, но результат может появиться намного быстрее."
     )
@@ -695,11 +721,12 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
         except Exception:
             pass
 
+    # ИСПРАВЛЕНО: используем actual_duration из cost_estimate (эконом-режим)
     # Generate video
     result = await veo_service.generate_video(
         prompt=prompt,
         progress_callback=update_progress,
-        duration=8,
+        duration=actual_duration,  # Используем duration из cost_guard
         aspect_ratio="16:9",
         resolution="720p",
         image_path=image_path
@@ -742,11 +769,21 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
             logger.error("video_cleanup_failed", error=str(e))
 
         # Clean up input image if exists
-        if image_path and os.path.exists(image_path):
-            try:
-                os.remove(image_path)
-            except Exception as e:
-                logger.error("input_image_cleanup_failed", error=str(e))
+        cleanup_temp_file(image_path)
+
+        # COST-GUARD: логировать успешную генерацию
+        await cost_guard.log_generation(
+            user_id=user.id,
+            model="veo-3.1",
+            prompt=prompt,
+            estimated_tokens=estimated_tokens,
+            actual_tokens=result.tokens_used,
+            estimated_cost_usd=cost_estimate.estimated_cost_usd,
+            actual_cost_usd=(result.tokens_used / 1000) * 0.01,
+            duration_seconds=actual_duration,
+            status="success",
+            mode=mode_info
+        )
 
         await progress_msg.delete()
 
@@ -754,11 +791,21 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
         await state.update_data(image_path=None, photo_caption_prompt=None)
     else:
         # Clean up input image if exists
-        if image_path and os.path.exists(image_path):
-            try:
-                os.remove(image_path)
-            except Exception as e:
-                logger.error("input_image_cleanup_failed", error=str(e))
+        cleanup_temp_file(image_path)
+
+        # COST-GUARD: логировать ошибку
+        await cost_guard.log_generation(
+            user_id=user.id,
+            model="veo-3.1",
+            prompt=prompt,
+            estimated_tokens=estimated_tokens,
+            actual_tokens=0,
+            estimated_cost_usd=cost_estimate.estimated_cost_usd,
+            actual_cost_usd=0.0,
+            duration_seconds=actual_duration,
+            status="error",
+            error=result.error
+        )
 
         try:
             await progress_msg.edit_text(
@@ -868,11 +915,8 @@ async def process_luma_video(message: Message, user: User, state: FSMContext):
             await sub_service.check_and_use_tokens(user.id, estimated_tokens)
         except InsufficientTokensError as e:
             # Clean up image if exists
-            if image_path and os.path.exists(image_path):
-                try:
-                    os.remove(image_path)
-                except Exception:
-                    pass
+            if image_path:
+                cleanup_temp_file(image_path)
 
             await message.answer(
                 f"❌ Недостаточно токенов!\n\n"
@@ -945,20 +989,14 @@ async def process_luma_video(message: Message, user: User, state: FSMContext):
             logger.error("video_cleanup_failed", error=str(e))
 
         # Clean up input image if exists
-        if image_path and os.path.exists(image_path):
-            try:
-                os.remove(image_path)
-            except Exception as e:
-                logger.error("input_image_cleanup_failed", error=str(e))
+        if image_path:
+            cleanup_temp_file(image_path)
 
         await progress_msg.delete()
     else:
         # Clean up input image if exists
-        if image_path and os.path.exists(image_path):
-            try:
-                os.remove(image_path)
-            except Exception as e:
-                logger.error("input_image_cleanup_failed", error=str(e))
+        if image_path:
+            cleanup_temp_file(image_path)
 
         try:
             await progress_msg.edit_text(f"❌ Ошибка: {result.error}", parse_mode=None)
@@ -1063,11 +1101,8 @@ async def process_kling_video(message: Message, user: User, state: FSMContext, i
             await sub_service.check_and_use_tokens(user.id, estimated_tokens)
         except InsufficientTokensError as e:
             # Clean up image if exists
-            if image_path and os.path.exists(image_path):
-                try:
-                    os.remove(image_path)
-                except Exception:
-                    pass
+            if image_path:
+                cleanup_temp_file(image_path)
 
             await message.answer(
                 f"❌ Недостаточно токенов!\n\n"
@@ -1139,20 +1174,14 @@ async def process_kling_video(message: Message, user: User, state: FSMContext, i
             logger.error("video_cleanup_failed", error=str(e))
 
         # Clean up input image if exists
-        if image_path and os.path.exists(image_path):
-            try:
-                os.remove(image_path)
-            except Exception as e:
-                logger.error("input_image_cleanup_failed", error=str(e))
+        if image_path:
+            cleanup_temp_file(image_path)
 
         await progress_msg.delete()
     else:
         # Clean up input image if exists
-        if image_path and os.path.exists(image_path):
-            try:
-                os.remove(image_path)
-            except Exception as e:
-                logger.error("input_image_cleanup_failed", error=str(e))
+        if image_path:
+            cleanup_temp_file(image_path)
 
         try:
             await progress_msg.edit_text(f"❌ Ошибка: {result.error}", parse_mode=None)
@@ -1175,21 +1204,15 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
 
     # Clean up old reference image if exists
     old_reference_path = data.get("reference_image_path")
-    if old_reference_path and os.path.exists(old_reference_path):
-        try:
-            os.remove(old_reference_path)
-            logger.info("old_reference_image_cleaned", path=old_reference_path)
-        except Exception as e:
-            logger.error("old_reference_image_cleanup_failed", path=old_reference_path, error=str(e))
+    if old_reference_path:
+        cleanup_temp_file(old_reference_path)
 
     # Download the photo
     photo = message.photo[-1]
     file = await message.bot.get_file(photo.file_id)
 
     # Create temp path
-    temp_dir = Path("./storage/temp").resolve()
-    temp_dir.mkdir(parents=True, exist_ok=True)
-    temp_path = temp_dir / f"image_input_{photo.file_id}.jpg"
+    temp_path = get_temp_file_path(prefix="image_input", suffix=".jpg")
 
     await message.bot.download_file(file.file_path, temp_path)
 
@@ -1197,7 +1220,7 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
     resize_image_if_needed(str(temp_path), max_size_mb=2.0, max_dimension=2048)
 
     # Save NEW image path to state
-    await state.update_data(reference_image_path=str(temp_path.resolve()))
+    await state.update_data(reference_image_path=str(temp_path))
 
     service_display = {
         "nano_banana": "Nano Banana",
@@ -1272,11 +1295,8 @@ async def process_dalle_image(message: Message, user: User, state: FSMContext):
             await sub_service.check_and_use_tokens(user.id, estimated_tokens)
         except InsufficientTokensError as e:
             # Clean up reference image if exists
-            if reference_image_path and os.path.exists(reference_image_path):
-                try:
-                    os.remove(reference_image_path)
-                except Exception:
-                    pass
+            if reference_image_path:
+                cleanup_temp_file(reference_image_path)
 
             await message.answer(
                 f"❌ Недостаточно токенов для генерации изображения!\n\n"
@@ -1371,20 +1391,14 @@ async def process_dalle_image(message: Message, user: User, state: FSMContext):
             logger.error("image_cleanup_failed", error=str(e))
 
         # Clean up reference image if exists
-        if reference_image_path and os.path.exists(reference_image_path):
-            try:
-                os.remove(reference_image_path)
-            except Exception as e:
-                logger.error("reference_image_cleanup_failed", error=str(e))
+        if reference_image_path:
+            cleanup_temp_file(reference_image_path)
 
         await progress_msg.delete()
     else:
         # Clean up reference image if exists
-        if reference_image_path and os.path.exists(reference_image_path):
-            try:
-                os.remove(reference_image_path)
-            except Exception as e:
-                logger.error("reference_image_cleanup_failed", error=str(e))
+        if reference_image_path:
+            cleanup_temp_file(reference_image_path)
 
         try:
             await progress_msg.edit_text(
@@ -1489,11 +1503,8 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
         try:
             await sub_service.check_and_use_tokens(user.id, estimated_tokens)
         except InsufficientTokensError as e:
-            if reference_image_path and os.path.exists(reference_image_path):
-                try:
-                    os.remove(reference_image_path)
-                except Exception:
-                    pass
+            if reference_image_path:
+                cleanup_temp_file(reference_image_path)
 
             await message.answer(
                 f"❌ Недостаточно токенов для генерации изображения!\n\n"
@@ -1631,20 +1642,14 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
         except Exception as e:
             logger.error("nano_image_cleanup_failed", error=str(e))
 
-        if reference_image_path and os.path.exists(reference_image_path):
-            try:
-                os.remove(reference_image_path)
-            except Exception as e:
-                logger.error("reference_image_cleanup_failed", error=str(e))
+        if reference_image_path:
+            cleanup_temp_file(reference_image_path)
 
         await progress_msg.delete()
 
     else:
-        if reference_image_path and os.path.exists(reference_image_path):
-            try:
-                os.remove(reference_image_path)
-            except Exception as e:
-                logger.error("reference_image_cleanup_failed", error=str(e))
+        if reference_image_path:
+            cleanup_temp_file(reference_image_path)
 
         try:
             await progress_msg.edit_text(
@@ -1673,11 +1678,8 @@ async def process_kling_image(message: Message, user: User, state: FSMContext):
         try:
             await sub_service.check_and_use_tokens(user.id, estimated_tokens)
         except InsufficientTokensError as e:
-            if reference_image_path and os.path.exists(reference_image_path):
-                try:
-                    os.remove(reference_image_path)
-                except Exception:
-                    pass
+            if reference_image_path:
+                cleanup_temp_file(reference_image_path)
 
             await message.answer(
                 f"❌ Недостаточно токенов для генерации изображения!\n\n"
@@ -1764,20 +1766,14 @@ async def process_kling_image(message: Message, user: User, state: FSMContext):
         except Exception as e:
             logger.error("kling_image_cleanup_failed", error=str(e))
 
-        if reference_image_path and os.path.exists(reference_image_path):
-            try:
-                os.remove(reference_image_path)
-            except Exception as e:
-                logger.error("reference_image_cleanup_failed", error=str(e))
+        if reference_image_path:
+            cleanup_temp_file(reference_image_path)
 
         await progress_msg.delete()
 
     else:
-        if reference_image_path and os.path.exists(reference_image_path):
-            try:
-                os.remove(reference_image_path)
-            except Exception as e:
-                logger.error("reference_image_cleanup_failed", error=str(e))
+        if reference_image_path:
+            cleanup_temp_file(reference_image_path)
 
         try:
             await progress_msg.edit_text(
@@ -2064,9 +2060,7 @@ async def process_upscale(message: Message, state: FSMContext, user: User):
     file = await message.bot.get_file(photo.file_id)
 
     # Create temp path
-    temp_dir = Path("./storage/temp").resolve()
-    temp_dir.mkdir(parents=True, exist_ok=True)
-    temp_path = temp_dir / f"{photo.file_id}.jpg"
+    temp_path = get_temp_file_path(prefix="upscale", suffix=".jpg")
 
     await message.bot.download_file(file.file_path, temp_path)
 
@@ -2088,10 +2082,7 @@ async def process_upscale(message: Message, state: FSMContext, user: User):
     )
 
     # Clean up temp file
-    try:
-        os.remove(temp_path)
-    except Exception:
-        pass
+    cleanup_temp_file(temp_path)
 
     if result.success:
 
@@ -2160,9 +2151,7 @@ async def process_whisper_audio(message: Message, state: FSMContext, user: User)
         file_ext = "mp3"
 
     # Create temp path
-    temp_dir = Path("./storage/temp").resolve()
-    temp_dir.mkdir(parents=True, exist_ok=True)
-    temp_path = temp_dir / f"{file.file_id}.{file_ext}"
+    temp_path = get_temp_file_path(prefix="audio", suffix=f".{file_ext}")
 
     await message.bot.download_file(file.file_path, temp_path)
 
@@ -2185,10 +2174,7 @@ async def process_whisper_audio(message: Message, state: FSMContext, user: User)
     )
 
     # Clean up temp file
-    try:
-        os.remove(temp_path)
-    except Exception:
-        pass
+    cleanup_temp_file(temp_path)
 
     if result.success:
         # Send transcription
@@ -2311,14 +2297,12 @@ async def process_vision_image(message: Message, state: FSMContext, user: User):
     file = await message.bot.get_file(photo.file_id)
 
     # Create temp path
-    temp_dir = Path("./storage/temp").resolve()
-    temp_dir.mkdir(parents=True, exist_ok=True)
-    temp_path = temp_dir / f"{photo.file_id}.jpg"
+    temp_path = get_temp_file_path(prefix="vision", suffix=".jpg")
 
     await message.bot.download_file(file.file_path, temp_path)
 
     # Store image path in state
-    await state.update_data(image_path=str(temp_path.resolve()))
+    await state.update_data(image_path=str(temp_path))
     await state.set_state(MediaState.waiting_for_vision_prompt)
 
     await progress_msg.edit_text(
@@ -2360,10 +2344,7 @@ async def process_vision_prompt(message: Message, state: FSMContext, user: User)
                 f"Купите подписку: /start → 💎 Подписка"
             )
             # Clean up temp file
-            try:
-                os.remove(image_path)
-            except Exception:
-                pass
+            cleanup_temp_file(image_path)
             await state.clear()
             return
 
@@ -2383,10 +2364,7 @@ async def process_vision_prompt(message: Message, state: FSMContext, user: User)
     )
 
     # Clean up temp file
-    try:
-        os.remove(image_path)
-    except Exception as e:
-        logger.error("vision_image_cleanup_failed", error=str(e))
+    cleanup_temp_file(image_path)
 
     if result.success:
         # Send analysis
@@ -2444,9 +2422,7 @@ async def process_photo_upscale(message: Message, state: FSMContext, user: User)
     file = await message.bot.get_file(photo.file_id)
 
     # Create temp path
-    temp_dir = Path("./storage/temp").resolve()
-    temp_dir.mkdir(parents=True, exist_ok=True)
-    temp_path = temp_dir / f"{photo.file_id}.jpg"
+    temp_path = get_temp_file_path(prefix="enhance", suffix=".jpg")
 
     await message.bot.download_file(file.file_path, temp_path)
 
@@ -2488,7 +2464,7 @@ async def process_photo_upscale(message: Message, state: FSMContext, user: User)
         img = img.filter(ImageFilter.UnsharpMask(radius=2, percent=150, threshold=3))
 
         # Save enhanced image
-        enhanced_path = temp_dir / f"enhanced_{photo.file_id}.jpg"
+        enhanced_path = get_temp_file_path(prefix="enhanced", suffix=".jpg")
 
         # Save with high quality
         img.save(str(enhanced_path), 'JPEG', quality=95, optimize=True)
@@ -2508,10 +2484,7 @@ async def process_photo_upscale(message: Message, state: FSMContext, user: User)
                 logger.info("enhanced_image_compressed", new_size=file_size, quality=quality)
 
         # Clean up original temp file
-        try:
-            os.remove(temp_path)
-        except Exception:
-            pass
+        cleanup_temp_file(temp_path)
 
         # Send enhanced image
         enhanced_file = FSInputFile(enhanced_path)
@@ -2523,19 +2496,13 @@ async def process_photo_upscale(message: Message, state: FSMContext, user: User)
         )
 
         # Clean up enhanced file
-        try:
-            os.remove(enhanced_path)
-        except Exception as e:
-            logger.error("enhanced_image_cleanup_failed", error=str(e))
+        cleanup_temp_file(enhanced_path)
 
         await progress_msg.delete()
 
     except Exception as e:
         # Clean up temp files on error
-        try:
-            os.remove(temp_path)
-        except Exception:
-            pass
+        cleanup_temp_file(temp_path)
 
         logger.error("photo_quality_improvement_failed", error=str(e))
 
@@ -2607,10 +2574,7 @@ async def process_photo_replace_bg_prompt(message: Message, state: FSMContext, u
                 f"Купите подписку: /start → 💎 Подписка"
             )
             # Clean up saved image
-            try:
-                os.remove(image_path)
-            except Exception:
-                pass
+            cleanup_temp_file(image_path)
             await state.clear()
             return
 
@@ -2682,17 +2646,13 @@ async def process_photo_replace_bg_prompt(message: Message, state: FSMContext, u
         final_rgb.paste(final_img, mask=final_img.split()[3])  # Use alpha as mask
 
         # Save final image
-        temp_dir = Path("./storage/temp").resolve()
-        final_path = temp_dir / f"replaced_{os.path.basename(image_path)}"
+        final_path = get_temp_file_path(prefix="replaced", suffix=".jpg")
         final_rgb.save(str(final_path), 'JPEG', quality=95, optimize=True)
 
         # Clean up intermediate files
-        try:
-            os.remove(image_path)
-            os.remove(remove_result.image_path)
-            os.remove(bg_result.image_path)
-        except Exception as e:
-            logger.error("temp_files_cleanup_failed", error=str(e))
+        cleanup_temp_file(image_path)
+        cleanup_temp_file(remove_result.image_path)
+        cleanup_temp_file(bg_result.image_path)
 
         # Send final image
         final_file = FSInputFile(final_path)
@@ -2704,19 +2664,13 @@ async def process_photo_replace_bg_prompt(message: Message, state: FSMContext, u
         )
 
         # Clean up final file
-        try:
-            os.remove(final_path)
-        except Exception as e:
-            logger.error("final_image_cleanup_failed", error=str(e))
+        cleanup_temp_file(final_path)
 
         await progress_msg.delete()
 
     except Exception as e:
         # Clean up all temp files on error
-        try:
-            os.remove(image_path)
-        except Exception:
-            pass
+        cleanup_temp_file(image_path)
 
         logger.error("photo_replace_bg_failed", error=str(e))
 
@@ -2761,9 +2715,7 @@ async def process_photo_remove_bg(message: Message, state: FSMContext, user: Use
     file = await message.bot.get_file(photo.file_id)
 
     # Create temp path
-    temp_dir = Path("./storage/temp").resolve()
-    temp_dir.mkdir(parents=True, exist_ok=True)
-    temp_path = temp_dir / f"{photo.file_id}.jpg"
+    temp_path = get_temp_file_path(prefix="removebg", suffix=".jpg")
 
     await message.bot.download_file(file.file_path, temp_path)
 
@@ -2784,10 +2736,7 @@ async def process_photo_remove_bg(message: Message, state: FSMContext, user: Use
     )
 
     # Clean up temp file
-    try:
-        os.remove(temp_path)
-    except Exception:
-        pass
+    cleanup_temp_file(temp_path)
 
     if result.success:
         # Send image with removed background
@@ -2877,10 +2826,7 @@ async def _process_photo_with_path(message: Message, state: FSMContext, user: Us
                 f"Купите подписку: /start → 💎 Подписка"
             )
             # Clean up temp file
-            try:
-                os.remove(image_path)
-            except Exception:
-                pass
+            cleanup_temp_file(image_path)
             await state.clear()
             return
 
@@ -2900,10 +2846,7 @@ async def _process_photo_with_path(message: Message, state: FSMContext, user: Us
     )
 
     # Clean up temp file
-    try:
-        os.remove(image_path)
-    except Exception as e:
-        logger.error("photo_tool_cleanup_failed", error=str(e))
+    cleanup_temp_file(image_path)
 
     if result.success:
         # Send analysis
@@ -2951,14 +2894,12 @@ async def handle_photo_no_model(message: Message, state: FSMContext):
     file = await message.bot.get_file(photo.file_id)
 
     # Create temp path
-    temp_dir = Path("./storage/temp").resolve()
-    temp_dir.mkdir(parents=True, exist_ok=True)
-    temp_path = temp_dir / f"unsorted_{photo.file_id}.jpg"
+    temp_path = get_temp_file_path(prefix="unsorted", suffix=".jpg")
 
     await message.bot.download_file(file.file_path, temp_path)
 
     # Save to state
-    await state.update_data(saved_photo_path=str(temp_path.resolve()))
+    await state.update_data(saved_photo_path=str(temp_path))
     await state.set_state(MediaState.waiting_for_photo_action_choice)
 
     # Create inline keyboard for choosing action
@@ -3000,11 +2941,8 @@ async def handle_photo_action_choice(callback: CallbackQuery, state: FSMContext)
 
     if action == "cancel":
         # Clean up photo
-        if saved_photo_path and os.path.exists(saved_photo_path):
-            try:
-                os.remove(saved_photo_path)
-            except Exception:
-                pass
+        if saved_photo_path:
+            cleanup_temp_file(saved_photo_path)
         await state.clear()
         await callback.message.edit_caption(
             caption="❌ Операция отменена."
@@ -3263,10 +3201,7 @@ async def _process_remove_bg_with_path(message: Message, state: FSMContext, user
     )
 
     # Clean up temp file
-    try:
-        os.remove(image_path)
-    except Exception:
-        pass
+    cleanup_temp_file(image_path)
 
     if result.success:
         result_file = FSInputFile(result.image_path)
@@ -3310,10 +3245,7 @@ async def _process_vision_with_path(message: Message, state: FSMContext, user: U
                 f"Доступно: {e.details['available']:,} токенов\n\n"
                 f"Купите подписку: /start → 💎 Подписка"
             )
-            try:
-                os.remove(image_path)
-            except Exception:
-                pass
+            cleanup_temp_file(image_path)
             await state.clear()
             return
 
@@ -3329,10 +3261,7 @@ async def _process_vision_with_path(message: Message, state: FSMContext, user: U
     )
 
     # Clean up temp file
-    try:
-        os.remove(image_path)
-    except Exception:
-        pass
+    cleanup_temp_file(image_path)
 
     if result.success:
         await message.answer(

@@ -162,8 +162,19 @@ class VeoService(BaseVideoProvider):
                 time=processing_time
             )
 
-            # Token usage for Veo 3.1: approximately 15,000 tokens per 8-second video
-            tokens_used = 15000
+            # ИСПРАВЛЕНО: Правильный расчёт стоимости Veo 3.1
+            # Veo 3.1 реально стоит ~$4 за 10 сек = $0.40/сек
+            # При цене $0.01/1000 токенов: $0.40 = 40,000 токенов/сек
+            tokens_per_second = 40000
+            tokens_used = tokens_per_second * duration
+
+            logger.info(
+                "veo_cost_calculated",
+                duration=duration,
+                tokens_per_second=tokens_per_second,
+                total_tokens=tokens_used,
+                estimated_cost_usd=round((tokens_used / 1000) * 0.01, 2)
+            )
 
             return VideoResponse(
                 success=True,
@@ -177,7 +188,8 @@ class VeoService(BaseVideoProvider):
                     "aspect_ratio": aspect_ratio,
                     "resolution": resolution,
                     "mode": mode,
-                    "prompt": prompt
+                    "prompt": prompt,
+                    "cost_per_second": tokens_per_second
                 }
             )
 
