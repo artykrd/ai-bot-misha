@@ -44,7 +44,8 @@ async def setup_bot() -> Dispatcher:
         suno_handler,
         profile,
         text_ai,
-        common
+        common,
+        download_handler
     )
     from app.bot.handlers import dialog_handler
 
@@ -52,6 +53,7 @@ async def setup_bot() -> Dispatcher:
     dp.include_router(start.router)
     dp.include_router(navigation.router)
     dp.include_router(common.router)  # Commands BEFORE FSM handlers
+    dp.include_router(download_handler.router)  # Download handler
     dp.include_router(suno_handler.router)  # Suno handlers
     dp.include_router(media_handler.router)  # FSM state handlers
     dp.include_router(profile.router)

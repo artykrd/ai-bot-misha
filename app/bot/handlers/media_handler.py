@@ -758,7 +758,9 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
         # Create action keyboard
         builder = create_action_keyboard(
             action_text=MODEL_ACTIONS["veo"]["text"],
-            action_callback=MODEL_ACTIONS["veo"]["callback"]
+            action_callback=MODEL_ACTIONS["veo"]["callback"],
+            file_path=result.video_path,
+            file_type="video"
         )
 
         video_file = FSInputFile(result.video_path)
@@ -880,7 +882,9 @@ async def process_sora_video(message: Message, user: User, state: FSMContext):
         # Create action keyboard
         builder = create_action_keyboard(
             action_text=MODEL_ACTIONS["sora"]["text"],
-            action_callback=MODEL_ACTIONS["sora"]["callback"]
+            action_callback=MODEL_ACTIONS["sora"]["callback"],
+            file_path=result.video_path,
+            file_type="video"
         )
 
         video_file = FSInputFile(result.video_path)
@@ -980,7 +984,9 @@ async def process_luma_video(message: Message, user: User, state: FSMContext):
         # Create action keyboard
         builder = create_action_keyboard(
             action_text=MODEL_ACTIONS["luma"]["text"],
-            action_callback=MODEL_ACTIONS["luma"]["callback"]
+            action_callback=MODEL_ACTIONS["luma"]["callback"],
+            file_path=result.video_path,
+            file_type="video"
         )
 
         video_file = FSInputFile(result.video_path)
@@ -1066,7 +1072,9 @@ async def process_hailuo_video(message: Message, user: User, state: FSMContext):
         # Create action keyboard
         builder = create_action_keyboard(
             action_text=MODEL_ACTIONS["hailuo"]["text"],
-            action_callback=MODEL_ACTIONS["hailuo"]["callback"]
+            action_callback=MODEL_ACTIONS["hailuo"]["callback"],
+            file_path=result.video_path,
+            file_type="video"
         )
 
         video_file = FSInputFile(result.video_path)
@@ -1165,7 +1173,9 @@ async def process_kling_video(message: Message, user: User, state: FSMContext, i
         callback_key = "kling_effects" if is_effects else "kling"
         builder = create_action_keyboard(
             action_text=MODEL_ACTIONS[callback_key]["text"],
-            action_callback=MODEL_ACTIONS[callback_key]["callback"]
+            action_callback=MODEL_ACTIONS[callback_key]["callback"],
+            file_path=result.video_path,
+            file_type="video"
         )
 
         video_file = FSInputFile(result.video_path)
@@ -1384,7 +1394,9 @@ async def process_dalle_image(message: Message, user: User, state: FSMContext):
         # Create action keyboard
         builder = create_action_keyboard(
             action_text=MODEL_ACTIONS["gpt_image"]["text"],
-            action_callback=MODEL_ACTIONS["gpt_image"]["callback"]
+            action_callback=MODEL_ACTIONS["gpt_image"]["callback"],
+            file_path=result.image_path,
+            file_type="image"
         )
 
         # Send image
@@ -1567,7 +1579,9 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
         # Create action keyboard
         builder = create_action_keyboard(
             action_text=MODEL_ACTIONS["nano_banana"]["text"],
-            action_callback=MODEL_ACTIONS["nano_banana"]["callback"]
+            action_callback=MODEL_ACTIONS["nano_banana"]["callback"],
+            file_path=result.image_path,
+            file_type="image"
         )
 
         try:
@@ -1744,7 +1758,9 @@ async def process_kling_image(message: Message, user: User, state: FSMContext):
         # Create action keyboard
         builder = create_action_keyboard(
             action_text="🎞 Создать новое изображение",
-            action_callback="bot.kling_image"
+            action_callback="bot.kling_image",
+            file_path=result.image_path,
+            file_type="image"
         )
 
         try:
@@ -1860,7 +1876,9 @@ async def process_recraft_image(message: Message, user: User, state: FSMContext)
         # Create action keyboard
         builder = create_action_keyboard(
             action_text="🎨 Создать новое изображение",
-            action_callback="bot.recraft"
+            action_callback="bot.recraft",
+            file_path=result.image_path,
+            file_type="image"
         )
 
         try:
