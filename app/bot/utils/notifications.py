@@ -2,6 +2,8 @@
 Unified notification messages for media generation.
 """
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from typing import Optional
+import uuid
 
 
 def format_generation_message(
@@ -38,19 +40,40 @@ def format_generation_message(
     return message
 
 
-def create_action_keyboard(action_text: str, action_callback: str) -> InlineKeyboardBuilder:
+def create_action_keyboard(
+    action_text: str,
+    action_callback: str,
+    file_path: Optional[str] = None,
+    file_type: str = "file"
+) -> InlineKeyboardBuilder:
     """
-    Create a standard keyboard with action and home buttons.
+    Create a standard keyboard with action, download, and home buttons.
 
     Args:
         action_text: Text for the action button (e.g., "🎬 Создать новое видео")
         action_callback: Callback data for the action button
+        file_path: Optional file path to enable download button
+        file_type: Type of file ('image' or 'video') for download
 
     Returns:
         InlineKeyboardBuilder instance
     """
+    from app.bot.utils.file_cache import file_cache
+
     builder = InlineKeyboardBuilder()
     builder.button(text=action_text, callback_data=action_callback)
+
+    # Add download button if file path is provided
+    if file_path:
+        # Generate unique cache key
+        cache_key = f"{file_type}:{uuid.uuid4().hex[:12]}"
+        file_cache.store(cache_key, file_path)
+
+        builder.button(
+            text="📥 Скачать оригинал",
+            callback_data=f"download:{cache_key}"
+        )
+
     builder.button(text="🏠 В главное меню", callback_data="main_menu")
     builder.adjust(1)  # 1 button per row
 
@@ -76,7 +99,7 @@ MODEL_ACTIONS = {
     },
     "luma": {
         "text": "🎬 Создать новое видео",
-        "callback": "bot.luma_video"
+        "callback": "bot.luma"
     },
     "hailuo": {
         "text": "🎬 Создать новое видео",
@@ -84,7 +107,7 @@ MODEL_ACTIONS = {
     },
     "kling": {
         "text": "🎬 Создать новое видео",
-        "callback": "bot.kling"
+        "callback": "bot.kling_video"
     },
     "kling_effects": {
         "text": "🎬 Создать новое видео",
