@@ -608,6 +608,12 @@ async def process_video_photo(message: Message, state: FSMContext, user: User):
 
 @router.message(MediaState.waiting_for_video_prompt, F.text)
 async def process_video_prompt(message: Message, state: FSMContext, user: User):
+    # CRITICAL FIX: Ignore commands (text starting with /)
+    # Commands should NOT be processed as prompts
+    if message.text and message.text.startswith('/'):
+        await state.clear()
+        return
+
     data = await state.get_data()
     service_name = data.get("service", "sora")
 
@@ -1255,6 +1261,11 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
 
 @router.message(MediaState.waiting_for_image_prompt, F.text)
 async def process_image_prompt(message: Message, state: FSMContext, user: User):
+    # CRITICAL FIX: Ignore commands (text starting with /)
+    if message.text and message.text.startswith('/'):
+        await state.clear()
+        return
+
     data = await state.get_data()
     service_name = data.get("service", "dalle")
 
@@ -1904,6 +1915,11 @@ async def process_recraft_image(message: Message, user: User, state: FSMContext)
 
 @router.message(MediaState.waiting_for_audio_prompt, F.text)
 async def process_audio_prompt(message: Message, state: FSMContext, user: User):
+    # CRITICAL FIX: Ignore commands (text starting with /)
+    if message.text and message.text.startswith('/'):
+        await state.clear()
+        return
+
     data = await state.get_data()
     service_name = data.get("service", "suno")
 

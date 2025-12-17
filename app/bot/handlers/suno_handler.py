@@ -273,6 +273,10 @@ async def suno_custom_style(callback: CallbackQuery, state: FSMContext):
 @router.message(SunoState.waiting_for_style, F.text)
 async def process_custom_style(message: Message, state: FSMContext, user: User):
     """Process custom style input and show final summary."""
+    # CRITICAL FIX: Ignore commands (text starting with /)
+    if message.text and message.text.startswith('/'):
+        await state.clear()
+        return
     style = message.text.strip()
     await state.update_data(suno_style=style)
 
@@ -299,6 +303,10 @@ async def suno_step_by_step(callback: CallbackQuery, state: FSMContext):
 
 @router.message(SunoState.waiting_for_song_title, F.text)
 async def process_song_title(message: Message, state: FSMContext):
+    # CRITICAL FIX: Ignore commands (text starting with /)
+    if message.text and message.text.startswith('/'):
+        await state.clear()
+        return
     """Process song title and ask for lyrics choice."""
     song_title = message.text.strip()
     await state.update_data(suno_song_title=song_title)
@@ -374,6 +382,11 @@ async def suno_lyrics_by_description(callback: CallbackQuery, state: FSMContext)
 @router.message(SunoState.waiting_for_lyrics_description, F.text)
 async def process_lyrics_description(message: Message, state: FSMContext, user: User):
     """Generate lyrics from description."""
+    # CRITICAL FIX: Ignore commands (text starting with /)
+    if message.text and message.text.startswith('/'):
+        await state.clear()
+        return
+
     description = message.text.strip()
 
     # Check tokens
@@ -445,6 +458,10 @@ async def suno_lyrics_custom(callback: CallbackQuery, state: FSMContext):
 
 @router.message(SunoState.waiting_for_lyrics_text, F.text)
 async def process_custom_lyrics(message: Message, state: FSMContext):
+    # CRITICAL FIX: Ignore commands (text starting with /)
+    if message.text and message.text.startswith('/'):
+        await state.clear()
+        return
     """Process custom lyrics input."""
     lyrics = message.text.strip()
     await state.update_data(suno_lyrics=lyrics)
@@ -476,6 +493,10 @@ async def suno_lyrics_instrumental(callback: CallbackQuery, state: FSMContext):
 
 @router.message(SunoState.waiting_for_melody_prompt, F.text)
 async def process_melody_prompt(message: Message, state: FSMContext):
+    # CRITICAL FIX: Ignore commands (text starting with /)
+    if message.text and message.text.startswith('/'):
+        await state.clear()
+        return
     """Process melody prompt for instrumental."""
     melody_prompt = message.text.strip()
     await state.update_data(suno_melody_prompt=melody_prompt)
