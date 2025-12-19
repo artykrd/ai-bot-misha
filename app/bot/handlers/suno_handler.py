@@ -337,11 +337,17 @@ async def suno_lyrics_by_title(callback: CallbackQuery, state: FSMContext, user:
         openai_service = OpenAIService()
         prompt = f"Напиши текст песни с названием '{song_title}'. Используй структуру [Intro], [Verse], [Chorus], [Bridge], [Outro]. Текст должен быть эмоциональным и запоминающимся."
 
-        lyrics = await openai_service.generate_text(
+        response = await openai_service.generate_text(
             prompt=prompt,
             model="gpt-4o-mini",
             max_tokens=1000
         )
+
+        # Extract text from AIResponse object
+        if not response.success or not response.content:
+            raise ValueError(response.error or "Не удалось сгенерировать текст")
+
+        lyrics = response.content
 
         await state.update_data(suno_lyrics=lyrics)
 
@@ -414,11 +420,17 @@ async def process_lyrics_description(message: Message, state: FSMContext, user: 
             prompt += f"\nНазвание песни: {song_title}\n"
         prompt += "Используй структуру [Intro], [Verse], [Chorus], [Bridge], [Outro]. Текст должен быть эмоциональным и соответствовать описанию."
 
-        lyrics = await openai_service.generate_text(
+        response = await openai_service.generate_text(
             prompt=prompt,
             model="gpt-4o-mini",
             max_tokens=1000
         )
+
+        # Extract text from AIResponse object
+        if not response.success or not response.content:
+            raise ValueError(response.error or "Не удалось сгенерировать текст")
+
+        lyrics = response.content
 
         await state.update_data(suno_lyrics=lyrics)
 

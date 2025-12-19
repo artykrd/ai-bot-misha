@@ -9,6 +9,7 @@ import aiohttp
 from app.core.config import settings
 from app.core.logger import get_logger
 from app.services.image.base import BaseImageProvider, ImageResponse
+from app.bot.utils.image_utils import compress_image_if_needed, ensure_png_format
 
 logger = get_logger(__name__)
 
@@ -264,6 +265,14 @@ class DalleService(BaseImageProvider):
             model = kwargs.get("model", "dall-e-2")  # Only DALL-E 2 supports variations
             size = kwargs.get("size", "1024x1024")
             n = kwargs.get("n", 1)
+
+            if progress_callback:
+                await progress_callback("🎨 Подготавливаю изображение...")
+
+            # CRITICAL: DALL-E requires PNG format and < 4MB
+            # Convert to PNG and compress if needed
+            image_path = ensure_png_format(image_path)
+            image_path = compress_image_if_needed(image_path, max_size_mb=3.9, output_format="PNG")
 
             if progress_callback:
                 await progress_callback("🎨 Создаю вариацию изображения...")

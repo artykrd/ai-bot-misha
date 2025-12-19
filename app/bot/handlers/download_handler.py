@@ -27,9 +27,23 @@ async def download_file(callback: CallbackQuery):
         # Retrieve file path from cache
         file_path = file_cache.get(cache_key)
 
-        if not file_path or not os.path.exists(file_path):
+        if not file_path:
+            logger.warning("download_file_not_in_cache", cache_key=cache_key)
             await callback.answer(
                 "⚠️ Файл недоступен. Возможно, время хранения истекло.",
+                show_alert=True
+            )
+            return
+
+        # Convert to absolute path if relative
+        if not os.path.isabs(file_path):
+            file_path = os.path.abspath(file_path)
+            logger.info("converted_to_absolute_path", original=file_cache.get(cache_key), absolute=file_path)
+
+        if not os.path.exists(file_path):
+            logger.error("download_file_not_found", path=file_path, cache_key=cache_key)
+            await callback.answer(
+                "⚠️ Файл не найден на сервере.",
                 show_alert=True
             )
             return
@@ -43,6 +57,8 @@ async def download_file(callback: CallbackQuery):
         # Get file name from path
         file_name = os.path.basename(file_path)
 
+        logger.info("sending_file", path=file_path, size=os.path.getsize(file_path), file_name=file_name)
+
         await callback.message.answer_document(
             document=file,
             caption=f"📥 Оригинальный файл ({file_type})\n\nФайл отправлен без сжатия."
@@ -50,7 +66,7 @@ async def download_file(callback: CallbackQuery):
 
         await callback.answer("✅ Файл отправлен!")
 
-        logger.info("file_downloaded", cache_key=cache_key, file_type=file_type)
+        logger.info("file_downloaded", cache_key=cache_key, file_type=file_type, path=file_path)
 
     except Exception as e:
         logger.error("download_error", error=str(e), exc_info=True)
