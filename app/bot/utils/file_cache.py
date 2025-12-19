@@ -4,20 +4,24 @@ Stores file paths associated with message IDs for a limited time.
 """
 from typing import Optional, Dict
 from datetime import datetime, timedelta
-import asyncio
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 class FileCache:
-    """In-memory cache for temporary file storage."""
+    """In-memory cache for temporary file storage (singleton)."""
 
-    def __init__(self, ttl_minutes: int = 60):
-        """
-        Initialize file cache.
+    _instance: Optional['FileCache'] = None
+    _cache: Dict[str, tuple[str, datetime]] = {}
+    _ttl: timedelta = timedelta(minutes=60)
 
-        Args:
-            ttl_minutes: Time to live in minutes (default 60)
-        """
-        self._cache: Dict[str, tuple[str, datetime]] = {}
-        self._ttl = timedelta(minutes=ttl_minutes)
+    def __new__(cls):
+        """Ensure only one instance exists (singleton pattern)."""
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            logger.info("file_cache_initialized", ttl_minutes=60)
+        return cls._instance
 
     def store(self, key: str, file_path: str) -> None:
         """
@@ -28,6 +32,7 @@ class FileCache:
             file_path: Path to the file
         """
         self._cache[key] = (file_path, datetime.now())
+        logger.info("file_cached", key=key, path=file_path[:50], cache_size=len(self._cache))
         self._cleanup_expired()
 
     def get(self, key: str) -> Optional[str]:
@@ -41,15 +46,19 @@ class FileCache:
             File path if found and not expired, None otherwise
         """
         if key not in self._cache:
+            logger.warning("file_not_in_cache", key=key, cache_size=len(self._cache))
             return None
 
         file_path, timestamp = self._cache[key]
 
         # Check if expired
-        if datetime.now() - timestamp > self._ttl:
+        age = datetime.now() - timestamp
+        if age > self._ttl:
             del self._cache[key]
+            logger.warning("file_expired", key=key, age_seconds=age.total_seconds())
             return None
 
+        logger.info("file_retrieved", key=key, age_seconds=age.total_seconds())
         return file_path
 
     def _cleanup_expired(self) -> None:
@@ -60,9 +69,11 @@ class FileCache:
             if now - timestamp > self._ttl
         ]
 
-        for key in expired_keys:
-            del self._cache[key]
+        if expired_keys:
+            for key in expired_keys:
+                del self._cache[key]
+            logger.info("cache_cleaned", expired_count=len(expired_keys))
 
 
-# Global file cache instance
-file_cache = FileCache(ttl_minutes=60)
+# Global file cache instance (singleton)
+file_cache = FileCache()

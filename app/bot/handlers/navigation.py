@@ -296,7 +296,8 @@ async def show_nano_banana(callback: CallbackQuery, state: FSMContext):
     await state.set_state(MediaState.waiting_for_image_prompt)
     await state.update_data(service="nano_banana")
 
-    await callback.message.edit_text(
+    # Use answer() instead of edit_text() because callback may come from media message
+    await callback.message.answer(
         text,
         reply_markup=nano_banana_keyboard()
     )
