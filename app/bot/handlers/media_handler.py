@@ -150,7 +150,7 @@ async def start_veo(callback: CallbackQuery, state: FSMContext, user: User):
     # Clear old data when starting fresh Veo session
     await state.update_data(service="veo", image_path=None, photo_caption_prompt=None)
 
-    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
+    await callback.message.answer(text, reply_markup=back_to_main_keyboard())
     await callback.answer()
 
 
@@ -167,7 +167,7 @@ async def start_sora(callback: CallbackQuery, state: FSMContext, user: User):
     # Clear old data when starting fresh session
     await state.update_data(service="sora", image_path=None, photo_caption_prompt=None)
 
-    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
+    await callback.message.answer(text, reply_markup=back_to_main_keyboard())
     await callback.answer()
 
 
@@ -187,7 +187,7 @@ async def start_luma(callback: CallbackQuery, state: FSMContext, user: User):
     # Clear old data when starting fresh session
     await state.update_data(service="luma", image_path=None, photo_caption_prompt=None)
 
-    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
+    await callback.message.answer(text, reply_markup=back_to_main_keyboard())
     await callback.answer()
 
 
@@ -217,7 +217,7 @@ async def start_hailuo(callback: CallbackQuery, state: FSMContext, user: User):
     # Clear old data when starting fresh session
     await state.update_data(service="hailuo", image_path=None, photo_caption_prompt=None)
 
-    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
+    await callback.message.answer(text, reply_markup=back_to_main_keyboard())
     await callback.answer()
 
 
@@ -234,7 +234,7 @@ async def start_kling_effects(callback: CallbackQuery, state: FSMContext, user: 
     # Clear old data when starting fresh session
     await state.update_data(service="kling_effects", image_path=None, photo_caption_prompt=None)
 
-    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
+    await callback.message.answer(text, reply_markup=back_to_main_keyboard())
     await callback.answer()
 
 
@@ -251,7 +251,7 @@ async def start_kling_choice(callback: CallbackQuery, state: FSMContext, user: U
     )
 
     await state.clear()  # Clear any previous state
-    await callback.message.edit_text(text, reply_markup=kling_choice_keyboard())
+    await callback.message.answer(text, reply_markup=kling_choice_keyboard())
     await callback.answer()
 
 
@@ -278,7 +278,7 @@ async def start_kling_image(callback: CallbackQuery, state: FSMContext, user: Us
     await state.set_state(MediaState.waiting_for_image_prompt)
     await state.update_data(service="kling_image", reference_image_path=None, photo_caption_prompt=None)
 
-    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard(), parse_mode="Markdown")
+    await callback.message.answer(text, reply_markup=back_to_main_keyboard(), parse_mode="Markdown")
     await callback.answer()
 
 
@@ -300,7 +300,7 @@ async def start_kling_video(callback: CallbackQuery, state: FSMContext, user: Us
     # Clear old data when starting fresh session
     await state.update_data(service="kling", image_path=None, photo_caption_prompt=None)
 
-    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
+    await callback.message.answer(text, reply_markup=back_to_main_keyboard())
     await callback.answer()
 
 
@@ -331,7 +331,7 @@ async def start_gpt_image(callback: CallbackQuery, state: FSMContext, user: User
     await state.set_state(MediaState.waiting_for_image_prompt)
     await state.update_data(service="dalle", reference_image_path=None, photo_caption_prompt=None)
 
-    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard(), parse_mode="Markdown")
+    await callback.message.answer(text, reply_markup=back_to_main_keyboard(), parse_mode="Markdown")
     await callback.answer()
 
 
@@ -363,7 +363,7 @@ async def start_nano(callback: CallbackQuery, state: FSMContext, user: User):
     await state.set_state(MediaState.waiting_for_image_prompt)
     await state.update_data(service="nano_banana", reference_image_path=None, photo_caption_prompt=None)
 
-    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard(), parse_mode="Markdown")
+    await callback.message.answer(text, reply_markup=back_to_main_keyboard(), parse_mode="Markdown")
     await callback.answer()
 
 
