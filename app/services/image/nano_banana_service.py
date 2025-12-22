@@ -362,7 +362,14 @@ class NanoBananaService(BaseImageProvider):
                                         blocked=rating.blocked if hasattr(rating, 'blocked') else False
                                     )
                             else:
-                                logger.warning("nano_banana_safety_ratings_empty", candidate_index=idx)
+                                # safety_ratings exists but is falsy - log details
+                                logger.warning(
+                                    "nano_banana_safety_ratings_empty",
+                                    candidate_index=idx,
+                                    safety_ratings_type=type(candidate.safety_ratings).__name__,
+                                    safety_ratings_len=len(candidate.safety_ratings) if hasattr(candidate.safety_ratings, '__len__') else "NO_LEN",
+                                    safety_ratings_is_none=candidate.safety_ratings is None
+                                )
                         else:
                             logger.warning("nano_banana_no_safety_ratings_attribute", candidate_index=idx)
 
@@ -390,10 +397,15 @@ class NanoBananaService(BaseImageProvider):
                                         has_as_image=hasattr(part, 'as_image')
                                     )
                         else:
+                            # Content is missing or falsy - log details
+                            content_val = candidate.content if hasattr(candidate, 'content') else "NO_ATTR"
                             logger.warning(
                                 "nano_banana_no_content",
                                 candidate_index=idx,
-                                has_content_attr=hasattr(candidate, 'content')
+                                has_content_attr=hasattr(candidate, 'content'),
+                                content_is_none=content_val is None if hasattr(candidate, 'content') else False,
+                                content_type=type(content_val).__name__ if hasattr(candidate, 'content') and content_val is not None else "None",
+                                content_bool=bool(content_val) if hasattr(candidate, 'content') else False
                             )
 
                 # Delete reference image immediately after upload to prevent reuse
