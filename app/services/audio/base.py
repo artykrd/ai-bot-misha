@@ -19,6 +19,7 @@ class AudioResponse:
     """Standard audio generation/processing response format."""
     success: bool
     audio_path: Optional[str] = None
+    image_path: Optional[str] = None  # For cover art/album art
     text: Optional[str] = None  # For transcription
     error: Optional[str] = None
     processing_time: float = 0.0
