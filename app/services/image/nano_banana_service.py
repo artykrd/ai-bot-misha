@@ -507,12 +507,17 @@ class NanoBananaService(BaseImageProvider):
                         # Try different methods to save custom image object
                         buffer = io.BytesIO()
                         try:
-                            # Try with format parameter first
-                            pil_image.save(buffer, format='PNG')
-                        except TypeError:
-                            # If format parameter not supported, try without it
+                            # Try with positional argument first (Gemini's custom Image)
+                            pil_image.save(buffer, 'PNG')
+                        except (TypeError, AttributeError):
+                            # If that doesn't work, try without format
                             buffer = io.BytesIO()
-                            pil_image.save(buffer, format='PNG')
+                            try:
+                                pil_image.save(buffer)
+                            except Exception:
+                                # Last resort: try with keyword argument
+                                buffer = io.BytesIO()
+                                pil_image.save(buffer, format='PNG')
 
                         buffer.seek(0)
 
