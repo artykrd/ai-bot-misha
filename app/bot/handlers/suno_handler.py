@@ -6,7 +6,7 @@ Suno music generation handlers with step-by-step creation.
 """
 
 from aiogram import Router, F
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, Message, FSInputFile
 from aiogram.fsm.context import FSMContext
 from aiogram.enums import ParseMode
 import os
@@ -600,14 +600,14 @@ async def generate_suno_song(callback: CallbackQuery, state: FSMContext, user: U
             # Send audio file(s)
             if result.audio_path:
                 await callback.message.answer_audio(
-                    audio=result.audio_path,
+                    audio=FSInputFile(result.audio_path),
                     title=song_title,
                     performer="Suno AI"
                 )
 
             # Send cover image if available
             if result.image_path and os.path.exists(result.image_path):
-                await callback.message.answer_photo(photo=result.image_path)
+                await callback.message.answer_photo(photo=FSInputFile(result.image_path))
 
             await progress_msg.delete()
             await state.clear()
