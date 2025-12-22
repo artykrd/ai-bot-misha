@@ -574,7 +574,7 @@ async def generate_suno_song(callback: CallbackQuery, state: FSMContext, user: U
             generation_params["instrumental"] = False
 
         # Generate song
-        result = await suno_service.generate_music(**generation_params)
+        result = await suno_service.generate_audio(**generation_params)
 
         if result.success:
             await progress_msg.edit_text(
@@ -631,7 +631,8 @@ async def generate_suno_song(callback: CallbackQuery, state: FSMContext, user: U
         logger.error("suno_generation_exception", user_id=user.id, error=str(e))
         await progress_msg.edit_text(
             f"❌ Произошла ошибка при генерации: {str(e)}\n\n"
-            f"Токены возвращены на ваш счет."
+            f"Токены возвращены на ваш счет.",
+            parse_mode=None
         )
 
         # Refund tokens
