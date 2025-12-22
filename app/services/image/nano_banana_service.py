@@ -341,42 +341,60 @@ class NanoBananaService(BaseImageProvider):
                 # DETAILED LOGGING - Step 3: Candidates details (if available)
                 if hasattr(response, 'candidates') and response.candidates:
                     for idx, candidate in enumerate(response.candidates):
-                        candidate_info = {
-                            "index": idx,
-                            "finish_reason": str(candidate.finish_reason) if hasattr(candidate, 'finish_reason') else None,
-                            "has_content": hasattr(candidate, 'content'),
-                            "has_safety_ratings": hasattr(candidate, 'safety_ratings')
-                        }
+                        # Basic candidate info
+                        logger.info(
+                            "nano_banana_candidate_basic",
+                            index=idx,
+                            finish_reason=str(candidate.finish_reason) if hasattr(candidate, 'finish_reason') else "NONE",
+                            has_content=hasattr(candidate, 'content'),
+                            has_safety_ratings=hasattr(candidate, 'safety_ratings')
+                        )
 
-                        # Log safety ratings if available
-                        if hasattr(candidate, 'safety_ratings') and candidate.safety_ratings:
-                            safety_info = []
-                            for rating in candidate.safety_ratings:
-                                safety_info.append({
-                                    "category": str(rating.category) if hasattr(rating, 'category') else None,
-                                    "probability": str(rating.probability) if hasattr(rating, 'probability') else None,
-                                    "blocked": rating.blocked if hasattr(rating, 'blocked') else None
-                                })
-                            candidate_info["safety_ratings"] = safety_info
+                        # Log safety ratings SEPARATELY for better visibility
+                        if hasattr(candidate, 'safety_ratings'):
+                            if candidate.safety_ratings:
+                                for rating in candidate.safety_ratings:
+                                    logger.info(
+                                        "nano_banana_safety_rating",
+                                        candidate_index=idx,
+                                        category=str(rating.category) if hasattr(rating, 'category') else "UNKNOWN",
+                                        probability=str(rating.probability) if hasattr(rating, 'probability') else "UNKNOWN",
+                                        blocked=rating.blocked if hasattr(rating, 'blocked') else False
+                                    )
+                            else:
+                                logger.warning("nano_banana_safety_ratings_empty", candidate_index=idx)
+                        else:
+                            logger.warning("nano_banana_no_safety_ratings_attribute", candidate_index=idx)
 
                         # Log content structure
                         if hasattr(candidate, 'content') and candidate.content:
                             content = candidate.content
-                            candidate_info["content_parts_count"] = len(content.parts) if hasattr(content, 'parts') and content.parts else 0
-                            if hasattr(content, 'parts') and content.parts:
-                                parts_info = []
-                                for part in content.parts[:3]:  # Log first 3 parts
-                                    part_info = {
-                                        "has_text": hasattr(part, 'text') and part.text is not None,
-                                        "has_inline_data": hasattr(part, 'inline_data') and part.inline_data is not None,
-                                        "has_as_image": hasattr(part, 'as_image')
-                                    }
-                                    if hasattr(part, 'text') and part.text:
-                                        part_info["text_length"] = len(part.text)
-                                    parts_info.append(part_info)
-                                candidate_info["parts_structure"] = parts_info
+                            parts_count = len(content.parts) if hasattr(content, 'parts') and content.parts else 0
+                            logger.info(
+                                "nano_banana_content_structure",
+                                candidate_index=idx,
+                                parts_count=parts_count,
+                                has_parts_attr=hasattr(content, 'parts')
+                            )
 
-                        logger.info("nano_banana_candidate_details", **candidate_info)
+                            # Log each part separately
+                            if hasattr(content, 'parts') and content.parts:
+                                for part_idx, part in enumerate(content.parts[:3]):
+                                    logger.info(
+                                        "nano_banana_content_part",
+                                        candidate_index=idx,
+                                        part_index=part_idx,
+                                        has_text=hasattr(part, 'text') and part.text is not None,
+                                        text_length=len(part.text) if hasattr(part, 'text') and part.text else 0,
+                                        has_inline_data=hasattr(part, 'inline_data') and part.inline_data is not None,
+                                        has_as_image=hasattr(part, 'as_image')
+                                    )
+                        else:
+                            logger.warning(
+                                "nano_banana_no_content",
+                                candidate_index=idx,
+                                has_content_attr=hasattr(candidate, 'content')
+                            )
 
                 # Delete reference image immediately after upload to prevent reuse
                 if reference_image_path and os.path.exists(reference_image_path):
