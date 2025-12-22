@@ -554,6 +554,10 @@ async def generate_suno_song(callback: CallbackQuery, state: FSMContext, user: U
             )
             return
 
+    # Answer callback immediately to prevent "query is too old" error
+    # Generation takes ~2 minutes, but Telegram requires answer within 30 seconds
+    await callback.answer()
+
     progress_msg = await callback.message.edit_text("🎵 Генерирую песню... Это может занять 1-2 минуты.")
 
     try:
@@ -654,5 +658,3 @@ async def generate_suno_song(callback: CallbackQuery, state: FSMContext, user: U
                 subscription.tokens_used = max(0, subscription.tokens_used - tokens_cost)
                 await session.commit()
                 logger.info("tokens_refunded", user_id=user.id, amount=tokens_cost)
-
-    await callback.answer()
