@@ -560,18 +560,25 @@ async def generate_suno_song(callback: CallbackQuery, state: FSMContext, user: U
         suno_service = SunoService()
 
         # Prepare generation parameters
+        # prompt is REQUIRED - it's either melody description or song lyrics
+        if is_instrumental and melody_prompt:
+            prompt = melody_prompt
+            instrumental = True
+        elif lyrics:
+            prompt = lyrics  # lyrics are the prompt for non-instrumental
+            instrumental = False
+        else:
+            # Fallback: create prompt from title and style
+            prompt = f"{song_title} in {style} style"
+            instrumental = is_instrumental
+
         generation_params = {
+            "prompt": prompt,
             "title": song_title,
             "style": style,
-            "model_version": model_version.lower().replace(".", "-").replace(" ", "-"),
+            "instrumental": instrumental,
+            "model": model_version.replace(".", "_").replace(" ", "_"),
         }
-
-        if is_instrumental and melody_prompt:
-            generation_params["prompt"] = melody_prompt
-            generation_params["instrumental"] = True
-        elif lyrics:
-            generation_params["lyrics"] = lyrics
-            generation_params["instrumental"] = False
 
         # Generate song
         result = await suno_service.generate_audio(**generation_params)
@@ -616,10 +623,14 @@ async def generate_suno_song(callback: CallbackQuery, state: FSMContext, user: U
                 f"Токены возвращены на ваш счет."
             )
 
-            # Refund tokens
+            # Refund tokens by reducing tokens_used
             async with async_session_maker() as session:
                 sub_service = SubscriptionService(session)
-                await sub_service.add_tokens(user.id, tokens_cost)
+                subscription = await sub_service.get_active_subscription(user.id)
+                if subscription:
+                    subscription.tokens_used = max(0, subscription.tokens_used - tokens_cost)
+                    await session.commit()
+                    logger.info("tokens_refunded", user_id=user.id, amount=tokens_cost)
 
             logger.error(
                 "suno_generation_failed",
@@ -635,9 +646,13 @@ async def generate_suno_song(callback: CallbackQuery, state: FSMContext, user: U
             parse_mode=None
         )
 
-        # Refund tokens
+        # Refund tokens by reducing tokens_used
         async with async_session_maker() as session:
             sub_service = SubscriptionService(session)
-            await sub_service.add_tokens(user.id, tokens_cost)
+            subscription = await sub_service.get_active_subscription(user.id)
+            if subscription:
+                subscription.tokens_used = max(0, subscription.tokens_used - tokens_cost)
+                await session.commit()
+                logger.info("tokens_refunded", user_id=user.id, amount=tokens_cost)
 
     await callback.answer()
