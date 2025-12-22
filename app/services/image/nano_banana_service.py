@@ -284,9 +284,29 @@ class NanoBananaService(BaseImageProvider):
                 if reference_image_path:
                     # Load reference image
                     ref_image = Image.open(reference_image_path)
+
+                    # DETAILED LOGGING - Step 1: Original image info
+                    logger.info(
+                        "nano_banana_ref_image_loaded",
+                        path=reference_image_path,
+                        format=ref_image.format,
+                        mode=ref_image.mode,
+                        size=ref_image.size,
+                        width=ref_image.width,
+                        height=ref_image.height,
+                        file_size=os.path.getsize(reference_image_path) if os.path.exists(reference_image_path) else 0
+                    )
+
                     # Convert to RGB if needed
+                    original_mode = ref_image.mode
                     if ref_image.mode != 'RGB':
                         ref_image = ref_image.convert('RGB')
+                        logger.info(
+                            "nano_banana_ref_image_converted",
+                            from_mode=original_mode,
+                            to_mode='RGB',
+                            size_after=ref_image.size
+                        )
 
                     # Enhance prompt for image-to-image to get better transformations
                     enhanced_prompt = (
@@ -306,6 +326,57 @@ class NanoBananaService(BaseImageProvider):
                     contents=contents,
                     config=config
                 )
+
+                # DETAILED LOGGING - Step 2: Response structure
+                logger.info(
+                    "nano_banana_api_response_received",
+                    has_parts=hasattr(response, 'parts') and response.parts is not None,
+                    parts_count=len(response.parts) if hasattr(response, 'parts') and response.parts else 0,
+                    has_candidates=hasattr(response, 'candidates') and response.candidates is not None,
+                    candidates_count=len(response.candidates) if hasattr(response, 'candidates') and response.candidates else 0,
+                    has_text=hasattr(response, 'text'),
+                    response_type=type(response).__name__
+                )
+
+                # DETAILED LOGGING - Step 3: Candidates details (if available)
+                if hasattr(response, 'candidates') and response.candidates:
+                    for idx, candidate in enumerate(response.candidates):
+                        candidate_info = {
+                            "index": idx,
+                            "finish_reason": str(candidate.finish_reason) if hasattr(candidate, 'finish_reason') else None,
+                            "has_content": hasattr(candidate, 'content'),
+                            "has_safety_ratings": hasattr(candidate, 'safety_ratings')
+                        }
+
+                        # Log safety ratings if available
+                        if hasattr(candidate, 'safety_ratings') and candidate.safety_ratings:
+                            safety_info = []
+                            for rating in candidate.safety_ratings:
+                                safety_info.append({
+                                    "category": str(rating.category) if hasattr(rating, 'category') else None,
+                                    "probability": str(rating.probability) if hasattr(rating, 'probability') else None,
+                                    "blocked": rating.blocked if hasattr(rating, 'blocked') else None
+                                })
+                            candidate_info["safety_ratings"] = safety_info
+
+                        # Log content structure
+                        if hasattr(candidate, 'content') and candidate.content:
+                            content = candidate.content
+                            candidate_info["content_parts_count"] = len(content.parts) if hasattr(content, 'parts') and content.parts else 0
+                            if hasattr(content, 'parts') and content.parts:
+                                parts_info = []
+                                for part in content.parts[:3]:  # Log first 3 parts
+                                    part_info = {
+                                        "has_text": hasattr(part, 'text') and part.text is not None,
+                                        "has_inline_data": hasattr(part, 'inline_data') and part.inline_data is not None,
+                                        "has_as_image": hasattr(part, 'as_image')
+                                    }
+                                    if hasattr(part, 'text') and part.text:
+                                        part_info["text_length"] = len(part.text)
+                                    parts_info.append(part_info)
+                                candidate_info["parts_structure"] = parts_info
+
+                        logger.info("nano_banana_candidate_details", **candidate_info)
 
                 # Delete reference image immediately after upload to prevent reuse
                 if reference_image_path and os.path.exists(reference_image_path):
