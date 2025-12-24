@@ -21,6 +21,9 @@ class MediaState(StatesGroup):
     waiting_for_photo_vectorize = State()
     # Smart input handling states
     waiting_for_photo_action_choice = State()  # User sent photo, need to choose what to do
+    # Background replacement states
+    waiting_for_replace_bg_image = State()
+    waiting_for_replace_bg_prompt = State()
 
 
 class SunoState(StatesGroup):

@@ -237,17 +237,83 @@ async def suno_set_type_instrumental(callback: CallbackQuery, state: FSMContext,
 @router.callback_query(F.data == "suno.change_style")
 async def suno_change_style(callback: CallbackQuery, state: FSMContext):
     """Show style selection menu."""
-    text = "🎨 **Выберите стиль музыки**\n\nВыберите из предложенных вариантов или введите свой:"
+    data = await state.get_data()
+    selected_styles = data.get("suno_selected_styles", [])
 
-    await callback.message.edit_text(text, reply_markup=suno_style_keyboard(), parse_mode=ParseMode.MARKDOWN)
+    text = (
+        "🎨 **Выберите стили музыки**\n\n"
+        "Вы можете выбрать до 3 стилей одновременно.\n"
+        "После выбора нажмите \"👍 Я выбрал(а) стили\"."
+    )
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=suno_style_keyboard(selected_styles),
+        parse_mode=ParseMode.MARKDOWN
+    )
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("suno.toggle_style_"))
+async def suno_toggle_style(callback: CallbackQuery, state: FSMContext):
+    """Toggle style selection (add or remove from list)."""
+    style = callback.data.replace("suno.toggle_style_", "")
+    data = await state.get_data()
+    selected_styles = data.get("suno_selected_styles", [])
+
+    if style in selected_styles:
+        # Remove style
+        selected_styles.remove(style)
+    else:
+        # Add style (max 3)
+        if len(selected_styles) < 3:
+            selected_styles.append(style)
+        else:
+            await callback.answer("⚠️ Максимум 3 стиля!", show_alert=True)
+            return
+
+    await state.update_data(suno_selected_styles=selected_styles)
+
+    # Update keyboard
+    text = (
+        "🎨 **Выберите стили музыки**\n\n"
+        "Вы можете выбрать до 3 стилей одновременно.\n"
+        "После выбора нажмите \"👍 Я выбрал(а) стили\"."
+    )
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=suno_style_keyboard(selected_styles),
+        parse_mode=ParseMode.MARKDOWN
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "suno.confirm_styles")
+async def suno_confirm_styles(callback: CallbackQuery, state: FSMContext):
+    """Confirm selected styles and save."""
+    data = await state.get_data()
+    selected_styles = data.get("suno_selected_styles", [])
+
+    if not selected_styles:
+        await callback.answer("⚠️ Выберите хотя бы один стиль!", show_alert=True)
+        return
+
+    # Combine styles into comma-separated string
+    style_string = ", ".join(selected_styles)
+    await state.update_data(suno_style=style_string)
+
+    await callback.answer(f"✅ Выбрано стилей: {len(selected_styles)}")
+
+    # Show final summary screen
+    await show_suno_final_summary(callback, state)
 
 
 @router.callback_query(F.data.startswith("suno.set_style_"))
 async def suno_set_style(callback: CallbackQuery, state: FSMContext, user: User):
-    """Set music style and show final summary."""
+    """Legacy single style selection - redirect to new multi-select."""
     style = callback.data.replace("suno.set_style_", "")
-    await state.update_data(suno_style=style)
+    await state.update_data(suno_selected_styles=[style], suno_style=style)
 
     # Show final summary screen
     await show_suno_final_summary(callback, state)
@@ -278,7 +344,7 @@ async def process_custom_style(message: Message, state: FSMContext, user: User):
         await state.clear()
         return
     style = message.text.strip()
-    await state.update_data(suno_style=style)
+    await state.update_data(suno_style=style, suno_selected_styles=[style])
 
     # Show final summary screen
     await show_suno_final_summary(message, state)
@@ -357,7 +423,9 @@ async def suno_lyrics_by_title(callback: CallbackQuery, state: FSMContext, user:
             f"Теперь выберите стиль или начните генерацию."
         )
 
-        await progress_msg.edit_text(text, reply_markup=suno_style_keyboard(), parse_mode=ParseMode.MARKDOWN)
+        data = await state.get_data()
+        selected_styles = data.get("suno_selected_styles", [])
+        await progress_msg.edit_text(text, reply_markup=suno_style_keyboard(selected_styles), parse_mode=ParseMode.MARKDOWN)
 
     except Exception as e:
         logger.error("suno_lyrics_generation_failed", error=str(e))
@@ -440,7 +508,9 @@ async def process_lyrics_description(message: Message, state: FSMContext, user: 
             f"Теперь выберите стиль или начните генерацию."
         )
 
-        await progress_msg.edit_text(text, reply_markup=suno_style_keyboard(), parse_mode=ParseMode.MARKDOWN)
+        data = await state.get_data()
+        selected_styles = data.get("suno_selected_styles", [])
+        await progress_msg.edit_text(text, reply_markup=suno_style_keyboard(selected_styles), parse_mode=ParseMode.MARKDOWN)
 
     except Exception as e:
         logger.error("suno_lyrics_generation_failed", error=str(e))
@@ -478,9 +548,12 @@ async def process_custom_lyrics(message: Message, state: FSMContext):
     lyrics = message.text.strip()
     await state.update_data(suno_lyrics=lyrics)
 
+    data = await state.get_data()
+    selected_styles = data.get("suno_selected_styles", [])
+
     await message.answer(
         f"✅ Текст сохранен! Теперь выберите стиль:",
-        reply_markup=suno_style_keyboard()
+        reply_markup=suno_style_keyboard(selected_styles)
     )
 
 
@@ -513,9 +586,12 @@ async def process_melody_prompt(message: Message, state: FSMContext):
     melody_prompt = message.text.strip()
     await state.update_data(suno_melody_prompt=melody_prompt)
 
+    data = await state.get_data()
+    selected_styles = data.get("suno_selected_styles", [])
+
     await message.answer(
         f"✅ Описание мелодии сохранено! Теперь выберите стиль:",
-        reply_markup=suno_style_keyboard()
+        reply_markup=suno_style_keyboard(selected_styles)
     )
 
 
