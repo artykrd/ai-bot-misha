@@ -2216,7 +2216,7 @@ async def process_replace_bg_prompt(message: Message, state: FSMContext, user: U
                 action_callback="bot.pi_repb",
                 file_path=result.image_path,
                 file_type="image"
-            )
+            ).as_markup()
         )
 
         await progress_msg.delete()
@@ -2868,7 +2868,7 @@ async def process_photo_replace_bg_prompt(message: Message, state: FSMContext, u
                 action_callback="bot.pi_repb",
                 file_path=result.image_path,
                 file_type="image"
-            )
+            ).as_markup()
         )
 
         await progress_msg.delete()
