@@ -134,13 +134,24 @@ def dialog_keyboard(dialog_id: int, history_enabled: bool = False, show_costs: b
     return builder.as_markup()
 
 
-def nano_banana_keyboard() -> InlineKeyboardMarkup:
-    """Nano Banana keyboard."""
+def nano_banana_keyboard(is_pro: bool = False) -> InlineKeyboardMarkup:
+    """Nano Banana keyboard with version toggle."""
     builder = InlineKeyboardBuilder()
 
     builder.row(
         InlineKeyboardButton(text="📐 Изменить формат", callback_data="bot.nb.prms:ratio")
     )
+
+    # Version toggle button
+    if is_pro:
+        builder.row(
+            InlineKeyboardButton(text="🍌 Переключить на обычную версию", callback_data="bot.nano")
+        )
+    else:
+        builder.row(
+            InlineKeyboardButton(text="✨ Переключить на PRO версию", callback_data="bot.nano_pro")
+        )
+
     builder.row(
         InlineKeyboardButton(text="⬅️ В главное меню", callback_data="bot.back")
     )
@@ -198,14 +209,17 @@ def create_photo_keyboard() -> InlineKeyboardMarkup:
     )
     builder.row(
         InlineKeyboardButton(text="🍌 Nano Banana", callback_data="bot.nano"),
-        InlineKeyboardButton(text="🌆 Midjourney", callback_data="bot.midjourney")
+        InlineKeyboardButton(text="🍌✨ Banana PRO", callback_data="bot.nano_pro")
     )
     builder.row(
-        InlineKeyboardButton(text="🖌 Stable Diffusion", callback_data="bot_stable_diffusion"),
+        InlineKeyboardButton(text="🌆 Midjourney", callback_data="bot.midjourney"),
         InlineKeyboardButton(text="🎨 Recraft", callback_data="bot.recraft")
     )
     builder.row(
-        InlineKeyboardButton(text="🎞 Kling AI", callback_data="bot.kling_image"),
+        InlineKeyboardButton(text="🖌 Stable Diffusion", callback_data="bot_stable_diffusion"),
+        InlineKeyboardButton(text="🎞 Kling AI", callback_data="bot.kling_image")
+    )
+    builder.row(
         InlineKeyboardButton(text="🎭 Замена лиц", callback_data="bot.faceswap")
     )
     builder.row(
@@ -224,11 +238,14 @@ def create_video_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🎥 Hailuo", callback_data="bot.hailuo")
     )
     builder.row(
-        InlineKeyboardButton(text="🗾 Midjourney Video", callback_data="bot.mjvideo"),
+        InlineKeyboardButton(text="🌊 Veo 3.1", callback_data="bot.veo"),
         InlineKeyboardButton(text="📹 Luma", callback_data="bot.luma")
     )
     builder.row(
-        InlineKeyboardButton(text="🎞 Kling", callback_data="bot.kling_video"),
+        InlineKeyboardButton(text="🗾 Midjourney Video", callback_data="bot.mjvideo"),
+        InlineKeyboardButton(text="🎞 Kling", callback_data="bot.kling_video")
+    )
+    builder.row(
         InlineKeyboardButton(text="🧙 Kling Эффекты", callback_data="bot.kling_effects")
     )
     builder.row(
@@ -526,39 +543,76 @@ def suno_type_keyboard() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def suno_style_keyboard() -> InlineKeyboardMarkup:
-    """Suno style selection keyboard."""
+def suno_style_keyboard(selected_styles: list = None) -> InlineKeyboardMarkup:
+    """Suno style selection keyboard with multiple selection support."""
     builder = InlineKeyboardBuilder()
 
+    if selected_styles is None:
+        selected_styles = []
+
+    # All 21 styles from the image (7 rows x 3 columns)
     styles = [
+        ("🎤 Рэп", "рэп"),
+        ("🎧 Хип-хоп", "хип-хоп"),
         ("🎸 Рок", "рок"),
+
         ("🎹 Поп", "поп"),
+        ("🎵 R&B", "r&b"),
+        ("⚡ Электроника", "электроника"),
+
+        ("🪩 Диско", "диско"),
+        ("🔊 Техно", "техно"),
+        ("🏠 Хаус", "хаус"),
+
+        ("💃 Танцевальная", "танцевальная"),
+        ("🎛 Дабстеп", "дабстеп"),
         ("🎺 Джаз", "джаз"),
-        ("🎵 Классика", "классическая музыка"),
-        ("🎧 Электроника", "электроника, техно"),
-        ("🎤 Хип-хоп", "хип-хоп, рэп"),
-        ("🎻 Блюз", "блюз"),
-        ("🎼 Кантри", "кантри"),
-        ("🎪 Фолк", "фолк"),
-        ("🎭 Металл", "металл"),
+
+        ("🤠 Кантри", "кантри"),
+        ("🌴 Регги", "регги"),
+        ("🎻 Фолк", "фолк"),
+
+        ("🎷 Блюз", "блюз"),
+        ("🎼 Классика", "классическая"),
+        ("🎸 Фанк", "фанк"),
+
+        ("🎭 Панк", "панк"),
+        ("🌊 Эмбиент", "эмбиент"),
+        ("📻 Lo-Fi", "lo-fi"),
     ]
 
-    for i in range(0, len(styles), 2):
-        if i + 1 < len(styles):
-            builder.row(
-                InlineKeyboardButton(text=styles[i][0], callback_data=f"suno.set_style_{styles[i][1]}"),
-                InlineKeyboardButton(text=styles[i+1][0], callback_data=f"suno.set_style_{styles[i+1][1]}")
+    # Build keyboard in rows of 3
+    for i in range(0, len(styles), 3):
+        row_buttons = []
+        for j in range(3):
+            if i + j < len(styles):
+                style_name, style_value = styles[i + j]
+                # Add checkmark if selected
+                if style_value in selected_styles:
+                    style_name = f"✅ {style_name}"
+                row_buttons.append(
+                    InlineKeyboardButton(
+                        text=style_name,
+                        callback_data=f"suno.toggle_style_{style_value}"
+                    )
+                )
+        builder.row(*row_buttons)
+
+    # Show selected styles count and confirm button
+    selected_count = len(selected_styles)
+    if selected_count > 0:
+        builder.row(
+            InlineKeyboardButton(
+                text=f"👍 Я выбрал(а) стили ({selected_count}/3)",
+                callback_data="suno.confirm_styles"
             )
-        else:
-            builder.row(
-                InlineKeyboardButton(text=styles[i][0], callback_data=f"suno.set_style_{styles[i][1]}")
-            )
+        )
 
     builder.row(
         InlineKeyboardButton(text="✏️ Ввести свой стиль", callback_data="suno.custom_style")
     )
     builder.row(
-        InlineKeyboardButton(text="⬅️ Назад", callback_data="suno.settings")
+        InlineKeyboardButton(text="🔙 Вернуться в Suno", callback_data="bot.suno")
     )
 
     return builder.as_markup()

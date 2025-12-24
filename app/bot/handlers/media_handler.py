@@ -285,23 +285,20 @@ async def start_kling_image(callback: CallbackQuery, state: FSMContext, user: Us
 # Handler for Kling Video generation (renamed from bot.kling)
 @router.callback_query(F.data == "bot.kling_video")
 async def start_kling_video(callback: CallbackQuery, state: FSMContext, user: User):
-    """Start Kling video generation."""
+    """Start Kling video generation - currently under development."""
     text = (
         "🎬 **Kling AI - Генерация видео**\n\n"
-        "Kling создаёт высококачественные видео.\n\n"
-        "💰 **Стоимость:** ~9,000 токенов за видео\n\n"
-        "🎨 **Режимы работы:**\n"
-        "• **Text-to-Video:** Просто отправьте описание видео\n"
-        "• **Image-to-Video:** Отправьте фото, затем описание\n\n"
-        "✏️ **Отправьте описание видео ИЛИ фото**"
+        "⚠️ **Функционал в разработке**\n\n"
+        "Интеграция с Kling Video находится в процессе разработки.\n"
+        "Пожалуйста, используйте альтернативные сервисы:\n\n"
+        "• 🌊 Veo 3.1\n"
+        "• 🎥 Hailuo\n"
+        "• 📹 Luma Dream Machine\n\n"
+        "Следите за обновлениями!"
     )
 
-    await state.set_state(MediaState.waiting_for_video_prompt)
-    # Clear old data when starting fresh session
-    await state.update_data(service="kling", image_path=None, photo_caption_prompt=None)
-
-    await callback.message.answer(text, reply_markup=back_to_main_keyboard())
-    await callback.answer()
+    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
+    await callback.answer("⚠️ Функционал в разработке", show_alert=False)
 
 
 # ======================
@@ -361,7 +358,39 @@ async def start_nano(callback: CallbackQuery, state: FSMContext, user: User):
     )
 
     await state.set_state(MediaState.waiting_for_image_prompt)
-    await state.update_data(service="nano_banana", reference_image_path=None, photo_caption_prompt=None)
+    await state.update_data(service="nano_banana", nano_is_pro=False, reference_image_path=None, photo_caption_prompt=None)
+
+    await callback.message.answer(text, reply_markup=back_to_main_keyboard(), parse_mode="Markdown")
+    await callback.answer()
+
+
+@router.callback_query(F.data == "bot.nano_pro")
+async def start_nano_pro(callback: CallbackQuery, state: FSMContext, user: User):
+    # Clean up any old images
+    await cleanup_temp_images(state)
+
+    text = (
+        "🍌✨ **Banana PRO (Gemini 3 Pro Image)**\n\n"
+        "Gemini 3 Pro Image - это новейшая модель с улучшенными возможностями генерации.\n\n"
+        "📊 **Параметры:**\n"
+        "• Форматы: 1:1, 16:9, 9:16, 4:3, 3:4 и другие\n"
+        "• Размеры: 2K, 4K\n"
+        "• Высочайшее качество изображений\n"
+        "• Улучшенная генерация текста на изображениях\n\n"
+        "💰 **Стоимость:** ~6,000 токенов\n\n"
+        "🎨 **Режимы работы:**\n"
+        "• **Text-to-Image:** Отправьте описание изображения\n"
+        "• **Image-to-Image:** Отправьте фото + подробное описание\n"
+        "• Поддержка Google Search для актуальной информации\n\n"
+        "✏️ **Отправьте описание изображения ИЛИ фото**\n\n"
+        "**Примеры:**\n"
+        "• \"Инфографика о текущей погоде в Токио\"\n"
+        "• \"Фотореалистичный портрет кота в космосе в 4K\"\n"
+        "• Фото + \"Преобразуй в высококачественную иллюстрацию\""
+    )
+
+    await state.set_state(MediaState.waiting_for_image_prompt)
+    await state.update_data(service="nano_banana", nano_is_pro=True, reference_image_path=None, photo_caption_prompt=None)
 
     await callback.message.answer(text, reply_markup=back_to_main_keyboard(), parse_mode="Markdown")
     await callback.answer()
@@ -539,16 +568,28 @@ async def start_remove_bg(callback: CallbackQuery, state: FSMContext, user: User
 
 @router.callback_query(F.data == "bot.pi_repb")
 async def start_replace_bg(callback: CallbackQuery, state: FSMContext, user: User):
+    # Clean up any old images
+    await cleanup_temp_images(state)
+
     text = (
-        "Замена фона\n\n"
-        "Стоимость: ~500 токенов\n\n"
-        "Отправьте изображение, затем укажите цвет фона (white, black, #FF5733)."
+        "🖼 **Замена фона (Gemini 2.5 Flash Image)**\n\n"
+        "Умная замена фона с помощью ИИ Gemini.\n\n"
+        "💰 **Стоимость:** ~2,000 токенов\n\n"
+        "📝 **Как использовать:**\n"
+        "1. Отправьте фото\n"
+        "2. Отправьте описание нового фона\n\n"
+        "**Примеры:**\n"
+        "• \"Белый фон\"\n"
+        "• \"Пляж с пальмами на закате\"\n"
+        "• \"Городская улица ночью\"\n"
+        "• \"Абстрактный градиент от синего к фиолетовому\"\n\n"
+        "📸 **Отправьте изображение для замены фона**"
     )
 
-    await state.set_state(MediaState.waiting_for_image)
+    await state.set_state(MediaState.waiting_for_replace_bg_image)
     await state.update_data(service="replace_bg")
 
-    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
+    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard(), parse_mode="Markdown")
     await callback.answer()
 
 
@@ -947,21 +988,27 @@ async def process_luma_video(message: Message, user: User, state: FSMContext):
             pass
 
     # Prepare keyframes if image provided
-    keyframes = None
+    # NOTE: Luma API требует URL изображения, а не локальный файл
+    # "You should upload and use your own cdn image urls, currently this is the only way to pass an image"
+    # Для текущей реализации мы отключаем image-to-video для Luma
     if image_path:
-        try:
-            # For Luma, we need to create keyframes dict with image
-            # According to Luma API, keyframes can be {"frame0": {"type": "image", "url": "..."}}
-            # Since we have local file, we'll need to upload it or convert to base64
-            # For now, we'll just pass the image_path and let the service handle it
-            keyframes = {"frame0": {"type": "image", "path": image_path}}
-        except Exception as e:
-            logger.error("luma_keyframes_preparation_failed", error=str(e))
+        # Clean up
+        cleanup_temp_file(image_path)
+        await progress_msg.edit_text(
+            "⚠️ **Image-to-Video для Luma временно недоступен**\n\n"
+            "Luma API требует загрузки изображения на CDN сервер, что находится в разработке.\n\n"
+            "Используйте text-to-video режим или альтернативные сервисы:\n"
+            "• 🌊 Veo 3.1 (поддерживает image-to-video)\n"
+            "• 🎥 Hailuo (поддерживает image-to-video)",
+            parse_mode="Markdown"
+        )
+        await state.clear()
+        return
 
+    # Text-to-video mode (no keyframes needed)
     result = await luma_service.generate_video(
         prompt=prompt,
-        progress_callback=update_progress,
-        keyframes=keyframes
+        progress_callback=update_progress
     )
 
     if result.success:
@@ -2045,6 +2092,152 @@ async def process_suno_audio(message: Message, user: User, state: FSMContext):
 # ======================
 # FSM HANDLERS - IMAGE PROCESSING
 # ======================
+
+@router.message(MediaState.waiting_for_replace_bg_image, F.photo)
+async def process_replace_bg_image(message: Message, state: FSMContext, user: User):
+    """Process image for background replacement."""
+    # Get the largest photo
+    photo = message.photo[-1]
+
+    # Download photo
+    file = await message.bot.get_file(photo.file_id)
+    temp_path = get_temp_file_path(prefix="replace_bg", suffix=".jpg", user_id=user.id)
+    await message.bot.download_file(file.file_path, temp_path)
+
+    # Resize if needed
+    temp_path = resize_image_if_needed(temp_path, max_size_mb=3.0, max_dimension=2048)
+
+    # Save to state
+    await state.update_data(replace_bg_image_path=str(temp_path))
+
+    # Ask for background description
+    await message.answer(
+        "✅ Изображение получено!\n\n"
+        "📝 Теперь опишите новый фон:\n\n"
+        "**Примеры:**\n"
+        "• \"Белый фон\"\n"
+        "• \"Пляж с пальмами на закате\"\n"
+        "• \"Городская улица ночью\"\n"
+        "• \"Абстрактный градиент от синего к фиолетовому\"",
+        parse_mode="Markdown"
+    )
+
+    await state.set_state(MediaState.waiting_for_replace_bg_prompt)
+
+
+@router.message(MediaState.waiting_for_replace_bg_prompt, F.text)
+async def process_replace_bg_prompt(message: Message, state: FSMContext, user: User):
+    """Process background replacement with new background description."""
+    # CRITICAL FIX: Ignore commands
+    if message.text and message.text.startswith('/'):
+        await state.clear()
+        return
+
+    data = await state.get_data()
+    image_path = data.get("replace_bg_image_path")
+    background_description = message.text.strip()
+
+    if not image_path:
+        await message.answer("❌ Изображение не найдено. Начните заново с /start")
+        await state.clear()
+        return
+
+    # Check tokens
+    estimated_tokens = 2000
+
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+        try:
+            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+        except InsufficientTokensError as e:
+            cleanup_temp_file(image_path)
+            await message.answer(
+                f"❌ Недостаточно токенов для замены фона!\n\n"
+                f"Требуется: {estimated_tokens:,} токенов\n"
+                f"Доступно: {e.details['available']:,} токенов"
+            )
+            await state.clear()
+            return
+
+    # Send progress message
+    progress_msg = await message.answer("🎨 Заменяю фон...")
+
+    async def update_progress(text: str):
+        try:
+            await progress_msg.edit_text(text, parse_mode=None)
+        except Exception:
+            pass
+
+    # Use Nano Banana service with image-to-image
+    nano_service = NanoBananaService()
+
+    # Create prompt for background replacement
+    prompt = f"Замени фон на этом изображении на: {background_description}. Сохрани основной объект, но полностью замени фон."
+
+    # Generate with reference image
+    result = await nano_service.generate_image(
+        prompt=prompt,
+        reference_image_path=image_path,
+        progress_callback=update_progress
+    )
+
+    # Clean up original image
+    cleanup_temp_file(image_path)
+
+    if result.success:
+        # Get user's remaining tokens
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            user_tokens = await sub_service.get_user_total_tokens(user.id)
+
+        # Generate caption
+        caption = format_generation_message(
+            content_type=CONTENT_TYPES["image"],
+            model_name="Замена фона (Gemini 2.5 Flash)",
+            tokens_used=estimated_tokens,
+            user_tokens=user_tokens,
+            prompt=background_description,
+            mode="background-replacement"
+        )
+
+        # Send image
+        await message.answer_photo(
+            photo=FSInputFile(result.image_path),
+            caption=caption,
+            reply_markup=create_action_keyboard(
+                action_text="🔄 Заменить фон еще раз",
+                action_callback="bot.pi_repb",
+                file_path=result.image_path,
+                file_type="image"
+            )
+        )
+
+        await progress_msg.delete()
+
+        # Clean up generated image
+        try:
+            os.remove(result.image_path)
+        except Exception as e:
+            logger.error("replace_bg_cleanup_failed", error=str(e))
+
+        logger.info(
+            "replace_bg_completed",
+            user_id=user.id,
+            background=background_description[:50],
+            tokens=estimated_tokens
+        )
+    else:
+        try:
+            await progress_msg.edit_text(
+                f"❌ Ошибка замены фона:\n{result.error}"
+            )
+        except Exception:
+            pass
+
+        logger.error("replace_bg_failed", user_id=user.id, error=result.error)
+
+    await state.clear()
+
 
 @router.message(MediaState.waiting_for_image, F.photo)
 async def process_image(message: Message, state: FSMContext, user: User):
