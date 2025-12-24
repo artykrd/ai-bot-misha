@@ -1559,11 +1559,15 @@ async def process_gemini_image(message: Message, user: User, state: FSMContext):
 
 
 async def process_nano_image(message: Message, user: User, state: FSMContext):
-    """Process Nano Banana (Gemini 2.5 Flash Image) image generation."""
+    """Process Nano Banana (Gemini 2.5 Flash Image or Gemini 3 Pro Image) image generation."""
     data = await state.get_data()
 
     prompt = data.get("photo_caption_prompt") or message.text
     reference_image_path = data.get("reference_image_path", None)
+    nano_is_pro = data.get("nano_is_pro", False)
+
+    # Select model based on PRO flag
+    model = "gemini-3-pro-image-preview" if nano_is_pro else "gemini-2.5-flash-image"
 
     estimated_tokens = 3000  # Nano Banana cost
 
@@ -1587,8 +1591,9 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
 
     # Progress message
     mode_text = "image-to-image" if reference_image_path else "text-to-image"
+    model_display = "Nano Banana PRO (Gemini 3)" if nano_is_pro else "Nano Banana (Gemini 2.5)"
     progress_msg = await message.answer(
-        f"🍌 Генерирую изображение с Nano Banana ({mode_text})..."
+        f"🍌 Генерирую изображение с {model_display} ({mode_text})..."
     )
 
     nano_service = NanoBananaService()
@@ -1602,6 +1607,7 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
     # Generate image
     result = await nano_service.generate_image(
         prompt=prompt,
+        model=model,
         progress_callback=update_progress,
         aspect_ratio="1:1",
         reference_image_path=reference_image_path
@@ -1615,9 +1621,10 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
             user_tokens = await sub_service.get_user_total_tokens(user.id)
 
         # Generate unified notification message
+        model_name = "Nano Banana PRO (Gemini 3)" if nano_is_pro else "Nano Banana (Gemini 2.5)"
         info_text = format_generation_message(
             content_type=CONTENT_TYPES["image"],
-            model_name="Nano Banana",
+            model_name=model_name,
             tokens_used=tokens_used,
             user_tokens=user_tokens,
             prompt=prompt
