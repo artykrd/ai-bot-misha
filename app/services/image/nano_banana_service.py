@@ -123,12 +123,13 @@ class NanoBananaService(BaseImageProvider):
         **kwargs
     ) -> ImageResponse:
         """
-        Generate image using Nano Banana (Gemini 2.5 Flash Image).
+        Generate image using Nano Banana (Gemini 2.5 Flash Image or Gemini 3 Pro Image).
 
         Args:
             prompt: Text description for image generation
             progress_callback: Optional async callback for progress updates
             **kwargs: Additional parameters:
+                - model: Model to use (gemini-2.5-flash-image or gemini-3-pro-image-preview, default: gemini-2.5-flash-image)
                 - aspect_ratio: Image aspect ratio (1:1, 16:9, 9:16, 3:4, 4:3, default: 1:1)
                 - number_of_images: Number of images to generate (1-4, default: 1)
                 - reference_image_path: Path to reference image (optional, for image-to-image)
@@ -160,6 +161,7 @@ class NanoBananaService(BaseImageProvider):
                 )
 
             # Get parameters
+            model = kwargs.get("model", "gemini-2.5-flash-image")
             aspect_ratio = kwargs.get("aspect_ratio", "1:1")
             number_of_images = kwargs.get("number_of_images", 1)
             reference_image_path = kwargs.get("reference_image_path", None)
@@ -169,11 +171,13 @@ class NanoBananaService(BaseImageProvider):
                 mode = "image-to-image"
 
             if progress_callback:
-                await progress_callback(f"🎨 Генерирую изображение ({mode}, {aspect_ratio})...")
+                model_display = "Gemini 3 Pro" if "3-pro" in model else "Gemini 2.5 Flash"
+                await progress_callback(f"🎨 Генерирую изображение ({model_display}, {mode}, {aspect_ratio})...")
 
             # Generate image
             image_path = await self._generate_nano_image(
                 prompt=prompt,
+                model=model,
                 aspect_ratio=aspect_ratio,
                 number_of_images=number_of_images,
                 reference_image_path=reference_image_path,
@@ -201,7 +205,7 @@ class NanoBananaService(BaseImageProvider):
                 processing_time=processing_time,
                 metadata={
                     "provider": "nano_banana",
-                    "model": "gemini-2.5-flash-image",
+                    "model": model,
                     "aspect_ratio": aspect_ratio,
                     "mode": mode,
                     "prompt": prompt,
@@ -236,12 +240,13 @@ class NanoBananaService(BaseImageProvider):
     async def _generate_nano_image(
         self,
         prompt: str,
+        model: str,
         aspect_ratio: str,
         number_of_images: int,
         reference_image_path: Optional[str] = None,
         progress_callback: Optional[Callable[[str], Awaitable[None]]] = None
     ) -> str:
-        """Generate image using Nano Banana model."""
+        """Generate image using Nano Banana model (Gemini 2.5 Flash Image or Gemini 3 Pro Image)."""
 
         loop = asyncio.get_event_loop()
 
@@ -321,11 +326,14 @@ class NanoBananaService(BaseImageProvider):
                     # Text-only generation
                     contents = translated_prompt
 
+                # Use the specified model (gemini-2.5-flash-image or gemini-3-pro-image-preview)
                 response = self.client.models.generate_content(
-                    model="gemini-2.5-flash-image",
+                    model=model,
                     contents=contents,
                     config=config
                 )
+
+                logger.info("nano_banana_api_call", model=model, mode="image-to-image" if reference_image_path else "text-to-image")
 
                 # DETAILED LOGGING - Step 2: Response structure
                 logger.info(
