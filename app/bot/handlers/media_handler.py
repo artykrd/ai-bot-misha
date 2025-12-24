@@ -2781,7 +2781,12 @@ async def process_photo_replace_bg(message: Message, state: FSMContext, user: Us
 
 @router.message(MediaState.waiting_for_photo_replace_bg, F.text)
 async def process_photo_replace_bg_prompt(message: Message, state: FSMContext, user: User):
-    """Process background replacement with user-specified background."""
+    """Process background replacement with Gemini (NanoBananaService)."""
+    # CRITICAL FIX: Ignore commands
+    if message.text and message.text.startswith('/'):
+        await state.clear()
+        return
+
     data = await state.get_data()
     image_path = data.get("saved_image_path")
 
@@ -2792,8 +2797,8 @@ async def process_photo_replace_bg_prompt(message: Message, state: FSMContext, u
 
     bg_description = message.text
 
-    # Check and use tokens (RemoveBG ~1000 + DALL-E ~4000)
-    estimated_tokens = 5000
+    # Check and use tokens (Gemini image-to-image: ~3000 tokens)
+    estimated_tokens = 3000
 
     async with async_session_maker() as session:
         sub_service = SubscriptionService(session)
@@ -2812,108 +2817,83 @@ async def process_photo_replace_bg_prompt(message: Message, state: FSMContext, u
             await state.clear()
             return
 
-    progress_msg = await message.answer("🖼️ Обрабатываю изображение...")
+    # Send progress message
+    progress_msg = await message.answer("🎨 Заменяю фон с Gemini 2.5 Flash...")
 
-    # Progress callback
     async def update_progress(text: str):
         try:
             await progress_msg.edit_text(text, parse_mode=None)
         except Exception:
             pass
 
-    try:
-        # Step 1: Remove background
-        await update_progress("🖼️ Удаляю фон с изображения...")
+    # Use Nano Banana service with image-to-image
+    nano_service = NanoBananaService()
 
-        removebg_service = RemoveBgService()
-        remove_result = await removebg_service.process_image(
-            image_path=image_path,
-            size="auto",
-            type="auto"
+    # Create prompt for background replacement
+    prompt = f"Замени фон на этом изображении на: {bg_description}. Сохрани основной объект, но полностью замени фон."
+
+    # Generate with reference image using Gemini 2.5 Flash Image
+    result = await nano_service.generate_image(
+        prompt=prompt,
+        model="gemini-2.5-flash-image",
+        reference_image_path=image_path,
+        progress_callback=update_progress
+    )
+
+    # Clean up original image
+    cleanup_temp_file(image_path)
+
+    if result.success:
+        # Get user's remaining tokens
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            user_tokens = await sub_service.get_user_total_tokens(user.id)
+
+        # Generate caption
+        caption = format_generation_message(
+            content_type=CONTENT_TYPES["image"],
+            model_name="Замена фона (Gemini 2.5 Flash)",
+            tokens_used=estimated_tokens,
+            user_tokens=user_tokens,
+            prompt=bg_description,
+            mode="background-replacement"
         )
 
-        if not remove_result.success:
-            raise Exception(f"Background removal failed: {remove_result.error}")
-
-        # Step 2: Generate new background with DALL-E
-        await update_progress("🎨 Создаю новый фон...")
-
-        background_prompt = f"A high-quality background image: {bg_description}. Professional photography, suitable as a background."
-
-        dalle_service = DalleService()
-        bg_result = await dalle_service.generate_image(
-            prompt=background_prompt,
-            model="dall-e-3",
-            size="1024x1024",
-            quality="standard",
-            style="natural"
-        )
-
-        if not bg_result.success:
-            # Clean up removed bg image
-            try:
-                os.remove(remove_result.image_path)
-            except Exception:
-                pass
-            raise Exception(f"Background generation failed: {bg_result.error}")
-
-        # Step 3: Composite subject onto new background
-        await update_progress("🖌️ Объединяю изображения...")
-
-        from PIL import Image
-
-        # Open images
-        subject_img = Image.open(remove_result.image_path)  # RGBA
-        background_img = Image.open(bg_result.image_path)  # RGB
-
-        # Resize background to match subject size
-        background_img = background_img.resize(subject_img.size, Image.Resampling.LANCZOS)
-
-        # Convert background to RGBA
-        background_img = background_img.convert('RGBA')
-
-        # Composite
-        final_img = Image.alpha_composite(background_img, subject_img)
-
-        # Convert to RGB for JPEG
-        final_rgb = Image.new('RGB', final_img.size, (255, 255, 255))
-        final_rgb.paste(final_img, mask=final_img.split()[3])  # Use alpha as mask
-
-        # Save final image
-        final_path = get_temp_file_path(prefix="replaced", suffix=".jpg")
-        final_rgb.save(str(final_path), 'JPEG', quality=95, optimize=True)
-
-        # Clean up intermediate files
-        cleanup_temp_file(image_path)
-        cleanup_temp_file(remove_result.image_path)
-        cleanup_temp_file(bg_result.image_path)
-
-        # Send final image
-        final_file = FSInputFile(final_path)
+        # Send image
         await message.answer_photo(
-            photo=final_file,
-            caption=f"✅ Фон заменён!\n\n"
-                    f"Новый фон: {bg_description}\n\n"
-                    f"Использовано токенов: {estimated_tokens:,}"
+            photo=FSInputFile(result.image_path),
+            caption=caption,
+            reply_markup=create_action_keyboard(
+                action_text="🔄 Заменить фон еще раз",
+                action_callback="bot.pi_repb",
+                file_path=result.image_path,
+                file_type="image"
+            )
         )
-
-        # Clean up final file
-        cleanup_temp_file(final_path)
 
         await progress_msg.delete()
 
-    except Exception as e:
-        # Clean up all temp files on error
-        cleanup_temp_file(image_path)
+        # Clean up generated image
+        try:
+            os.remove(result.image_path)
+        except Exception as e:
+            logger.error("replace_bg_cleanup_failed", error=str(e))
 
-        logger.error("photo_replace_bg_failed", error=str(e))
-
+        logger.info(
+            "photo_replace_bg_completed",
+            user_id=user.id,
+            background=bg_description[:50],
+            tokens=estimated_tokens
+        )
+    else:
         try:
             await progress_msg.edit_text(
-                f"❌ Ошибка замены фона:\n{str(e)}"
+                f"❌ Ошибка замены фона:\n{result.error}"
             )
         except Exception:
             pass
+
+        logger.error("photo_replace_bg_failed", user_id=user.id, error=result.error)
 
     await state.clear()
 
