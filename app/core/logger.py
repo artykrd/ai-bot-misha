@@ -40,17 +40,17 @@ def setup_logging() -> None:
     console_handler.setLevel(log_level)
     handlers.append(console_handler)
 
-    # File handler with daily rotation
+    # File handler with daily rotation - creates files like bot.txt, bot.2025-12-23.txt
     file_handler = TimedRotatingFileHandler(
-        filename=log_dir / "bot.log",
+        filename=log_dir / "bot.txt",  # Use .txt extension instead of .log
         when="midnight",  # Rotate at midnight
         interval=1,  # Every 1 day
         backupCount=30,  # Keep 30 days of logs
         encoding="utf-8",
     )
     file_handler.setLevel(log_level)
-    # Add date suffix to rotated files
-    file_handler.suffix = "%Y-%m-%d"
+    # Add date suffix to rotated files: bot.txt -> bot.2025-12-24.txt
+    file_handler.suffix = "%Y-%m-%d.txt"
     handlers.append(file_handler)
 
     # Configure standard logging
