@@ -1630,10 +1630,11 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
             prompt=prompt
         )
 
-        # Create action keyboard
+        # Create action keyboard - use correct callback based on PRO mode
+        nano_callback = "bot.nano_pro" if nano_is_pro else "bot.nano"
         builder = create_action_keyboard(
             action_text=MODEL_ACTIONS["nano_banana"]["text"],
-            action_callback=MODEL_ACTIONS["nano_banana"]["callback"],
+            action_callback=nano_callback,
             file_path=result.image_path,
             file_type="image"
         )

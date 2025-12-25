@@ -650,6 +650,31 @@ def suno_back_keyboard() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def suno_vocal_keyboard(selected_vocal: str = "male") -> InlineKeyboardMarkup:
+    """Keyboard for selecting vocal type."""
+    builder = InlineKeyboardBuilder()
+
+    # Vocal type buttons with checkmark for selected
+    vocals = [
+        ("👨 Мужской голос", "male"),
+        ("👩 Женский голос", "female"),
+        ("🎭 Нейтральный", "neutral"),
+    ]
+
+    for text, vocal_type in vocals:
+        if vocal_type == selected_vocal:
+            text = f"✅ {text}"
+        builder.row(
+            InlineKeyboardButton(text=text, callback_data=f"suno.set_vocal_{vocal_type}")
+        )
+
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Вернуться к Suno", callback_data="bot.suno")
+    )
+
+    return builder.as_markup()
+
+
 def suno_final_keyboard() -> InlineKeyboardMarkup:
     """Final screen keyboard with generate button."""
     builder = InlineKeyboardBuilder()

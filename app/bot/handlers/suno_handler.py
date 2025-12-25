@@ -431,7 +431,8 @@ async def suno_lyrics_by_title(callback: CallbackQuery, state: FSMContext, user:
         logger.error("suno_lyrics_generation_failed", error=str(e))
         await progress_msg.edit_text(
             f"❌ Ошибка генерации текста: {str(e)}\n\nПопробуйте ввести текст вручную.",
-            reply_markup=suno_lyrics_choice_keyboard(song_title)
+            reply_markup=suno_lyrics_choice_keyboard(song_title),
+            parse_mode=None  # Fix: Disable Markdown parsing for error messages
         )
 
 
@@ -515,7 +516,8 @@ async def process_lyrics_description(message: Message, state: FSMContext, user: 
     except Exception as e:
         logger.error("suno_lyrics_generation_failed", error=str(e))
         await progress_msg.edit_text(
-            f"❌ Ошибка генерации текста: {str(e)}\n\nПопробуйте ввести текст вручную."
+            f"❌ Ошибка генерации текста: {str(e)}\n\nПопробуйте ввести текст вручную.",
+            parse_mode=None  # Fix: Disable Markdown parsing for error messages
         )
 
 

@@ -5,6 +5,7 @@ Stores file paths associated with message IDs for a limited time.
 from typing import Optional, Dict
 from datetime import datetime, timedelta
 from app.core.logger import get_logger
+import os
 
 logger = get_logger(__name__)
 
@@ -62,7 +63,7 @@ class FileCache:
         return file_path
 
     def _cleanup_expired(self) -> None:
-        """Remove expired entries from cache."""
+        """Remove expired entries from cache and delete physical files."""
         now = datetime.now()
         expired_keys = [
             key for key, (_, timestamp) in self._cache.items()
@@ -70,9 +71,20 @@ class FileCache:
         ]
 
         if expired_keys:
+            files_deleted = 0
             for key in expired_keys:
+                file_path, _ = self._cache[key]
+                # Try to delete physical file
+                try:
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                        files_deleted += 1
+                        logger.info("expired_file_deleted", path=file_path, key=key)
+                except Exception as e:
+                    logger.warning("failed_to_delete_expired_file", path=file_path, error=str(e))
+
                 del self._cache[key]
-            logger.info("cache_cleaned", expired_count=len(expired_keys))
+            logger.info("cache_cleaned", expired_count=len(expired_keys), files_deleted=files_deleted)
 
 
 # Global file cache instance (singleton)

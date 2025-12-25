@@ -226,7 +226,7 @@ class NanoBananaService(BaseImageProvider):
                     f"Оригинальная ошибка: {error_msg}"
                 )
 
-            logger.error("nano_banana_generation_failed", error=error_msg, prompt=prompt[:100])
+            logger.error("nano_banana_generation_failed", error=error_msg, prompt=prompt[:100] if prompt else "None")
 
             if progress_callback:
                 await progress_callback("❌ Ошибка: см. сообщение ниже")
@@ -275,15 +275,17 @@ class NanoBananaService(BaseImageProvider):
                 # Gemini 2.5 Flash Image works better with English prompts
                 def has_cyrillic(text):
                     """Check if text contains Cyrillic characters."""
+                    if not text:
+                        return False
                     return bool(re.search('[а-яА-ЯёЁ]', text))
 
-                translated_prompt = prompt
+                translated_prompt = prompt or ""
                 if has_cyrillic(prompt):
                     # Simple translation approach: prefix with instruction
                     # For better results, we rely on Gemini's multilingual understanding
                     # with explicit English instruction
                     translated_prompt = f"Create an image: {prompt}. Interpret the description and generate accordingly."
-                    logger.info("nano_banana_russian_prompt_detected", original=prompt[:50])
+                    logger.info("nano_banana_russian_prompt_detected", original=prompt[:50] if prompt else "None")
 
                 # Prepare contents - can be text only or text + image
                 if reference_image_path:
