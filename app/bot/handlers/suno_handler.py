@@ -20,6 +20,7 @@ from app.bot.keyboards.inline import (
     suno_lyrics_choice_keyboard,
     suno_back_keyboard,
     suno_final_keyboard,
+    suno_vocal_keyboard,
 )
 from app.bot.states.media import SunoState
 from app.database.models.user import User
@@ -73,6 +74,7 @@ async def show_suno_final_summary(callback_or_message, state: FSMContext):
     model_version = data.get("suno_model_version", DEFAULT_SUNO_SETTINGS["model_version"])
     is_instrumental = data.get("suno_is_instrumental", DEFAULT_SUNO_SETTINGS["is_instrumental"])
     melody_prompt = data.get("suno_melody_prompt", None)
+    vocal_gender = data.get("suno_vocal_gender", "m")
 
     # Determine type and voice
     if is_instrumental:
@@ -80,7 +82,7 @@ async def show_suno_final_summary(callback_or_message, state: FSMContext):
         voice = "—"
     else:
         song_type = "песня"
-        voice = "мужской"  # Default, can be enhanced later
+        voice = "мужской" if vocal_gender == "m" else "женский"
 
     # Build summary text
     text = f"⚡ **Мы готовы к созданию, давайте всё проверим:**\n\n"
@@ -305,9 +307,68 @@ async def suno_confirm_styles(callback: CallbackQuery, state: FSMContext):
 
     await callback.answer(f"✅ Выбрано стилей: {len(selected_styles)}")
 
+    # Check if instrumental - skip vocal selection for instrumental
+    is_instrumental = data.get("suno_is_instrumental", False)
+    if is_instrumental:
+        # Show final summary screen directly
+        await show_suno_final_summary(callback, state)
+    else:
+        # Show vocal selection screen for songs with lyrics
+        text = (
+            "3️⃣ **Выберите тип вокала**\n\n"
+            "Выберите, каким голосом будет исполнена песня:"
+        )
+        await callback.message.edit_text(
+            text,
+            reply_markup=suno_vocal_keyboard(),
+            parse_mode=ParseMode.MARKDOWN
+        )
+        await callback.answer()
+
+
+# ======================
+# VOCAL SELECTION
+# ======================
+
+@router.callback_query(F.data.startswith("suno.set_vocal_"))
+async def suno_set_vocal(callback: CallbackQuery, state: FSMContext):
+    """Toggle vocal type selection."""
+    vocal_type = callback.data.replace("suno.set_vocal_", "")
+
+    # Store selected vocal in state
+    await state.update_data(suno_vocal_gender=vocal_type)
+
+    # Update keyboard to show new selection
+    text = (
+        "3️⃣ **Выберите тип вокала**\n\n"
+        "Выберите, каким голосом будет исполнена песня:"
+    )
+    await callback.message.edit_text(
+        text,
+        reply_markup=suno_vocal_keyboard(selected_vocal=vocal_type),
+        parse_mode=ParseMode.MARKDOWN
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "suno.confirm_vocal")
+async def suno_confirm_vocal(callback: CallbackQuery, state: FSMContext):
+    """Confirm vocal selection and show final summary."""
+    data = await state.get_data()
+    vocal_gender = data.get("suno_vocal_gender", "m")  # Default to male
+
+    # Ensure vocal is stored
+    await state.update_data(suno_vocal_gender=vocal_gender)
+
+    await callback.answer("✅ Тип вокала сохранен")
+
     # Show final summary screen
     await show_suno_final_summary(callback, state)
 
+
+# ======================
+# STYLE SELECTION (LEGACY)
+# ======================
 
 @router.callback_query(F.data.startswith("suno.set_style_"))
 async def suno_set_style(callback: CallbackQuery, state: FSMContext, user: User):
@@ -613,6 +674,7 @@ async def generate_suno_song(callback: CallbackQuery, state: FSMContext, user: U
     model_version = data.get("suno_model_version", DEFAULT_SUNO_SETTINGS["model_version"])
     is_instrumental = data.get("suno_is_instrumental", DEFAULT_SUNO_SETTINGS["is_instrumental"])
     melody_prompt = data.get("suno_melody_prompt", None)
+    vocal_gender = data.get("suno_vocal_gender", "m")  # Default to male
 
     # Validate required data
     if not is_instrumental and not lyrics:
@@ -661,6 +723,10 @@ async def generate_suno_song(callback: CallbackQuery, state: FSMContext, user: U
             "instrumental": instrumental,
             "model": model_version.replace(".", "_").replace(" ", "_"),
         }
+
+        # Add vocal gender for non-instrumental songs
+        if not instrumental:
+            generation_params["vocalGender"] = vocal_gender
 
         # Generate song
         result = await suno_service.generate_audio(**generation_params)
