@@ -258,28 +258,20 @@ async def start_kling_choice(callback: CallbackQuery, state: FSMContext, user: U
 # Handler for Kling Image generation
 @router.callback_query(F.data == "bot.kling_image")
 async def start_kling_image(callback: CallbackQuery, state: FSMContext, user: User):
-    """Start Kling image generation."""
-    # Clean up any old images
-    await cleanup_temp_images(state)
-
+    """Start Kling image generation - currently under development."""
     text = (
         "🎞 **Kling AI - Генерация изображений**\n\n"
-        "Kling создаёт высококачественные изображения.\n\n"
-        "💰 **Стоимость:** ~3,000-5,000 токенов за изображение\n\n"
-        "🎨 **Режимы работы:**\n"
-        "• **Text-to-Image:** Просто отправьте описание изображения\n"
-        "• **Image-to-Image:** Отправьте фото, затем описание трансформации\n\n"
-        "📊 **Параметры:**\n"
-        "• Форматы: 1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3, 21:9\n"
-        "• Разрешение: 1K или 2K\n\n"
-        "✏️ **Отправьте описание изображения ИЛИ фото**"
+        "⚠️ **Функционал в разработке**\n\n"
+        "Интеграция с Kling Image находится в процессе разработки.\n"
+        "Пожалуйста, используйте альтернативные сервисы:\n\n"
+        "• 🍌 Nano Banana (Gemini 2.5 Flash)\n"
+        "• 🍌✨ Banana PRO (Gemini 3 Pro)\n"
+        "• 🖼 DALL·E 3\n\n"
+        "Следите за обновлениями!"
     )
 
-    await state.set_state(MediaState.waiting_for_image_prompt)
-    await state.update_data(service="kling_image", reference_image_path=None, photo_caption_prompt=None)
-
-    await callback.message.answer(text, reply_markup=back_to_main_keyboard(), parse_mode="Markdown")
-    await callback.answer()
+    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
+    await callback.answer("⚠️ Функционал в разработке", show_alert=False)
 
 
 # Handler for Kling Video generation (renamed from bot.kling)
@@ -813,7 +805,7 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
 
         # Clean up
         try:
-            os.remove(result.video_path)
+            pass  # os.remove(result.video_path) - DISABLED: files managed by file_cache
         except Exception as e:
             logger.error("video_cleanup_failed", error=str(e))
 
@@ -935,7 +927,7 @@ async def process_sora_video(message: Message, user: User, state: FSMContext):
             reply_markup=builder.as_markup()
         )
         try:
-            os.remove(result.video_path)
+            pass  # os.remove(result.video_path) - DISABLED: files managed by file_cache
         except Exception as e:
             logger.error("video_cleanup_failed", error=str(e))
         await progress_msg.delete()
@@ -1043,7 +1035,7 @@ async def process_luma_video(message: Message, user: User, state: FSMContext):
             reply_markup=builder.as_markup()
         )
         try:
-            os.remove(result.video_path)
+            pass  # os.remove(result.video_path) - DISABLED: files managed by file_cache
         except Exception as e:
             logger.error("video_cleanup_failed", error=str(e))
 
@@ -1131,7 +1123,7 @@ async def process_hailuo_video(message: Message, user: User, state: FSMContext):
             reply_markup=builder.as_markup()
         )
         try:
-            os.remove(result.video_path)
+            pass  # os.remove(result.video_path) - DISABLED: files managed by file_cache
         except Exception as e:
             logger.error("video_cleanup_failed", error=str(e))
         await progress_msg.delete()
@@ -1232,7 +1224,7 @@ async def process_kling_video(message: Message, user: User, state: FSMContext, i
             reply_markup=builder.as_markup()
         )
         try:
-            os.remove(result.video_path)
+            pass  # os.remove(result.video_path) - DISABLED: files managed by file_cache
         except Exception as e:
             logger.error("video_cleanup_failed", error=str(e))
 
@@ -1456,7 +1448,7 @@ async def process_dalle_image(message: Message, user: User, state: FSMContext):
 
         # Clean up
         try:
-            os.remove(result.image_path)
+            pass  # os.remove(result.image_path) - DISABLED: files managed by file_cache
         except Exception as e:
             logger.error("image_cleanup_failed", error=str(e))
 
@@ -1541,7 +1533,7 @@ async def process_gemini_image(message: Message, user: User, state: FSMContext):
 
         # Clean up
         try:
-            os.remove(result.image_path)
+            pass  # os.remove(result.image_path) - DISABLED: files managed by file_cache
         except Exception as e:
             logger.error("image_cleanup_failed", error=str(e))
 
@@ -1718,7 +1710,7 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
 
         # Cleanup
         try:
-            os.remove(result.image_path)
+            pass  # os.remove(result.image_path) - DISABLED: files managed by file_cache
         except Exception as e:
             logger.error("nano_image_cleanup_failed", error=str(e))
 
@@ -1844,7 +1836,7 @@ async def process_kling_image(message: Message, user: User, state: FSMContext):
 
         # Cleanup
         try:
-            os.remove(result.image_path)
+            pass  # os.remove(result.image_path) - DISABLED: files managed by file_cache
         except Exception as e:
             logger.error("kling_image_cleanup_failed", error=str(e))
 
@@ -1962,7 +1954,7 @@ async def process_recraft_image(message: Message, user: User, state: FSMContext)
 
         # Cleanup
         try:
-            os.remove(result.image_path)
+            pass  # os.remove(result.image_path) - DISABLED: files managed by file_cache
         except Exception as e:
             logger.error("recraft_image_cleanup_failed", error=str(e))
 
@@ -2079,7 +2071,7 @@ async def process_suno_audio(message: Message, user: User, state: FSMContext):
 
         # Clean up
         try:
-            os.remove(result.audio_path)
+            pass  # os.remove(result.audio_path) - DISABLED: files managed by file_cache
         except Exception as e:
             logger.error("suno_audio_cleanup_failed", error=str(e))
 
@@ -2224,7 +2216,7 @@ async def process_replace_bg_prompt(message: Message, state: FSMContext, user: U
 
         # Clean up generated image
         try:
-            os.remove(result.image_path)
+            pass  # os.remove(result.image_path) - DISABLED: files managed by file_cache
         except Exception as e:
             logger.error("replace_bg_cleanup_failed", error=str(e))
 
@@ -2331,7 +2323,7 @@ async def process_upscale(message: Message, state: FSMContext, user: User):
 
         # Clean up
         try:
-            os.remove(result.image_path)
+            pass  # os.remove(result.image_path) - DISABLED: files managed by file_cache
         except Exception as e:
             logger.error("upscale_cleanup_failed", error=str(e))
 
@@ -2497,7 +2489,7 @@ async def process_tts_audio(message: Message, user: User, state: FSMContext):
 
         # Clean up
         try:
-            os.remove(result.audio_path)
+            pass  # os.remove(result.audio_path) - DISABLED: files managed by file_cache
         except Exception as e:
             logger.error("tts_audio_cleanup_failed", error=str(e))
 
@@ -2876,7 +2868,7 @@ async def process_photo_replace_bg_prompt(message: Message, state: FSMContext, u
 
         # Clean up generated image
         try:
-            os.remove(result.image_path)
+            pass  # os.remove(result.image_path) - DISABLED: files managed by file_cache
         except Exception as e:
             logger.error("replace_bg_cleanup_failed", error=str(e))
 
@@ -2975,7 +2967,7 @@ async def process_photo_remove_bg(message: Message, state: FSMContext, user: Use
 
         # Clean up
         try:
-            os.remove(result.image_path)
+            pass  # os.remove(result.image_path) - DISABLED: files managed by file_cache
         except Exception as e:
             logger.error("removebg_cleanup_failed", error=str(e))
 
@@ -3433,7 +3425,7 @@ async def _process_remove_bg_with_path(message: Message, state: FSMContext, user
             )
 
         try:
-            os.remove(result.image_path)
+            pass  # os.remove(result.image_path) - DISABLED: files managed by file_cache
         except Exception:
             pass
 

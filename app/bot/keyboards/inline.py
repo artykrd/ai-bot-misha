@@ -650,15 +650,15 @@ def suno_back_keyboard() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def suno_vocal_keyboard(selected_vocal: str = "male") -> InlineKeyboardMarkup:
+def suno_vocal_keyboard(selected_vocal: str = "m") -> InlineKeyboardMarkup:
     """Keyboard for selecting vocal type."""
     builder = InlineKeyboardBuilder()
 
     # Vocal type buttons with checkmark for selected
+    # API supports: 'm' (male), 'f' (female)
     vocals = [
-        ("👨 Мужской голос", "male"),
-        ("👩 Женский голос", "female"),
-        ("🎭 Нейтральный", "neutral"),
+        ("👨 Мужской голос", "m"),
+        ("👩 Женский голос", "f"),
     ]
 
     for text, vocal_type in vocals:
@@ -668,6 +668,9 @@ def suno_vocal_keyboard(selected_vocal: str = "male") -> InlineKeyboardMarkup:
             InlineKeyboardButton(text=text, callback_data=f"suno.set_vocal_{vocal_type}")
         )
 
+    builder.row(
+        InlineKeyboardButton(text="👍 Подтвердить", callback_data="suno.confirm_vocal")
+    )
     builder.row(
         InlineKeyboardButton(text="⬅️ Вернуться к Suno", callback_data="bot.suno")
     )
