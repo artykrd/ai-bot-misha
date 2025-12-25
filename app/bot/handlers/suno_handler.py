@@ -519,7 +519,7 @@ async def suno_lyrics_by_title(callback: CallbackQuery, state: FSMContext, user:
 
         data = await state.get_data()
         selected_styles = data.get("suno_selected_styles", [])
-        await progress_msg.edit_text(text, reply_markup=suno_style_keyboard(selected_styles), parse_mode=ParseMode.MARKDOWN)
+        await progress_msg.edit_text(text, reply_markup=suno_style_keyboard(selected_styles), parse_mode=None)
 
     except Exception as e:
         logger.error("suno_lyrics_generation_failed", error=str(e))
@@ -605,7 +605,7 @@ async def process_lyrics_description(message: Message, state: FSMContext, user: 
 
         data = await state.get_data()
         selected_styles = data.get("suno_selected_styles", [])
-        await progress_msg.edit_text(text, reply_markup=suno_style_keyboard(selected_styles), parse_mode=ParseMode.MARKDOWN)
+        await progress_msg.edit_text(text, reply_markup=suno_style_keyboard(selected_styles), parse_mode=None)
 
     except Exception as e:
         logger.error("suno_lyrics_generation_failed", error=str(e))
@@ -771,7 +771,7 @@ async def generate_suno_song(callback: CallbackQuery, state: FSMContext, user: U
                 f"🎨 Стиль: {style}\n"
                 f"📀 Версия: {model_version}\n\n"
                 f"Отправляю файлы...",
-                parse_mode=ParseMode.MARKDOWN
+                parse_mode=None
             )
 
             # Send audio file(s)
