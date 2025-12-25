@@ -372,12 +372,29 @@ async def suno_confirm_vocal(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("suno.set_style_"))
 async def suno_set_style(callback: CallbackQuery, state: FSMContext, user: User):
-    """Legacy single style selection - redirect to new multi-select."""
+    """Legacy single style selection - proceed to vocal selection or final summary."""
     style = callback.data.replace("suno.set_style_", "")
     await state.update_data(suno_selected_styles=[style], suno_style=style)
 
-    # Show final summary screen
-    await show_suno_final_summary(callback, state)
+    # Check if instrumental - skip vocal selection for instrumental
+    data = await state.get_data()
+    is_instrumental = data.get("suno_is_instrumental", False)
+
+    if is_instrumental:
+        # Show final summary screen directly
+        await show_suno_final_summary(callback, state)
+    else:
+        # Show vocal selection screen for songs with lyrics
+        text = (
+            "3️⃣ **Выберите тип вокала**\n\n"
+            "Выберите, каким голосом будет исполнена песня:"
+        )
+        await callback.message.edit_text(
+            text,
+            reply_markup=suno_vocal_keyboard(),
+            parse_mode=ParseMode.MARKDOWN
+        )
+        await callback.answer()
 
 
 @router.callback_query(F.data == "suno.custom_style")
@@ -399,7 +416,7 @@ async def suno_custom_style(callback: CallbackQuery, state: FSMContext):
 
 @router.message(SunoState.waiting_for_style, F.text)
 async def process_custom_style(message: Message, state: FSMContext, user: User):
-    """Process custom style input and show final summary."""
+    """Process custom style input and proceed to vocal selection or final summary."""
     # CRITICAL FIX: Ignore commands (text starting with /)
     if message.text and message.text.startswith('/'):
         await state.clear()
@@ -407,8 +424,24 @@ async def process_custom_style(message: Message, state: FSMContext, user: User):
     style = message.text.strip()
     await state.update_data(suno_style=style, suno_selected_styles=[style])
 
-    # Show final summary screen
-    await show_suno_final_summary(message, state)
+    # Check if instrumental - skip vocal selection for instrumental
+    data = await state.get_data()
+    is_instrumental = data.get("suno_is_instrumental", False)
+
+    if is_instrumental:
+        # Show final summary screen directly
+        await show_suno_final_summary(message, state)
+    else:
+        # Show vocal selection screen for songs with lyrics
+        text = (
+            "3️⃣ **Выберите тип вокала**\n\n"
+            "Выберите, каким голосом будет исполнена песня:"
+        )
+        await message.answer(
+            text,
+            reply_markup=suno_vocal_keyboard(),
+            parse_mode=ParseMode.MARKDOWN
+        )
 
 
 # ======================

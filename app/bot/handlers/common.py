@@ -343,26 +343,26 @@ async def cmd_luma(message: Message, state):
 
 @router.message(Command("kling"))
 async def cmd_kling(message: Message, state):
-    """Kling command - directly open Kling interface."""
+    """Kling command - currently under development."""
     from app.bot.keyboards.inline import back_to_main_keyboard
-    from app.bot.handlers.media_handler import MediaState, cleanup_temp_images
 
-    # Clean up any old images from previous sessions
-    await cleanup_temp_images(state)
+    await state.clear()  # Clear any previous state
 
     text = (
-        "✨ **Kling AI**\n\n"
-        "Kling создаёт высококачественные видео.\n\n"
-        "💰 **Стоимость:** ~9,000 токенов за видео\n\n"
-        "🎨 **Режимы работы:**\n"
-        "• **Text-to-Video:** Просто отправьте описание видео\n"
-        "• **Image-to-Video:** Отправьте фото, затем описание\n\n"
-        "✏️ **Отправьте описание видео ИЛИ фото**"
+        "🎞 **Kling AI**\n\n"
+        "⚠️ **Функционал в разработке**\n\n"
+        "Интеграция с Kling находится в процессе разработки.\n"
+        "Пожалуйста, используйте альтернативные сервисы:\n\n"
+        "**Для видео:**\n"
+        "• 🌊 Veo 3.1\n"
+        "• 🎥 Hailuo\n"
+        "• 📹 Luma Dream Machine\n\n"
+        "**Для изображений:**\n"
+        "• 🍌 Nano Banana (Gemini 2.5 Flash)\n"
+        "• 🍌✨ Banana PRO (Gemini 3 Pro)\n"
+        "• 🖼 DALL·E 3\n\n"
+        "Следите за обновлениями!"
     )
-
-    await state.set_state(MediaState.waiting_for_video_prompt)
-    # Clear old data when starting fresh session
-    await state.update_data(service="kling", image_path=None, photo_caption_prompt=None)
 
     await message.answer(text, reply_markup=back_to_main_keyboard())
 
