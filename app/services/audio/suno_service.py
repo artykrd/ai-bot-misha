@@ -171,7 +171,7 @@ class SunoService(BaseAudioProvider):
         self,
         task_ids: List[str],
         progress_callback: Optional[Callable[[str], Awaitable[None]]] = None,
-        max_wait_time: int = 300,  # 5 minutes
+        max_wait_time: int = 600,  # 10 minutes (увеличено с 5)
         poll_interval: int = 5  # 5 seconds
     ) -> List[str]:
         """
@@ -211,10 +211,28 @@ class SunoService(BaseAudioProvider):
 
                             data = await response.json()
 
+                            # Log raw response for debugging
+                            logger.info(
+                                "suno_poll_response",
+                                task_id=task_id,
+                                response_code=data.get("code"),
+                                has_data="data" in data,
+                                raw_data=str(data)[:500]  # First 500 chars
+                            )
+
                             # Response format: {"code": 200, "msg": "success", "data": {"taskId": "...", "status": "...", "response": {"sunoData": [...]}}}
                             if data.get("code") == 200 and "data" in data:
                                 task_data = data["data"]
                                 status = task_data.get("status", "unknown")
+
+                                # Log detailed status info
+                                logger.info(
+                                    "suno_task_status",
+                                    task_id=task_id,
+                                    status=status,
+                                    has_response="response" in task_data,
+                                    elapsed_time=int(time.time() - start_time)
+                                )
 
                                 # Update user if status changed
                                 if status != last_status and progress_callback:
@@ -224,6 +242,9 @@ class SunoService(BaseAudioProvider):
                                         await progress_callback("🎼 Создаю музыку...")
                                     elif status == "SUCCESS":
                                         await progress_callback("🎵 Почти готово...")
+                                    else:
+                                        # Log unknown status
+                                        logger.warning("suno_unknown_status", status=status)
 
                                 last_status = status
 
@@ -233,16 +254,56 @@ class SunoService(BaseAudioProvider):
                                     response_data = task_data.get("response", {})
                                     suno_data = response_data.get("sunoData", [])
 
-                                    for track in suno_data:
-                                        audio_url = track.get("audioUrl") or track.get("audio_url")
-                                        if audio_url:
-                                            audio_urls.append(audio_url)
+                                    logger.info(
+                                        "suno_processing_results",
+                                        task_id=task_id,
+                                        suno_data_count=len(suno_data) if suno_data else 0,
+                                        has_suno_data=bool(suno_data)
+                                    )
+
+                                    if suno_data:
+                                        for idx, track in enumerate(suno_data):
+                                            audio_url = track.get("audioUrl") or track.get("audio_url")
+                                            logger.info(
+                                                "suno_track_url",
+                                                task_id=task_id,
+                                                track_index=idx,
+                                                has_audio_url=bool(audio_url),
+                                                audio_url=audio_url[:100] if audio_url else None
+                                            )
+                                            if audio_url:
+                                                audio_urls.append(audio_url)
+                                    else:
+                                        logger.warning("suno_no_suno_data", task_id=task_id)
                                 else:
                                     all_completed = False
+                            else:
+                                # API returned error or unexpected format
+                                logger.error(
+                                    "suno_api_error_response",
+                                    task_id=task_id,
+                                    code=data.get("code"),
+                                    msg=data.get("msg"),
+                                    has_data="data" in data
+                                )
+                                all_completed = False
 
-                # If all tasks completed, return URLs
-                if all_completed and audio_urls:
-                    return audio_urls
+                # Check completion status
+                logger.info(
+                    "suno_poll_iteration",
+                    all_completed=all_completed,
+                    audio_urls_count=len(audio_urls),
+                    elapsed_time=int(time.time() - start_time)
+                )
+
+                # If all tasks completed successfully
+                if all_completed:
+                    if audio_urls:
+                        logger.info("suno_generation_complete", urls_count=len(audio_urls))
+                        return audio_urls
+                    else:
+                        # All completed but no URLs - this is an error
+                        raise Exception("Generation completed but no audio URLs were returned")
 
                 # Wait before next poll
                 await asyncio.sleep(poll_interval)
