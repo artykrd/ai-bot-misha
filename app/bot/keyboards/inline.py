@@ -445,6 +445,26 @@ def referral_keyboard(user_telegram_id: int = None) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def help_keyboard() -> InlineKeyboardMarkup:
+    """Help menu keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(text="💎 Токены", callback_data="help.tokens")
+    )
+    builder.row(
+        InlineKeyboardButton(text="📋 Платежи", callback_data="help.payments")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🔒 Политика хранения данных", callback_data="help.privacy")
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад", callback_data="bot.profile")
+    )
+
+    return builder.as_markup()
+
+
 def kling_choice_keyboard() -> InlineKeyboardMarkup:
     """Kling AI choice keyboard for photo or video generation."""
     builder = InlineKeyboardBuilder()
