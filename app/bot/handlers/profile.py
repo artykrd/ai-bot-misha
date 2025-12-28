@@ -7,7 +7,7 @@ from aiogram.filters import Command
 from aiogram.enums import ParseMode
 from aiogram.fsm.context import FSMContext
 
-from app.bot.keyboards.inline import profile_keyboard
+from app.bot.keyboards.inline import profile_keyboard, subscription_manage_keyboard, back_to_main_keyboard
 from app.database.models.user import User
 from app.database.database import async_session_maker
 from app.services.subscription.subscription_service import SubscriptionService
@@ -220,3 +220,149 @@ async def show_tokens_info(callback: CallbackQuery, user: User):
         parse_mode=ParseMode.MARKDOWN
     )
     await callback.answer()
+
+
+@router.callback_query(F.data == "bot.profile_subscriptions")
+async def show_user_subscriptions(callback: CallbackQuery, user: User):
+    """Show user's active subscriptions."""
+    from app.database.repositories.subscription import SubscriptionRepository
+
+    async with async_session_maker() as session:
+        sub_repo = SubscriptionRepository(session)
+        subscriptions = await sub_repo.get_user_subscriptions(user.id, active_only=True)
+
+    if not subscriptions:
+        text = """📦 <b>Мои подписки</b>
+
+У вас нет активных подписок.
+
+Оформите подписку через /shop, чтобы получить токены и доступ ко всем возможностям бота!"""
+
+        await callback.message.edit_text(
+            text,
+            reply_markup=back_to_main_keyboard(),
+            parse_mode=ParseMode.HTML
+        )
+        await callback.answer()
+        return
+
+    # Show first active subscription
+    subscription = subscriptions[0]
+
+    subscription_type_names = {
+        "eternal": "Вечные токены",
+        "7days": "7 дней",
+        "14days": "14 дней",
+        "21days": "21 день",
+        "30days": "30 дней",
+        "unlimited_1day": "Безлимит 1 день"
+    }
+
+    type_name = subscription_type_names.get(subscription.subscription_type, subscription.subscription_type)
+
+    if subscription.is_unlimited:
+        tokens_info = "Безлимитные токены"
+    else:
+        tokens_info = f"{subscription.tokens_remaining:,} / {subscription.tokens_amount:,} токенов"
+
+    expires_text = ""
+    if subscription.expires_at:
+        from datetime import timezone
+        expires_text = f"\n⏰ <b>Истекает:</b> {subscription.expires_at.strftime('%d.%m.%Y %H:%M')}"
+    else:
+        expires_text = "\n♾️ <b>Срок:</b> Бессрочно"
+
+    text = f"""📦 <b>Мои подписки</b>
+
+📋 <b>Тип:</b> {type_name}
+💎 <b>Токены:</b> {tokens_info}{expires_text}
+💰 <b>Стоимость:</b> {subscription.price} руб.
+📊 <b>Использовано:</b> {subscription.tokens_used:,} токенов
+
+ℹ️ <b>Отмена подписки</b>
+При отмене подписки вам будет возвращена сумма пропорционально неиспользованным токенам (минус уже использованные токены).
+
+<b>Формула возврата:</b>
+Сумма возврата = Стоимость × (Неиспользованные токены / Всего токенов)
+
+⚠️ <b>Важно:</b> Минимальная сумма возврата — 10 рублей. Если рассчитанная сумма меньше, возврат не производится."""
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=subscription_manage_keyboard(subscription.id),
+        parse_mode=ParseMode.HTML
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("cancel_subscription_"))
+async def cancel_subscription(callback: CallbackQuery, user: User):
+    """Cancel subscription with refund."""
+    from app.services.payment import PaymentService
+
+    # Extract subscription ID from callback data
+    subscription_id = int(callback.data.split("_")[2])
+
+    # Show confirmation message first
+    await callback.answer("⏳ Обрабатываем отмену подписки...", show_alert=False)
+
+    async with async_session_maker() as session:
+        payment_service = PaymentService(session)
+
+        # Process cancellation and refund
+        result = await payment_service.cancel_subscription_with_refund(
+            subscription_id=subscription_id,
+            user_id=user.id
+        )
+
+    if not result:
+        text = """❌ <b>Ошибка отмены подписки</b>
+
+Не удалось отменить подписку. Возможные причины:
+• Подписка уже неактивна
+• Платеж не найден
+• Техническая ошибка
+
+Пожалуйста, обратитесь в поддержку: @gigavidacha"""
+
+        await callback.message.edit_text(
+            text,
+            reply_markup=back_to_main_keyboard(),
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Format success message
+    if result["refund_amount"] > 0:
+        if result.get("refunded"):
+            refund_text = f"""
+✅ <b>Возврат средств:</b> {result['refund_amount']:.2f} руб.
+💳 Деньги вернутся на карту в течение 3-5 рабочих дней"""
+        else:
+            refund_error = result.get("refund_error", "Неизвестная ошибка")
+            refund_text = f"""
+⚠️ <b>Возврат средств:</b> Ошибка при возврате
+❌ {refund_error}
+Пожалуйста, обратитесь в поддержку: @gigavidacha"""
+    else:
+        refund_text = """
+ℹ️ <b>Возврат средств:</b> Не требуется
+Все токены были использованы, либо сумма возврата меньше минимальной (10 руб.)"""
+
+    text = f"""✅ <b>Подписка отменена</b>
+
+📊 <b>Статистика:</b>
+• Всего токенов: {result['total_tokens']:,}
+• Использовано: {result['used_tokens']:,}
+• Не использовано: {result['unused_tokens']:,}
+• Стоимость подписки: {result['original_price']:.2f} руб.
+{refund_text}
+
+Спасибо, что пользуетесь нашим ботом!
+Вы можете оформить новую подписку в любое время через /shop"""
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=back_to_main_keyboard(),
+        parse_mode=ParseMode.HTML
+    )

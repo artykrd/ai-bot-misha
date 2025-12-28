@@ -400,10 +400,8 @@ def profile_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="💎 Токены", callback_data="bot.profile_tokens")
     )
     builder.row(
-        InlineKeyboardButton(text="🌎 Изменить язык", callback_data="bot.change_language")
-    )
-    builder.row(
-        InlineKeyboardButton(text="📋 Мои платежи", callback_data="bot.profile_payments")
+        InlineKeyboardButton(text="📋 Мои платежи", callback_data="bot.profile_payments"),
+        InlineKeyboardButton(text="📦 Мои подписки", callback_data="bot.profile_subscriptions")
     )
     builder.row(
         InlineKeyboardButton(text="🤝🏼 Партнерство", callback_data="bot.refferal_program")
@@ -460,6 +458,20 @@ def help_keyboard() -> InlineKeyboardMarkup:
     )
     builder.row(
         InlineKeyboardButton(text="⬅️ Назад", callback_data="bot.profile")
+    )
+
+    return builder.as_markup()
+
+
+def subscription_manage_keyboard(subscription_id: int) -> InlineKeyboardMarkup:
+    """Keyboard for managing an active subscription."""
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(text="❌ Отменить подписку", callback_data=f"cancel_subscription_{subscription_id}")
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад в профиль", callback_data="bot.profile")
     )
 
     return builder.as_markup()
