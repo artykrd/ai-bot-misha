@@ -245,3 +245,129 @@ class PaymentService:
             .offset(offset)
         )
         return list(result.scalars().all())
+
+    async def cancel_subscription_with_refund(
+        self,
+        subscription_id: int,
+        user_id: int
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Cancel subscription and refund based on unused tokens.
+
+        Args:
+            subscription_id: Subscription ID
+            user_id: User ID
+
+        Returns:
+            Dictionary with cancellation info or None if failed
+        """
+        try:
+            # Get subscription
+            result = await self.session.execute(
+                select(Subscription).where(Subscription.id == subscription_id)
+            )
+            subscription = result.scalar_one_or_none()
+
+            if not subscription:
+                logger.error("subscription_not_found", subscription_id=subscription_id)
+                return None
+
+            # Check if subscription belongs to user
+            if subscription.user_id != user_id:
+                logger.error("subscription_access_denied", subscription_id=subscription_id, user_id=user_id)
+                return None
+
+            # Get payment for this subscription
+            result = await self.session.execute(
+                select(Payment).where(
+                    Payment.subscription_id == subscription_id,
+                    Payment.status == "success"
+                )
+            )
+            payment = result.scalar_one_or_none()
+
+            if not payment or not payment.yukassa_payment_id:
+                logger.error("payment_not_found", subscription_id=subscription_id)
+                return None
+
+            # Calculate refund amount based on unused tokens
+            total_tokens = subscription.tokens_amount
+            used_tokens = subscription.tokens_used
+            unused_tokens = max(0, total_tokens - used_tokens)
+
+            # If unlimited subscription, no refund
+            if subscription.is_unlimited:
+                logger.info("unlimited_subscription_no_refund", subscription_id=subscription_id)
+                refund_amount = Decimal("0")
+            # If eternal subscription, calculate based on unused tokens
+            elif subscription.is_eternal or total_tokens > 0:
+                usage_percentage = used_tokens / total_tokens if total_tokens > 0 else 1.0
+                refund_percentage = max(0, 1.0 - usage_percentage)
+                refund_amount = Decimal(str(float(subscription.price) * refund_percentage))
+                # Round to 2 decimal places
+                refund_amount = refund_amount.quantize(Decimal("0.01"))
+            else:
+                refund_amount = Decimal("0")
+
+            # Minimum refund is 10 rubles, otherwise not worth processing
+            if refund_amount < Decimal("10.00"):
+                refund_amount = Decimal("0")
+
+            cancellation_info = {
+                "subscription_id": subscription_id,
+                "total_tokens": total_tokens,
+                "used_tokens": used_tokens,
+                "unused_tokens": unused_tokens,
+                "original_price": float(subscription.price),
+                "refund_amount": float(refund_amount),
+                "refunded": False
+            }
+
+            # Process refund if amount > 0
+            if refund_amount > Decimal("0"):
+                refund_result = self.yookassa.refund_payment(
+                    payment_id=payment.yukassa_payment_id,
+                    amount=refund_amount,
+                    reason=f"Отмена подписки. Использовано {used_tokens} из {total_tokens} токенов."
+                )
+
+                if refund_result:
+                    # Update payment status
+                    payment.status = "refunded"
+                    await self.session.commit()
+
+                    cancellation_info["refunded"] = True
+                    cancellation_info["refund_id"] = refund_result.get("refund_id")
+
+                    logger.info(
+                        "subscription_refunded",
+                        subscription_id=subscription_id,
+                        refund_amount=float(refund_amount),
+                        refund_id=refund_result.get("refund_id")
+                    )
+                else:
+                    logger.error("refund_failed", subscription_id=subscription_id)
+                    cancellation_info["refund_error"] = "Failed to process refund"
+
+            # Deactivate subscription
+            subscription.is_active = False
+            await self.session.commit()
+
+            logger.info(
+                "subscription_cancelled",
+                subscription_id=subscription_id,
+                user_id=user_id,
+                refund_amount=float(refund_amount)
+            )
+
+            return cancellation_info
+
+        except Exception as e:
+            logger.error(
+                "subscription_cancellation_failed",
+                error=str(e),
+                subscription_id=subscription_id,
+                user_id=user_id
+            )
+            await self.session.rollback()
+            return None
