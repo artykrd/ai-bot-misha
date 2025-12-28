@@ -516,18 +516,38 @@ class NanoBananaService(BaseImageProvider):
                         # Custom image object - convert to real PIL Image via buffer
                         # Try different methods to save custom image object
                         buffer = io.BytesIO()
+                        saved = False
+
+                        # Try different save methods in order of likelihood
                         try:
-                            # Try with positional argument first (Gemini's custom Image)
+                            # Method 1: Try with positional argument (Gemini's custom Image)
                             pil_image.save(buffer, 'PNG')
-                        except (TypeError, AttributeError):
-                            # If that doesn't work, try without format
+                            saved = True
+                        except (TypeError, AttributeError) as e:
+                            logger.debug("nano_banana_save_method1_failed", error=str(e))
+
+                        if not saved:
+                            # Method 2: Try without format argument
                             buffer = io.BytesIO()
                             try:
                                 pil_image.save(buffer)
-                            except Exception:
-                                # Last resort: try with keyword argument
-                                buffer = io.BytesIO()
-                                pil_image.save(buffer, format='PNG')
+                                saved = True
+                            except Exception as e:
+                                logger.debug("nano_banana_save_method2_failed", error=str(e))
+
+                        if not saved:
+                            # Method 3: Try to get _pil_image attribute (if it's a wrapper)
+                            buffer = io.BytesIO()
+                            try:
+                                if hasattr(pil_image, '_pil_image'):
+                                    pil_image._pil_image.save(buffer, 'PNG')
+                                    saved = True
+                            except Exception as e:
+                                logger.debug("nano_banana_save_method3_failed", error=str(e))
+
+                        if not saved:
+                            # If all methods failed, raise the original error
+                            raise Exception("Failed to save custom image object with any method")
 
                         buffer.seek(0)
 
