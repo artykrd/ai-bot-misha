@@ -7,6 +7,7 @@ from aiogram import Router, F
 from aiogram.types import CallbackQuery
 from aiogram.enums import ParseMode
 from aiogram.fsm.context import FSMContext
+from aiogram.exceptions import TelegramBadRequest
 
 from app.bot.keyboards.inline import (
     main_menu_keyboard,
@@ -121,10 +122,15 @@ async def back_to_main(callback: CallbackQuery, user: User, state: FSMContext):
 – **Whisper** – расшифровка голосовых сообщений;
 – **TTS** – озвучка текста."""
 
-    await callback.message.edit_text(
-        text,
-        reply_markup=main_menu_keyboard()
-    )
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=main_menu_keyboard()
+        )
+    except TelegramBadRequest as e:
+        # Ignore error if message content hasn't changed
+        if "message is not modified" not in str(e):
+            raise
     await callback.answer()
 
 
@@ -154,10 +160,15 @@ async def show_models(callback: CallbackQuery):
 • **Sonar с поиском** – модель с доступом к интернету (700 токенов)
 • **Sonar Pro** – продвинутая версия с поиском (1000 токенов)"""
 
-    await callback.message.edit_text(
-        text,
-        reply_markup=ai_models_keyboard()
-    )
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=ai_models_keyboard()
+        )
+    except TelegramBadRequest as e:
+        # Ignore error if message content hasn't changed
+        if "message is not modified" not in str(e):
+            raise
     await callback.answer()
 
 
@@ -216,10 +227,15 @@ async def start_dialog(callback: CallbackQuery, user: User):
 /end — завершит этот диалог
 /clear — очистит историю в этом диалоге"""
 
-    await callback.message.edit_text(
-        text,
-        reply_markup=dialog_keyboard(dialog_id, history_enabled, show_costs, from_home)
-    )
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=dialog_keyboard(dialog_id, history_enabled, show_costs, from_home)
+        )
+    except TelegramBadRequest as e:
+        # Ignore error if message content hasn't changed
+        if "message is not modified" not in str(e):
+            raise
     await callback.answer()
 
 
@@ -232,10 +248,15 @@ async def show_dialogs(callback: CallbackQuery):
 
 **Доступные диалоги:**"""
 
-    await callback.message.edit_text(
-        text,
-        reply_markup=dialogs_keyboard()
-    )
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=dialogs_keyboard()
+        )
+    except TelegramBadRequest as e:
+        # Ignore error if message content hasn't changed
+        if "message is not modified" not in str(e):
+            raise
     await callback.answer()
 
 
@@ -256,10 +277,15 @@ async def show_create_photo(callback: CallbackQuery):
 
 ℹ️ __Выберите нейросеть для генерации фото по кнопке ниже. После выбора – можете сразу отправлять запрос.__"""
 
-    await callback.message.edit_text(
-        text,
-        reply_markup=create_photo_keyboard()
-    )
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=create_photo_keyboard()
+        )
+    except TelegramBadRequest as e:
+        # Ignore error if message content hasn't changed
+        if "message is not modified" not in str(e):
+            raise
     await callback.answer()
 
 
@@ -270,10 +296,15 @@ async def show_create_video(callback: CallbackQuery):
 
 __ℹ️ Выберите нейросеть для генерации видео по кнопке ниже. После выбора – можете сразу отправлять запрос.__"""
 
-    await callback.message.edit_text(
-        text,
-        reply_markup=create_video_keyboard()
-    )
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=create_video_keyboard()
+        )
+    except TelegramBadRequest as e:
+        # Ignore error if message content hasn't changed
+        if "message is not modified" not in str(e):
+            raise
     await callback.answer()
 
 
@@ -322,10 +353,15 @@ async def nano_format_select(callback: CallbackQuery):
 
 **auto:** бот автоматически определит формат изображения"""
 
-    await callback.message.edit_text(
-        text,
-        reply_markup=nano_format_keyboard()
-    )
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=nano_format_keyboard()
+        )
+    except TelegramBadRequest as e:
+        # Ignore error if message content hasn't changed
+        if "message is not modified" not in str(e):
+            raise
     await callback.answer()
 
 
@@ -347,10 +383,15 @@ async def show_photo_tools(callback: CallbackQuery):
 
 ℹ️ __В этот раздел мы добавили инструменты, которые помогут вам эффективно работать с вашими фотографиями. Выберите интересующий вас инструмент по кнопке ниже.__"""
 
-    await callback.message.edit_text(
-        text,
-        reply_markup=photo_tools_keyboard()
-    )
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=photo_tools_keyboard()
+        )
+    except TelegramBadRequest as e:
+        # Ignore error if message content hasn't changed
+        if "message is not modified" not in str(e):
+            raise
     await callback.answer()
 
 
@@ -398,10 +439,15 @@ async def photo_tool_selected(callback: CallbackQuery, state: FSMContext):
 
     text = f"{tool['name']}\n\n{tool['description']}\n\n📤 **Загрузите фотографию**"
 
-    await callback.message.edit_text(
-        text,
-        reply_markup=back_to_main_keyboard()
-    )
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=back_to_main_keyboard()
+        )
+    except TelegramBadRequest as e:
+        # Ignore error if message content hasn't changed
+        if "message is not modified" not in str(e):
+            raise
     await callback.answer()
 
 
@@ -413,10 +459,15 @@ async def show_audio_tools(callback: CallbackQuery):
 
 __ℹ️ Выберите нейросеть для работы с аудио по кнопке ниже. После выбора – можете сразу отправлять запрос.__"""
 
-    await callback.message.edit_text(
-        text,
-        reply_markup=audio_tools_keyboard()
-    )
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=audio_tools_keyboard()
+        )
+    except TelegramBadRequest as e:
+        # Ignore error if message content hasn't changed
+        if "message is not modified" not in str(e):
+            raise
     await callback.answer()
 
 
@@ -434,11 +485,16 @@ async def show_subscription(callback: CallbackQuery):
 
 **Выберите подходящий тариф:**"""
 
-    await callback.message.edit_text(
-        text,
-        reply_markup=subscription_keyboard(),
-        parse_mode=ParseMode.MARKDOWN
-    )
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=subscription_keyboard(),
+            parse_mode=ParseMode.MARKDOWN
+        )
+    except TelegramBadRequest as e:
+        # Ignore error if message content hasn't changed
+        if "message is not modified" not in str(e):
+            raise
     await callback.answer()
 
 
@@ -449,10 +505,15 @@ async def show_eternal_tokens(callback: CallbackQuery):
 
 Купите токены, которые никогда не сгорят. Используйте их в любое время без ограничений по дате."""
 
-    await callback.message.edit_text(
-        text,
-        reply_markup=eternal_tokens_keyboard()
-    )
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=eternal_tokens_keyboard()
+        )
+    except TelegramBadRequest as e:
+        # Ignore error if message content hasn't changed
+        if "message is not modified" not in str(e):
+            raise
     await callback.answer()
 
 
@@ -532,10 +593,15 @@ async def tariff_selected(callback: CallbackQuery, user: User):
 
 Нажмите кнопку "Оплатить" для перехода к оплате."""
 
-    await callback.message.edit_text(
-        text,
-        reply_markup=builder.as_markup()
-    )
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=builder.as_markup()
+        )
+    except TelegramBadRequest as e:
+        # Ignore error if message content hasn't changed
+        if "message is not modified" not in str(e):
+            raise
     await callback.answer()
 
 
@@ -611,10 +677,15 @@ async def show_referral(callback: CallbackQuery, user: User):
 
 Поделитесь этой ссылкой с друзьями и получайте бонусы!"""
 
-    await callback.message.edit_text(
-        text,
-        reply_markup=referral_keyboard(user.telegram_id)
-    )
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=referral_keyboard(user.telegram_id)
+        )
+    except TelegramBadRequest as e:
+        # Ignore error if message content hasn't changed
+        if "message is not modified" not in str(e):
+            raise
     await callback.answer()
 
 
@@ -656,10 +727,15 @@ async def referral_withdraw(callback: CallbackQuery, user: User):
 • Сумму для вывода
 • Реквизиты для перевода"""
 
-        await callback.message.edit_text(
-            text,
-            reply_markup=back_to_main_keyboard()
-        )
+        try:
+            await callback.message.edit_text(
+                text,
+                reply_markup=back_to_main_keyboard()
+            )
+        except TelegramBadRequest as e:
+            # Ignore error if message content hasn't changed
+            if "message is not modified" not in str(e):
+                raise
         await callback.answer()
 
 
@@ -720,11 +796,16 @@ async def show_profile_payments(callback: CallbackQuery, user: User):
 
 Всего платежей: {len(payments)}"""
 
-    await callback.message.edit_text(
-        text,
-        reply_markup=back_to_main_keyboard(),
-        parse_mode=ParseMode.HTML
-    )
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=back_to_main_keyboard(),
+            parse_mode=ParseMode.HTML
+        )
+    except TelegramBadRequest as e:
+        # Ignore error if message content hasn't changed
+        if "message is not modified" not in str(e):
+            raise
     await callback.answer()
 
 
@@ -753,11 +834,16 @@ async def show_faq(callback: CallbackQuery):
 <b>Поддержка:</b>
 Если возникли вопросы, напишите @gigavidacha"""
 
-    await callback.message.edit_text(
-        text,
-        reply_markup=help_keyboard(),
-        parse_mode=ParseMode.HTML
-    )
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=help_keyboard(),
+            parse_mode=ParseMode.HTML
+        )
+    except TelegramBadRequest as e:
+        # Ignore error if message content hasn't changed
+        if "message is not modified" not in str(e):
+            raise
     await callback.answer()
 
 
@@ -786,11 +872,16 @@ async def show_help_tokens(callback: CallbackQuery):
 
 <b>Токены не сгорают</b> и доступны бессрочно (для вечных токенов)."""
 
-    await callback.message.edit_text(
-        text,
-        reply_markup=help_keyboard(),
-        parse_mode=ParseMode.HTML
-    )
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=help_keyboard(),
+            parse_mode=ParseMode.HTML
+        )
+    except TelegramBadRequest as e:
+        # Ignore error if message content hasn't changed
+        if "message is not modified" not in str(e):
+            raise
     await callback.answer()
 
 
@@ -818,11 +909,16 @@ async def show_help_payments(callback: CallbackQuery):
 <b>Возврат средств:</b>
 Если у вас возникли проблемы с платежом, обратитесь в поддержку @gigavidacha"""
 
-    await callback.message.edit_text(
-        text,
-        reply_markup=help_keyboard(),
-        parse_mode=ParseMode.HTML
-    )
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=help_keyboard(),
+            parse_mode=ParseMode.HTML
+        )
+    except TelegramBadRequest as e:
+        # Ignore error if message content hasn't changed
+        if "message is not modified" not in str(e):
+            raise
     await callback.answer()
 
 
@@ -852,9 +948,14 @@ https://docs.google.com/document/d/10YyarEM8z4BNsqOnXoyjuMEP73WKqSY387wC3-FDgj8/
 <b>ПОЛИТИКА КОНФИДЕНЦИАЛЬНОСТИ:</b>
 https://docs.google.com/document/d/177YiMyDvNPuvg3S-yR6tpqhnu4pn53YZ4X4EQWROQ_I/edit?usp=drivesdk"""
 
-    await callback.message.edit_text(
-        text,
-        reply_markup=help_keyboard(),
-        parse_mode=ParseMode.HTML
-    )
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=help_keyboard(),
+            parse_mode=ParseMode.HTML
+        )
+    except TelegramBadRequest as e:
+        # Ignore error if message content hasn't changed
+        if "message is not modified" not in str(e):
+            raise
     await callback.answer()
