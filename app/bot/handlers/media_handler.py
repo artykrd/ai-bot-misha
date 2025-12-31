@@ -1676,13 +1676,27 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
             # Check if prompt contains numbered scenes or variations
             # Pattern: "1. scene1, 2. scene2, 3. scene3" or "scene1, scene2, scene3"
 
-            # Try to detect numbered list
-            numbered_pattern = r'\d+[\.\)]\s*([^,\d]+?)(?=\d+[\.\)]|$)'
-            numbered_matches = re.findall(numbered_pattern, base_prompt)
+            # Try to detect numbered list (handles multi-line scenes with commas)
+            # Pattern: "1. scene text\n2. next scene" or "1) scene, more details\n2) next"
+            numbered_pattern = r'(\d+)[\.\)]\s*(.*?)(?=\n\s*\d+[\.\)]|\Z)'
+            numbered_matches = re.findall(numbered_pattern, base_prompt, re.MULTILINE | re.DOTALL)
 
             if numbered_matches and len(numbered_matches) >= count:
+                # Extract base context (text before first numbered item)
+                first_num_pos = re.search(r'\d+[\.\)]', base_prompt)
+                base_context = base_prompt[:first_num_pos.start()].strip() if first_num_pos else ""
+
                 # Use numbered scenes directly
-                return [match.strip() for match in numbered_matches[:count]]
+                prompts = []
+                for num, scene_text in numbered_matches[:count]:
+                    scene = scene_text.strip()
+                    # Combine base context with specific scene
+                    if base_context:
+                        full_prompt = f"{base_context}. Сцена {num}: {scene}"
+                    else:
+                        full_prompt = f"Сцена {num}: {scene}"
+                    prompts.append(full_prompt)
+                return prompts
 
             # Try to detect comma-separated scenes (if more than 2 commas)
             comma_parts = [p.strip() for p in base_prompt.split(',') if p.strip()]
