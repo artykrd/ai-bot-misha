@@ -1666,12 +1666,92 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
     if images_to_generate > 1:
         # Multi-image generation mode: create multiple images in parallel
         import asyncio
+        import re
 
-        async def generate_single_image(index: int, ref_image: str = None):
-            """Generate a single image with index."""
+        def create_unique_prompts(base_prompt: str, count: int) -> list[str]:
+            """Create unique prompts for each image to ensure variety.
+
+            Analyzes the prompt and creates variations for each generation.
+            """
+            # Check if prompt contains numbered scenes or variations
+            # Pattern: "1. scene1, 2. scene2, 3. scene3" or "scene1, scene2, scene3"
+
+            # Try to detect numbered list
+            numbered_pattern = r'\d+[\.\)]\s*([^,\d]+?)(?=\d+[\.\)]|$)'
+            numbered_matches = re.findall(numbered_pattern, base_prompt)
+
+            if numbered_matches and len(numbered_matches) >= count:
+                # Use numbered scenes directly
+                return [match.strip() for match in numbered_matches[:count]]
+
+            # Try to detect comma-separated scenes (if more than 2 commas)
+            comma_parts = [p.strip() for p in base_prompt.split(',') if p.strip()]
+            if len(comma_parts) >= count:
+                # Use comma-separated parts as separate scenes
+                return comma_parts[:count]
+
+            # Detect keywords that suggest multiple scenes
+            scene_keywords = ['на кафеле', 'на ванной', 'лежит', 'стоит', 'рядом', 'держит', 'льется']
+            detected_scenes = []
+
+            # Split by common separators
+            separators = ['. ', ', ', '; ']
+            parts = [base_prompt]
+            for sep in separators:
+                new_parts = []
+                for part in parts:
+                    new_parts.extend(part.split(sep))
+                parts = new_parts
+
+            # Extract scene descriptions
+            for part in parts:
+                part = part.strip()
+                if any(keyword in part.lower() for keyword in scene_keywords):
+                    detected_scenes.append(part)
+
+            if detected_scenes and len(detected_scenes) >= count:
+                # Use detected scenes
+                base_instructions = base_prompt.split('.')[0] if '.' in base_prompt else ""
+                prompts = []
+                for scene in detected_scenes[:count]:
+                    if base_instructions:
+                        prompts.append(f"{base_instructions}. {scene}")
+                    else:
+                        prompts.append(scene)
+                return prompts
+
+            # Fallback: create variations by adding diversity instructions
+            variations = [
+                f"{base_prompt} Variation {i+1}: with unique composition and angle.",
+                f"{base_prompt} Variation {i+1}: different lighting and perspective.",
+                f"{base_prompt} Variation {i+1}: alternative view and arrangement.",
+                f"{base_prompt} Variation {i+1}: distinct angle and composition.",
+                f"{base_prompt} Variation {i+1}: unique perspective and setting.",
+                f"{base_prompt} Variation {i+1}: different arrangement and view.",
+                f"{base_prompt} Variation {i+1}: alternative composition and angle.",
+                f"{base_prompt} Variation {i+1}: new perspective and layout.",
+                f"{base_prompt} Variation {i+1}: different setup and viewpoint.",
+                f"{base_prompt} Variation {i+1}: unique arrangement and angle.",
+            ]
+
+            return variations[:count]
+
+        # Create unique prompts for each image
+        unique_prompts = create_unique_prompts(prompt, images_to_generate)
+
+        # Log unique prompts for debugging
+        logger.info(
+            "nano_multi_prompts_created",
+            count=len(unique_prompts),
+            original_prompt=prompt[:100],
+            prompts_preview=[p[:80] for p in unique_prompts]
+        )
+
+        async def generate_single_image(index: int, image_prompt: str, ref_image: str = None):
+            """Generate a single image with unique prompt."""
             try:
                 result = await nano_service.generate_image(
-                    prompt=prompt,
+                    prompt=image_prompt,
                     model=model,
                     progress_callback=None,  # Disable individual progress for parallel generation
                     aspect_ratio="1:1",
@@ -1693,15 +1773,18 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
         if reference_image_paths:
             # Use each reference image for a separate generation
             for idx, ref_path in enumerate(reference_image_paths[:images_to_generate]):
-                tasks.append(generate_single_image(idx, ref_path))
+                task_prompt = unique_prompts[idx] if idx < len(unique_prompts) else prompt
+                tasks.append(generate_single_image(idx, task_prompt, ref_path))
             # Fill remaining with duplicates or text-only
             for idx in range(len(reference_image_paths), images_to_generate):
                 ref_to_use = reference_image_paths[0] if reference_image_paths else None
-                tasks.append(generate_single_image(idx, ref_to_use))
+                task_prompt = unique_prompts[idx] if idx < len(unique_prompts) else prompt
+                tasks.append(generate_single_image(idx, task_prompt, ref_to_use))
         else:
-            # No reference images: generate all as text-to-image
+            # No reference images: generate all as text-to-image with unique prompts
             for idx in range(images_to_generate):
-                tasks.append(generate_single_image(idx, None))
+                task_prompt = unique_prompts[idx] if idx < len(unique_prompts) else prompt
+                tasks.append(generate_single_image(idx, task_prompt, None))
 
         # Execute all tasks in parallel
         results_with_indices = await asyncio.gather(*tasks)
