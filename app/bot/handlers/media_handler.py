@@ -1832,17 +1832,21 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
         )
 
         # Create tasks for parallel generation
+        # STRATEGY: Only use reference image for the FIRST image to preserve bottle design,
+        # then generate remaining images WITHOUT reference for maximum variation
         tasks = []
         if reference_image_paths:
-            # Use each reference image for a separate generation
-            for idx, ref_path in enumerate(reference_image_paths[:images_to_generate]):
+            # First image: WITH reference (to capture exact bottle design)
+            first_prompt = unique_prompts[0] if unique_prompts else prompt
+            first_ref = reference_image_paths[0]
+            tasks.append(generate_single_image(0, first_prompt, first_ref))
+
+            # Remaining images: WITHOUT reference (for maximum variation)
+            # We rely on detailed text descriptions in unique_prompts to maintain bottle appearance
+            for idx in range(1, images_to_generate):
                 task_prompt = unique_prompts[idx] if idx < len(unique_prompts) else prompt
-                tasks.append(generate_single_image(idx, task_prompt, ref_path))
-            # Fill remaining with duplicates or text-only
-            for idx in range(len(reference_image_paths), images_to_generate):
-                ref_to_use = reference_image_paths[0] if reference_image_paths else None
-                task_prompt = unique_prompts[idx] if idx < len(unique_prompts) else prompt
-                tasks.append(generate_single_image(idx, task_prompt, ref_to_use))
+                # Generate without reference to allow API more freedom to vary composition/angle
+                tasks.append(generate_single_image(idx, task_prompt, None))
         else:
             # No reference images: generate all as text-to-image with unique prompts
             for idx in range(images_to_generate):
