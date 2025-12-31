@@ -142,6 +142,11 @@ def nano_banana_keyboard(is_pro: bool = False) -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="📐 Изменить формат", callback_data="bot.nb.prms:ratio")
     )
 
+    # New button for multiple images generation
+    builder.row(
+        InlineKeyboardButton(text="🎨 Создать несколько изображений", callback_data="bot.nb.multi")
+    )
+
     # Version toggle button
     if is_pro:
         builder.row(
@@ -172,6 +177,29 @@ def nano_format_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="16:9", callback_data="bot.nb.prms.chs:ratio|16:9"),
         InlineKeyboardButton(text="9:16", callback_data="bot.nb.prms.chs:ratio|9:16"),
         InlineKeyboardButton(text="✅ auto", callback_data="bot.nb.prms.chs:ratio|auto")
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Вернуться в Nano Banana", callback_data="bot.nano")
+    )
+
+    return builder.as_markup()
+
+
+def nano_multi_images_keyboard() -> InlineKeyboardMarkup:
+    """Nano Banana multiple images count selection keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(text="2️⃣ изображения", callback_data="bot.nb.multi.cnt:2"),
+        InlineKeyboardButton(text="3️⃣ изображения", callback_data="bot.nb.multi.cnt:3")
+    )
+    builder.row(
+        InlineKeyboardButton(text="4️⃣ изображения", callback_data="bot.nb.multi.cnt:4"),
+        InlineKeyboardButton(text="5️⃣ изображений", callback_data="bot.nb.multi.cnt:5")
+    )
+    builder.row(
+        InlineKeyboardButton(text="6️⃣ изображений", callback_data="bot.nb.multi.cnt:6"),
+        InlineKeyboardButton(text="🔟 изображений", callback_data="bot.nb.multi.cnt:10")
     )
     builder.row(
         InlineKeyboardButton(text="⬅️ Вернуться в Nano Banana", callback_data="bot.nano")

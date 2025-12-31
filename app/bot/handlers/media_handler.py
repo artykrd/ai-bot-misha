@@ -335,22 +335,23 @@ async def start_nano(callback: CallbackQuery, state: FSMContext, user: User):
         "📊 **Параметры:**\n"
         "• Форматы: 1:1, 16:9, 9:16, 3:4, 4:3\n"
         "• Высокое качество изображений\n\n"
-        "💰 **Стоимость:** ~3,000 токенов\n\n"
+        "💰 **Стоимость:** ~3,000 токенов за изображение\n\n"
         "🎨 **Режимы работы:**\n"
         "• **Text-to-Image:** Отправьте описание изображения\n"
-        "• **Image-to-Image:** Отправьте фото + подробное описание трансформации\n\n"
-        "✏️ **Отправьте описание изображения ИЛИ фото**\n\n"
+        "• **Image-to-Image:** Отправьте **одно или несколько фото** + описание\n"
+        "• **Множественная генерация:** Кнопка \"🎨 Создать несколько изображений\" (2-10 шт.)\n\n"
+        "✏️ **Отправьте описание изображения ИЛИ фото (можно несколько)**\n\n"
         "**Примеры text-to-image:**\n"
         "• \"Кот в космосе среди звёзд\"\n"
         "• \"Закат на берегу океана с пальмами\"\n\n"
         "**Примеры image-to-image:**\n"
         "• Фото + \"Преобразуй в аниме стиль с яркими красками\"\n"
-        "• Фото + \"Сделай в стиле масляной живописи Ван Гога\"\n"
+        "• Несколько фото + \"Сделай в стиле масляной живописи Ван Гога\"\n"
         "• Фото + \"Преобразуй в фэнтези иллюстрацию с магическими эффектами\""
     )
 
     await state.set_state(MediaState.waiting_for_image_prompt)
-    await state.update_data(service="nano_banana", nano_is_pro=False, reference_image_path=None, photo_caption_prompt=None)
+    await state.update_data(service="nano_banana", nano_is_pro=False, reference_image_path=None, reference_image_paths=[], photo_caption_prompt=None, multi_images_count=0)
 
     await callback.message.answer(text, reply_markup=back_to_main_keyboard(), parse_mode="Markdown")
     await callback.answer()
@@ -369,20 +370,21 @@ async def start_nano_pro(callback: CallbackQuery, state: FSMContext, user: User)
         "• Размеры: 2K, 4K\n"
         "• Высочайшее качество изображений\n"
         "• Улучшенная генерация текста на изображениях\n\n"
-        "💰 **Стоимость:** ~6,000 токенов\n\n"
+        "💰 **Стоимость:** ~3,000 токенов за изображение\n\n"
         "🎨 **Режимы работы:**\n"
         "• **Text-to-Image:** Отправьте описание изображения\n"
-        "• **Image-to-Image:** Отправьте фото + подробное описание\n"
+        "• **Image-to-Image:** Отправьте **одно или несколько фото** + описание\n"
+        "• **Множественная генерация:** Кнопка \"🎨 Создать несколько изображений\" (2-10 шт.)\n"
         "• Поддержка Google Search для актуальной информации\n\n"
-        "✏️ **Отправьте описание изображения ИЛИ фото**\n\n"
+        "✏️ **Отправьте описание изображения ИЛИ фото (можно несколько)**\n\n"
         "**Примеры:**\n"
         "• \"Инфографика о текущей погоде в Токио\"\n"
         "• \"Фотореалистичный портрет кота в космосе в 4K\"\n"
-        "• Фото + \"Преобразуй в высококачественную иллюстрацию\""
+        "• Несколько фото + \"Преобразуй в высококачественную иллюстрацию\""
     )
 
     await state.set_state(MediaState.waiting_for_image_prompt)
-    await state.update_data(service="nano_banana", nano_is_pro=True, reference_image_path=None, photo_caption_prompt=None)
+    await state.update_data(service="nano_banana", nano_is_pro=True, reference_image_path=None, reference_image_paths=[], photo_caption_prompt=None, multi_images_count=0)
 
     await callback.message.answer(text, reply_markup=back_to_main_keyboard(), parse_mode="Markdown")
     await callback.answer()
@@ -1253,14 +1255,10 @@ async def process_kling_video(message: Message, user: User, state: FSMContext, i
 
 @router.message(MediaState.waiting_for_image_prompt, F.photo)
 async def process_image_photo(message: Message, state: FSMContext, user: User):
-    """Handle photo for image-to-image generation."""
+    """Handle photo for image-to-image generation (supports multiple photos for multi-image generation)."""
     data = await state.get_data()
     service_name = data.get("service", "nano_banana")
-
-    # Clean up old reference image if exists
-    old_reference_path = data.get("reference_image_path")
-    if old_reference_path:
-        cleanup_temp_file(old_reference_path)
+    multi_images_count = data.get("multi_images_count", 0)
 
     # Download the photo
     photo = message.photo[-1]
@@ -1274,38 +1272,79 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
     # Resize image if needed (before sending to API)
     resize_image_if_needed(str(temp_path), max_size_mb=2.0, max_dimension=2048)
 
-    # Save NEW image path to state
-    await state.update_data(reference_image_path=str(temp_path))
+    # Check if we're in multi-image mode
+    if multi_images_count > 0:
+        # Multi-image mode: add photo to list
+        reference_image_paths = data.get("reference_image_paths", [])
+        reference_image_paths.append(str(temp_path))
+        await state.update_data(reference_image_paths=reference_image_paths)
 
-    service_display = {
-        "nano_banana": "Nano Banana",
-        "dalle": "DALL-E"
-    }.get(service_name, service_name)
+        photos_count = len(reference_image_paths)
+        service_display = {
+            "nano_banana": "Nano Banana",
+            "dalle": "DALL-E"
+        }.get(service_name, service_name)
 
-    # Check if photo has caption (description)
-    if message.caption and message.caption.strip():
-        # User sent photo with description - process immediately
-        # Save caption as prompt in state
-        await state.update_data(photo_caption_prompt=message.caption.strip())
+        # Check if photo has caption (description) - if yes, process immediately
+        if message.caption and message.caption.strip():
+            await state.update_data(photo_caption_prompt=message.caption.strip())
 
-        # Route to appropriate image service
-        if service_name == "dalle":
-            await process_dalle_image(message, user, state)
-        elif service_name == "gemini_image":
-            await process_gemini_image(message, user, state)
-        elif service_name == "nano_banana":
-            await process_nano_image(message, user, state)
+            # Route to appropriate image service
+            if service_name == "nano_banana":
+                await process_nano_image(message, user, state)
+            elif service_name == "dalle":
+                await process_dalle_image(message, user, state)
+        else:
+            # No caption - show status and ask for more photos or prompt
+            await message.answer(
+                f"✅ Фото {photos_count} сохранено!\n\n"
+                f"📸 Вы можете:\n"
+                f"• Загрузить ещё фото (всего: {photos_count}/{multi_images_count}+)\n"
+                f"• Отправить текстовый промпт для начала генерации\n\n"
+                f"**Примеры промптов для {service_display}:**\n"
+                "• \"Создай портрет каждого в стиле аниме\"\n"
+                "• \"Сделай разные варианты этой сцены\"\n"
+                "• \"Примени этот стиль к каждому фото\""
+            )
     else:
-        # No caption - ask for description
-        await message.answer(
-            f"✅ Фото получено!\n\n"
-            f"📝 Теперь отправьте описание изображения, которое вы хотите создать на основе этого фото.\n\n"
-            f"**Примеры для {service_display}:**\n"
-            "• \"Сделай в стиле аниме\"\n"
-            "• \"Преобразуй в акварельный рисунок\"\n"
-            "• \"Сделай фон космическим\"\n"
-            "• \"Преобразуй в стиль Ван Гога\""
-        )
+        # Single-image mode (backward compatibility)
+        # Clean up old reference image if exists
+        old_reference_path = data.get("reference_image_path")
+        if old_reference_path:
+            cleanup_temp_file(old_reference_path)
+
+        # Save NEW image path to state
+        await state.update_data(reference_image_path=str(temp_path))
+
+        service_display = {
+            "nano_banana": "Nano Banana",
+            "dalle": "DALL-E"
+        }.get(service_name, service_name)
+
+        # Check if photo has caption (description)
+        if message.caption and message.caption.strip():
+            # User sent photo with description - process immediately
+            # Save caption as prompt in state
+            await state.update_data(photo_caption_prompt=message.caption.strip())
+
+            # Route to appropriate image service
+            if service_name == "dalle":
+                await process_dalle_image(message, user, state)
+            elif service_name == "gemini_image":
+                await process_gemini_image(message, user, state)
+            elif service_name == "nano_banana":
+                await process_nano_image(message, user, state)
+        else:
+            # No caption - ask for description
+            await message.answer(
+                f"✅ Фото получено!\n\n"
+                f"📝 Теперь отправьте описание изображения, которое вы хотите создать на основе этого фото.\n\n"
+                f"**Примеры для {service_display}:**\n"
+                "• \"Сделай в стиле аниме\"\n"
+                "• \"Преобразуй в акварельный рисунок\"\n"
+                "• \"Сделай фон космическим\"\n"
+                "• \"Преобразуй в стиль Ван Гога\""
+            )
 
 
 @router.message(MediaState.waiting_for_image_prompt, F.text)
@@ -1551,17 +1590,32 @@ async def process_gemini_image(message: Message, user: User, state: FSMContext):
 
 
 async def process_nano_image(message: Message, user: User, state: FSMContext):
-    """Process Nano Banana (Gemini 2.5 Flash Image or Gemini 3 Pro Image) image generation."""
+    """Process Nano Banana (Gemini 2.5 Flash Image or Gemini 3 Pro Image) image generation.
+
+    Supports both single and multiple image generation modes.
+    """
     data = await state.get_data()
 
     prompt = data.get("photo_caption_prompt") or message.text
     reference_image_path = data.get("reference_image_path", None)
+    reference_image_paths = data.get("reference_image_paths", [])
+    multi_images_count = data.get("multi_images_count", 0)
     nano_is_pro = data.get("nano_is_pro", False)
 
     # Select model based on PRO flag
     model = "gemini-3-pro-image-preview" if nano_is_pro else "gemini-2.5-flash-image"
 
-    estimated_tokens = 3000  # Nano Banana cost
+    # Determine generation count
+    if multi_images_count > 0:
+        # Multi-image mode
+        images_to_generate = multi_images_count
+    else:
+        # Single-image mode (backward compatibility)
+        images_to_generate = 1
+
+    # Calculate cost
+    cost_per_image = 3000  # Nano Banana cost per image
+    estimated_tokens = cost_per_image * images_to_generate
 
     # Check and reserve tokens
     async with async_session_maker() as session:
@@ -1569,12 +1623,15 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
         try:
             await sub_service.check_and_use_tokens(user.id, estimated_tokens)
         except InsufficientTokensError as e:
+            # Cleanup any reference images
             if reference_image_path:
                 cleanup_temp_file(reference_image_path)
+            for ref_path in reference_image_paths:
+                cleanup_temp_file(ref_path)
 
             await message.answer(
-                f"❌ Недостаточно токенов для генерации изображения!\n\n"
-                f"Требуется: {estimated_tokens:,} токенов\n"
+                f"❌ Недостаточно токенов для генерации изображений!\n\n"
+                f"Требуется: {estimated_tokens:,} токенов ({images_to_generate} × {cost_per_image:,})\n"
                 f"Доступно: {e.details['available']:,} токенов\n\n"
                 f"Купите подписку: /start → 💎 Подписка"
             )
@@ -1582,11 +1639,20 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
             return
 
     # Progress message
-    mode_text = "image-to-image" if reference_image_path else "text-to-image"
     model_display = "Nano Banana PRO (Gemini 3)" if nano_is_pro else "Nano Banana (Gemini 2.5)"
-    progress_msg = await message.answer(
-        f"🍌 Генерирую изображение с {model_display} ({mode_text})..."
-    )
+
+    if images_to_generate > 1:
+        # Multi-image mode
+        progress_msg = await message.answer(
+            f"🍌 Генерирую {images_to_generate} изображений с {model_display}...\n"
+            f"⏳ Пожалуйста, подождите..."
+        )
+    else:
+        # Single-image mode
+        mode_text = "image-to-image" if (reference_image_path or reference_image_paths) else "text-to-image"
+        progress_msg = await message.answer(
+            f"🍌 Генерирую изображение с {model_display} ({mode_text})..."
+        )
 
     nano_service = NanoBananaService()
 
@@ -1596,13 +1662,135 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
         except Exception:
             pass
 
-    # Generate image
+    # Generate images
+    if images_to_generate > 1:
+        # Multi-image generation mode: create multiple images in parallel
+        import asyncio
+
+        async def generate_single_image(index: int, ref_image: str = None):
+            """Generate a single image with index."""
+            try:
+                result = await nano_service.generate_image(
+                    prompt=prompt,
+                    model=model,
+                    progress_callback=None,  # Disable individual progress for parallel generation
+                    aspect_ratio="1:1",
+                    reference_image_path=ref_image
+                )
+                return (index, result, ref_image)
+            except Exception as e:
+                logger.error("nano_multi_image_generation_failed", index=index, error=str(e))
+                return (index, None, ref_image)
+
+        # Update progress: generating
+        await update_progress(
+            f"🍌 Генерирую {images_to_generate} изображений параллельно...\n"
+            f"⏳ Это может занять 30-60 секунд..."
+        )
+
+        # Create tasks for parallel generation
+        tasks = []
+        if reference_image_paths:
+            # Use each reference image for a separate generation
+            for idx, ref_path in enumerate(reference_image_paths[:images_to_generate]):
+                tasks.append(generate_single_image(idx, ref_path))
+            # Fill remaining with duplicates or text-only
+            for idx in range(len(reference_image_paths), images_to_generate):
+                ref_to_use = reference_image_paths[0] if reference_image_paths else None
+                tasks.append(generate_single_image(idx, ref_to_use))
+        else:
+            # No reference images: generate all as text-to-image
+            for idx in range(images_to_generate):
+                tasks.append(generate_single_image(idx, None))
+
+        # Execute all tasks in parallel
+        results_with_indices = await asyncio.gather(*tasks)
+
+        # Process results
+        successful_results = []
+        failed_count = 0
+
+        for idx, result, ref_path in results_with_indices:
+            if result and result.success:
+                successful_results.append((idx, result))
+            else:
+                failed_count += 1
+                logger.warning("nano_multi_image_failed", index=idx, error=result.error if result else "Unknown error")
+
+        # Cleanup reference images
+        for ref_path in reference_image_paths:
+            cleanup_temp_file(ref_path)
+
+        # Send results
+        if successful_results:
+            await update_progress(
+                f"✅ Готово: {len(successful_results)}/{images_to_generate} изображений\n"
+                f"📤 Отправляю результаты..."
+            )
+
+            total_tokens_used = sum(r.metadata.get("tokens_used", cost_per_image) for _, r in successful_results)
+
+            async with async_session_maker() as session:
+                sub_service = SubscriptionService(session)
+                user_tokens = await sub_service.get_user_total_tokens(user.id)
+
+            # Send summary message first
+            model_name = "Nano Banana PRO (Gemini 3)" if nano_is_pro else "Nano Banana (Gemini 2.5)"
+            summary_text = (
+                f"✅ **Генерация завершена!**\n\n"
+                f"🍌 Модель: {model_name}\n"
+                f"🎨 Создано изображений: {len(successful_results)}/{images_to_generate}\n"
+                f"💰 Использовано токенов: {total_tokens_used:,}\n"
+                f"💎 Осталось токенов: {user_tokens:,}\n\n"
+                f"📝 Промпт: {prompt[:150]}{'...' if len(prompt) > 150 else ''}"
+            )
+
+            if failed_count > 0:
+                summary_text += f"\n\n⚠️ Не удалось создать: {failed_count} изображений"
+
+            await message.answer(summary_text, parse_mode="Markdown")
+
+            # Send each image individually
+            nano_callback = "bot.nano_pro" if nano_is_pro else "bot.nano"
+            for idx, result in successful_results:
+                try:
+                    image_file = FSInputFile(result.image_path)
+                    builder = create_action_keyboard(
+                        action_text=MODEL_ACTIONS["nano_banana"]["text"],
+                        action_callback=nano_callback,
+                        file_path=result.image_path,
+                        file_type="image"
+                    )
+                    await message.answer_photo(
+                        photo=image_file,
+                        caption=f"🖼 Изображение {idx + 1}/{images_to_generate}",
+                        reply_markup=builder.as_markup()
+                    )
+                except Exception as send_error:
+                    logger.error("nano_multi_image_send_failed", index=idx, error=str(send_error))
+
+            await progress_msg.delete()
+        else:
+            # All failed
+            for ref_path in reference_image_paths:
+                cleanup_temp_file(ref_path)
+
+            await progress_msg.edit_text(
+                f"❌ Не удалось создать ни одного изображения.\n"
+                f"Попробуйте изменить промпт или параметры.",
+                parse_mode=None
+            )
+
+        await state.clear()
+        return
+
+    # Single-image generation mode (original code)
     result = await nano_service.generate_image(
         prompt=prompt,
         model=model,
         progress_callback=update_progress,
         aspect_ratio="1:1",
-        reference_image_path=reference_image_path
+        reference_image_path=reference_image_path or (reference_image_paths[0] if reference_image_paths else None)
     )
 
     if result.success:
@@ -1714,14 +1902,20 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
         except Exception as e:
             logger.error("nano_image_cleanup_failed", error=str(e))
 
+        # Cleanup reference images (both single and multiple)
         if reference_image_path:
             cleanup_temp_file(reference_image_path)
+        for ref_path in reference_image_paths:
+            cleanup_temp_file(ref_path)
 
         await progress_msg.delete()
 
     else:
+        # Cleanup reference images on failure
         if reference_image_path:
             cleanup_temp_file(reference_image_path)
+        for ref_path in reference_image_paths:
+            cleanup_temp_file(ref_path)
 
         try:
             await progress_msg.edit_text(

@@ -375,6 +375,104 @@ async def nano_format_selected(callback: CallbackQuery):
     await show_nano_banana(callback)
 
 
+@router.callback_query(F.data == "bot.nb.multi")
+async def nano_multi_images(callback: CallbackQuery, state: FSMContext):
+    """Show Nano Banana multiple images generation menu."""
+    from app.bot.keyboards.inline import nano_multi_images_keyboard
+
+    # Get current PRO status
+    data = await state.get_data()
+    nano_is_pro = data.get("nano_is_pro", False)
+    model_display = "Gemini 3 Pro" if nano_is_pro else "Gemini 2.5 Flash"
+
+    text = f"""🎨 **Создание нескольких изображений ({model_display})**
+
+📊 **Как это работает:**
+• Вы выбираете количество изображений (2-10)
+• Можете загрузить одно или несколько референсных фото (опционально)
+• Отправляете промпт с описанием
+• Бот создает указанное количество изображений параллельно
+
+💡 **Примеры использования:**
+• Загрузите несколько фото людей → получите варианты с каждым в разных стилях
+• Загрузите одно фото → получите несколько вариаций одной сцены
+• Без фото → получите несколько разных изображений по промпту
+
+💰 **Стоимость:** ~3,000 токенов × количество изображений
+
+📌 **Выберите количество изображений для генерации:**"""
+
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=nano_multi_images_keyboard(),
+            parse_mode="Markdown"
+        )
+    except TelegramBadRequest as e:
+        if "message is not modified" not in str(e):
+            raise
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("bot.nb.multi.cnt:"))
+async def nano_multi_count_selected(callback: CallbackQuery, state: FSMContext):
+    """Handle multiple images count selection."""
+    from app.bot.handlers.media_handler import MediaState
+    from app.bot.keyboards.inline import back_to_main_keyboard
+
+    count = int(callback.data.split(":")[1])
+
+    # Get current PRO status
+    data = await state.get_data()
+    nano_is_pro = data.get("nano_is_pro", False)
+    model_display = "Nano Banana PRO (Gemini 3)" if nano_is_pro else "Nano Banana (Gemini 2.5)"
+
+    # Calculate cost
+    cost_per_image = 3000
+    total_cost = cost_per_image * count
+
+    text = f"""✅ **Выбрано: {count} изображений**
+
+🍌 **Модель:** {model_display}
+💰 **Стоимость:** ~{total_cost:,} токенов
+
+📸 **Инструкция:**
+
+**Шаг 1 (опционально):** Загрузите фотографии
+• Можете загрузить **одно или несколько** фото как референс
+• Если загрузите несколько фото, бот будет использовать их для создания вариаций
+• Если не хотите использовать фото, сразу переходите к Шагу 2
+
+**Шаг 2:** Отправьте текстовый промпт
+• Опишите, что вы хотите создать
+• Если загрузили фото: опишите, как их трансформировать
+• Без фото: опишите желаемое изображение
+
+**Примеры промптов:**
+*С несколькими фото людей:*
+"Создай портрет каждого человека в стиле аниме"
+
+*С одним фото:*
+"Создай 4 варианта этой сцены: утро, день, вечер, ночь"
+
+*Без фото:*
+"Футуристический город с летающими машинами, разные ракурсы"
+
+✏️ **Загрузите фото (одно или несколько) или сразу отправьте промпт**"""
+
+    # Set state and save count
+    await state.set_state(MediaState.waiting_for_image_prompt)
+    await state.update_data(
+        service="nano_banana",
+        multi_images_count=count,
+        reference_image_paths=[],  # List for multiple reference images
+        photo_caption_prompt=None
+    )
+
+    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard(), parse_mode="Markdown")
+    await callback.answer()
+
+
 # Photo tools
 @router.callback_query(F.data == "bot.pi")
 async def show_photo_tools(callback: CallbackQuery):
