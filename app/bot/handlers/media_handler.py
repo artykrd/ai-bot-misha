@@ -1832,21 +1832,14 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
         )
 
         # Create tasks for parallel generation
-        # STRATEGY: Only use reference image for the FIRST image to preserve bottle design,
-        # then generate remaining images WITHOUT reference for maximum variation
+        # Use reference image for ALL generations to maintain consistent product design
         tasks = []
         if reference_image_paths:
-            # First image: WITH reference (to capture exact bottle design)
-            first_prompt = unique_prompts[0] if unique_prompts else prompt
-            first_ref = reference_image_paths[0]
-            tasks.append(generate_single_image(0, first_prompt, first_ref))
-
-            # Remaining images: WITHOUT reference (for maximum variation)
-            # We rely on detailed text descriptions in unique_prompts to maintain bottle appearance
-            for idx in range(1, images_to_generate):
+            # Use same reference for all images to keep bottle/product identical
+            ref_path = reference_image_paths[0]
+            for idx in range(images_to_generate):
                 task_prompt = unique_prompts[idx] if idx < len(unique_prompts) else prompt
-                # Generate without reference to allow API more freedom to vary composition/angle
-                tasks.append(generate_single_image(idx, task_prompt, None))
+                tasks.append(generate_single_image(idx, task_prompt, ref_path))
         else:
             # No reference images: generate all as text-to-image with unique prompts
             for idx in range(images_to_generate):
