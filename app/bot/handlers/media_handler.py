@@ -1686,24 +1686,43 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
                 first_num_pos = re.search(r'\d+[\.\)]', base_prompt)
                 base_context = base_prompt[:first_num_pos.start()].strip() if first_num_pos else ""
 
+                # Define radically different camera and lighting setups for each scene
+                # This forces variation even when user prompts are similar
+                camera_setups = [
+                    "Camera: Wide angle (24mm), natural soft daylight, centered composition, eye-level perspective",
+                    "Camera: Macro lens (100mm), shallow depth of field, soft diffused backlight, 45-degree angle",
+                    "Camera: Top-down view (bird's eye), dramatic side lighting with shadows, overhead perspective",
+                    "Camera: Medium telephoto (85mm), three-quarter view, warm golden hour lighting, slightly tilted",
+                    "Camera: Extreme close-up macro, bokeh background, bright key light from left, Dutch angle tilt",
+                    "Camera: Ultra-wide angle (16mm), low angle looking up, cool morning light, dynamic composition",
+                    "Camera: Standard lens (50mm), straight-on frontal view, high-key lighting, perfectly centered",
+                    "Camera: Telephoto zoom (135mm), compressed perspective, backlit rim lighting, diagonal framing",
+                    "Camera: Fish-eye lens, distorted perspective, colorful accent lighting, off-center placement",
+                    "Camera: Tilt-shift lens, selective focus plane, sunset warm tones, asymmetric balance"
+                ]
+
                 # Use numbered scenes directly
                 prompts = []
                 for idx, (num, scene_text) in enumerate(numbered_matches[:count], 1):
                     scene = scene_text.strip()
 
-                    # Add strong uniqueness instructions to force variation
-                    uniqueness_instruction = (
-                        f"\n\nIMPORTANT: This is scene {idx} of {count}. "
-                        f"Make this scene COMPLETELY DIFFERENT from other scenes. "
-                        f"Use UNIQUE camera angle, DIFFERENT lighting, DISTINCT composition. "
-                        f"DO NOT repeat the same background, perspective or arrangement."
+                    # Get specific camera setup for this scene
+                    camera_setup = camera_setups[idx % len(camera_setups)]
+
+                    # Add strong technical specifications to force variation
+                    technical_spec = (
+                        f"\n\n[TECHNICAL REQUIREMENTS - Scene {idx}/{count}]:\n"
+                        f"{camera_setup}\n"
+                        f"CRITICAL: This scene MUST be visually DISTINCT from all other scenes. "
+                        f"Different angle, different lighting direction, different composition style. "
+                        f"Ignore any repetitive patterns from other scenes."
                     )
 
                     # Combine base context with specific scene
                     if base_context:
-                        full_prompt = f"{base_context}. {scene}{uniqueness_instruction}"
+                        full_prompt = f"{base_context}. {scene}{technical_spec}"
                     else:
-                        full_prompt = f"{scene}{uniqueness_instruction}"
+                        full_prompt = f"{scene}{technical_spec}"
                     prompts.append(full_prompt)
                 return prompts
 
