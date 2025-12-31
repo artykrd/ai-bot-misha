@@ -1688,13 +1688,22 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
 
                 # Use numbered scenes directly
                 prompts = []
-                for num, scene_text in numbered_matches[:count]:
+                for idx, (num, scene_text) in enumerate(numbered_matches[:count], 1):
                     scene = scene_text.strip()
+
+                    # Add strong uniqueness instructions to force variation
+                    uniqueness_instruction = (
+                        f"\n\nIMPORTANT: This is scene {idx} of {count}. "
+                        f"Make this scene COMPLETELY DIFFERENT from other scenes. "
+                        f"Use UNIQUE camera angle, DIFFERENT lighting, DISTINCT composition. "
+                        f"DO NOT repeat the same background, perspective or arrangement."
+                    )
+
                     # Combine base context with specific scene
                     if base_context:
-                        full_prompt = f"{base_context}. Сцена {num}: {scene}"
+                        full_prompt = f"{base_context}. {scene}{uniqueness_instruction}"
                     else:
-                        full_prompt = f"Сцена {num}: {scene}"
+                        full_prompt = f"{scene}{uniqueness_instruction}"
                     prompts.append(full_prompt)
                 return prompts
 
@@ -1735,20 +1744,31 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
                 return prompts
 
             # Fallback: create variations by adding diversity instructions
-            variations = [
-                f"{base_prompt} Variation {i+1}: with unique composition and angle.",
-                f"{base_prompt} Variation {i+1}: different lighting and perspective.",
-                f"{base_prompt} Variation {i+1}: alternative view and arrangement.",
-                f"{base_prompt} Variation {i+1}: distinct angle and composition.",
-                f"{base_prompt} Variation {i+1}: unique perspective and setting.",
-                f"{base_prompt} Variation {i+1}: different arrangement and view.",
-                f"{base_prompt} Variation {i+1}: alternative composition and angle.",
-                f"{base_prompt} Variation {i+1}: new perspective and layout.",
-                f"{base_prompt} Variation {i+1}: different setup and viewpoint.",
-                f"{base_prompt} Variation {i+1}: unique arrangement and angle.",
+            variations = []
+            variation_angles = [
+                "top-down aerial view with dramatic overhead lighting",
+                "low angle close-up with shallow depth of field",
+                "45-degree side angle with natural soft lighting",
+                "extreme macro detail shot with bokeh background",
+                "wide environmental shot showing full context",
+                "dramatic side lighting with strong shadows",
+                "backlit silhouette with rim lighting",
+                "Dutch angle (tilted) perspective for dynamic feel",
+                "straight-on centered composition with symmetry",
+                "diagonal composition with leading lines"
             ]
 
-            return variations[:count]
+            for i in range(count):
+                angle_instruction = variation_angles[i % len(variation_angles)]
+                variation = (
+                    f"{base_prompt}\n\n"
+                    f"VARIATION {i+1}: Use {angle_instruction}. "
+                    f"Make this COMPLETELY DIFFERENT from other variations. "
+                    f"UNIQUE angle, DIFFERENT background, DISTINCT atmosphere."
+                )
+                variations.append(variation)
+
+            return variations
 
         # Create unique prompts for each image
         unique_prompts = create_unique_prompts(prompt, images_to_generate)
@@ -1757,9 +1777,19 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
         logger.info(
             "nano_multi_prompts_created",
             count=len(unique_prompts),
-            original_prompt=prompt[:100],
-            prompts_preview=[p[:80] for p in unique_prompts]
+            original_prompt=prompt[:200],
+            prompts_lengths=[len(p) for p in unique_prompts],
+            prompts_preview=[p[:300] for p in unique_prompts]
         )
+
+        # Log each prompt separately for better visibility
+        for idx, up in enumerate(unique_prompts, 1):
+            logger.info(
+                "nano_multi_prompt_detail",
+                scene_index=idx,
+                prompt_length=len(up),
+                prompt_start=up[:400]
+            )
 
         async def generate_single_image(index: int, image_prompt: str, ref_image: str = None):
             """Generate a single image with unique prompt."""
