@@ -13,7 +13,13 @@ from pathlib import Path
 from PIL import Image
 import io
 
-from app.bot.keyboards.inline import back_to_main_keyboard, kling_choice_keyboard
+from app.bot.keyboards.inline import (
+    back_to_main_keyboard,
+    kling_choice_keyboard,
+    nano_banana_keyboard,
+    nano_format_keyboard,
+    nano_multi_images_keyboard
+)
 from app.bot.states import MediaState
 from app.bot.utils.notifications import (
     format_generation_message,
@@ -351,9 +357,17 @@ async def start_nano(callback: CallbackQuery, state: FSMContext, user: User):
     )
 
     await state.set_state(MediaState.waiting_for_image_prompt)
-    await state.update_data(service="nano_banana", nano_is_pro=False, reference_image_path=None, reference_image_paths=[], photo_caption_prompt=None, multi_images_count=0)
+    await state.update_data(
+        service="nano_banana",
+        nano_is_pro=False,
+        reference_image_path=None,
+        reference_image_paths=[],
+        photo_caption_prompt=None,
+        multi_images_count=0,
+        nano_aspect_ratio="auto"  # Default aspect ratio
+    )
 
-    await callback.message.answer(text, reply_markup=back_to_main_keyboard(), parse_mode="Markdown")
+    await callback.message.answer(text, reply_markup=nano_banana_keyboard(is_pro=False), parse_mode="Markdown")
     await callback.answer()
 
 
@@ -384,10 +398,84 @@ async def start_nano_pro(callback: CallbackQuery, state: FSMContext, user: User)
     )
 
     await state.set_state(MediaState.waiting_for_image_prompt)
-    await state.update_data(service="nano_banana", nano_is_pro=True, reference_image_path=None, reference_image_paths=[], photo_caption_prompt=None, multi_images_count=0)
+    await state.update_data(
+        service="nano_banana",
+        nano_is_pro=True,
+        reference_image_path=None,
+        reference_image_paths=[],
+        photo_caption_prompt=None,
+        multi_images_count=0,
+        nano_aspect_ratio="auto"  # Default aspect ratio
+    )
 
-    await callback.message.answer(text, reply_markup=back_to_main_keyboard(), parse_mode="Markdown")
+    await callback.message.answer(text, reply_markup=nano_banana_keyboard(is_pro=True), parse_mode="Markdown")
     await callback.answer()
+
+
+@router.callback_query(F.data == "bot.nb.prms:ratio")
+async def nano_change_format(callback: CallbackQuery, state: FSMContext):
+    """Show Nano Banana format selection menu."""
+    data = await state.get_data()
+    current_ratio = data.get("nano_aspect_ratio", "auto")
+
+    await callback.message.edit_text(
+        f"📐 **Выбор формата изображения**\n\n"
+        f"Текущий формат: **{current_ratio}**\n\n"
+        f"Выберите нужное соотношение сторон:",
+        reply_markup=nano_format_keyboard(),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("bot.nb.prms.chs:ratio|"))
+async def nano_set_format(callback: CallbackQuery, state: FSMContext, user: User):
+    """Set Nano Banana aspect ratio."""
+    ratio = callback.data.split("|")[1]
+    await state.update_data(nano_aspect_ratio=ratio)
+
+    await callback.answer(f"✅ Формат изменен на {ratio}")
+
+    # Return to Nano Banana menu
+    data = await state.get_data()
+    is_pro = data.get("nano_is_pro", False)
+
+    if is_pro:
+        await start_nano_pro(callback, state, user)
+    else:
+        await start_nano(callback, state, user)
+
+
+@router.callback_query(F.data == "bot.nb.multi")
+async def nano_multi_images_menu(callback: CallbackQuery, state: FSMContext):
+    """Show Nano Banana multiple images count selection menu."""
+    await callback.message.edit_text(
+        "🎨 **Множественная генерация**\n\n"
+        "Выберите количество изображений для генерации:\n\n"
+        "⚠️ Стоимость умножается на количество изображений",
+        reply_markup=nano_multi_images_keyboard(),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("bot.nb.multi.cnt:"))
+async def nano_set_multi_count(callback: CallbackQuery, state: FSMContext, user: User):
+    """Set Nano Banana multiple images count."""
+    count = int(callback.data.split(":")[1])
+    await state.update_data(multi_images_count=count)
+
+    cost = count * 3000  # 3000 tokens per image
+    await callback.answer(f"✅ Будет создано {count} изображений (~{cost:,} токенов)", show_alert=True)
+
+    # Return to Nano Banana menu
+    data = await state.get_data()
+    is_pro = data.get("nano_is_pro", False)
+
+    if is_pro:
+        await start_nano_pro(callback, state, user)
+    else:
+        await start_nano(callback, state, user)
 
 
 @router.callback_query(F.data == "bot.midjourney")
@@ -647,6 +735,16 @@ async def process_video_prompt(message: Message, state: FSMContext, user: User):
     # Commands should NOT be processed as prompts
     if message.text and message.text.startswith('/'):
         await state.clear()
+        return
+
+    # Check message length (max 2000 characters)
+    if message.text and len(message.text) > 2000:
+        await message.answer(
+            "⚠️ Описание слишком длинное!\n\n"
+            f"Максимальная длина: 2000 символов\n"
+            f"Ваше описание: {len(message.text)} символов\n\n"
+            "Пожалуйста, сократите описание и попробуйте снова."
+        )
         return
 
     data = await state.get_data()
@@ -1354,6 +1452,16 @@ async def process_image_prompt(message: Message, state: FSMContext, user: User):
         await state.clear()
         return
 
+    # Check message length (max 2000 characters)
+    if message.text and len(message.text) > 2000:
+        await message.answer(
+            "⚠️ Описание слишком длинное!\n\n"
+            f"Максимальная длина: 2000 символов\n"
+            f"Ваше описание: {len(message.text)} символов\n\n"
+            "Пожалуйста, сократите описание и попробуйте снова."
+        )
+        return
+
     data = await state.get_data()
     service_name = data.get("service", "dalle")
 
@@ -1601,6 +1709,7 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
     reference_image_paths = data.get("reference_image_paths", [])
     multi_images_count = data.get("multi_images_count", 0)
     nano_is_pro = data.get("nano_is_pro", False)
+    aspect_ratio = data.get("nano_aspect_ratio", "auto")
 
     # Select model based on PRO flag
     model = "gemini-3-pro-image-preview" if nano_is_pro else "gemini-2.5-flash-image"
@@ -1817,7 +1926,7 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
                     prompt=image_prompt,
                     model=model,
                     progress_callback=None,  # Disable individual progress for parallel generation
-                    aspect_ratio="1:1",
+                    aspect_ratio=aspect_ratio,
                     reference_image_path=ref_image
                 )
                 return (index, result, ref_image)
@@ -1932,7 +2041,7 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
         prompt=prompt,
         model=model,
         progress_callback=update_progress,
-        aspect_ratio="1:1",
+        aspect_ratio=aspect_ratio,
         reference_image_path=reference_image_path or (reference_image_paths[0] if reference_image_paths else None)
     )
 

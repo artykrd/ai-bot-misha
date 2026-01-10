@@ -108,6 +108,16 @@ async def choose_model(callback: CallbackQuery, state: FSMContext):
 async def process_ai_request(message: Message, user: User, state: FSMContext):
     """Process AI request."""
 
+    # Check message length (max 2000 characters)
+    if message.text and len(message.text) > 2000:
+        await message.answer(
+            "⚠️ Сообщение слишком длинное!\n\n"
+            f"Максимальная длина: 2000 символов\n"
+            f"Ваше сообщение: {len(message.text)} символов\n\n"
+            "Пожалуйста, сократите ваш запрос и попробуйте снова."
+        )
+        return
+
     # Get state data
     data = await state.get_data()
     ai_model = data.get("ai_model", "gpt-4")

@@ -22,7 +22,7 @@ class YooKassaService:
         """Initialize YooKassa configuration."""
         self.shop_id = os.getenv("YUKASSA_SHOP_ID")
         self.secret_key = os.getenv("YUKASSA_SECRET_KEY")
-        self.return_url = os.getenv("PAYMENT_RETURN_URL", "https://t.me/GPTchatneiroseti_BOT")
+        self.return_url = os.getenv("PAYMENT_RETURN_URL", "https://t.me/assistantvirtualsbot")
 
         if not self.shop_id or not self.secret_key:
             logger.warning(
