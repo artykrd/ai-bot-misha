@@ -3,6 +3,7 @@ Admin bot entry point.
 """
 import asyncio
 import sys
+import html as html_module
 
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.filters import Command, StateFilter
@@ -55,6 +56,29 @@ admin_router = Router(name="admin")
 def is_admin(user_id: int) -> bool:
     """Check if user is admin."""
     return user_id in settings.admin_user_ids
+
+
+def safe_text(text: str) -> str:
+    """Escape special characters that could cause Telegram parse errors."""
+    if not text:
+        return ""
+    # Remove or replace characters that cause parse issues
+    # Especially problematic: < > & _  * [ ] ( ) ~ ` # + - = | { } . !
+    replacements = {
+        '<': '‹',
+        '>': '›',
+        '&': 'and',
+        '_': ' ',
+        '*': '•',
+        '[': '(',
+        ']': ')',
+        '`': "'",
+        '~': '-',
+        '#': 'No.',
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    return text
 
 
 # ==================== START COMMAND ====================
@@ -173,7 +197,7 @@ async def show_users_page(callback: CallbackQuery, page: int = 0):
         active_sub = user.get_active_subscription()
         sub_emoji = "💎" if active_sub else ""
 
-        button_text = f"{ban_status}{sub_emoji} {user.full_name} (ID: {user.telegram_id})"
+        button_text = f"{ban_status}{sub_emoji} {safe_text(user.full_name)} (ID: {user.telegram_id})"
         builder.button(
             text=button_text[:64],  # Telegram limit
             callback_data=f"admin:user_view:{user.telegram_id}"
@@ -229,9 +253,9 @@ async def user_view_callback(callback: CallbackQuery):
         user = stats
         text = f"👤 Информация о пользователе\n\n"
         text += f"ID: {user['telegram_id']}\n"
-        text += f"Имя: {user['full_name']}\n"
-        if user['username']:
-            text += f"Username: @{user['username']}\n"
+        text += f"Имя: {safe_text(user['full_name'])}\n"
+        if safe_text(user['username']):
+            text += f"Username: @{safe_text(safe_text(user['username']))}\n"
         text += f"Статус: {'🚫 Забанен' if user['is_banned'] else '✅ Активен'}\n"
         text += f"Токенов: {user['total_tokens']:,}\n"
 
@@ -336,7 +360,7 @@ async def process_search_query(message: Message, state: FSMContext):
                 builder = InlineKeyboardBuilder()
 
                 for user in users[:20]:  # Limit to 20
-                    button_text = f"{user.full_name} (ID: {user.telegram_id})"
+                    button_text = f"{safe_text(user.full_name)} (ID: {user.telegram_id})"
                     builder.button(
                         text=button_text[:64],
                         callback_data=f"admin:user_view:{user.telegram_id}"
@@ -397,9 +421,9 @@ async def user_details_callback(callback: CallbackQuery):
 
             text = f"👁️ Детальная информация\n\n"
             text += f"ID: {user.telegram_id}\n"
-            text += f"Имя: {user.full_name}\n"
+            text += f"Имя: {safe_text(user.full_name)}\n"
             if user.username:
-                text += f"Username: @{user.username}\n"
+                text += f"Username: @{safe_text(user.username)}\n"
             text += f"Язык: {user.language_code}\n"
             text += f"Статус: {'🚫 Забанен' if user.is_banned else '✅ Активен'}\n"
             if user.is_banned and user.ban_reason:
@@ -472,7 +496,7 @@ async def user_requests_callback(callback: CallbackQuery):
             requests = result.scalars().all()
 
             text = f"📊 История запросов\n"
-            text += f"Пользователь: {user.full_name}\n\n"
+            text += f"Пользователь: {safe_text(user.full_name)}\n\n"
 
             if not requests:
                 text += "Запросов пока нет."
@@ -916,7 +940,7 @@ async def process_ban_reason(message: Message, state: FSMContext):
 
             await message.answer(
                 f"✅ Пользователь забанен\n\n"
-                f"👤 Пользователь: {user.full_name} ({user.telegram_id})\n"
+                f"👤 Пользователь: {safe_text(user.full_name)} ({user.telegram_id})\n"
                 f"📝 Причина: {reason}",
                 reply_markup=back_keyboard()
             )
@@ -968,7 +992,7 @@ async def start_unban_user(callback: CallbackQuery, state: FSMContext):
     builder = InlineKeyboardBuilder()
 
     for user in banned_users:
-        button_text = f"{user.full_name} (ID: {user.telegram_id})"
+        button_text = f"{safe_text(user.full_name)} (ID: {user.telegram_id})"
         if user.ban_reason:
             button_text += f" - {user.ban_reason[:20]}"
         builder.button(
@@ -1022,7 +1046,7 @@ async def unban_confirm(callback: CallbackQuery):
 
             await callback.message.edit_text(
                 f"✅ Пользователь разбанен\n\n"
-                f"👤 Пользователь: {user.full_name} ({user.telegram_id})",
+                f"👤 Пользователь: {safe_text(user.full_name)} ({user.telegram_id})",
                 reply_markup=back_keyboard()
             )
 
@@ -1060,7 +1084,7 @@ async def process_unban_user_id(message: Message, state: FSMContext):
 
             await message.answer(
                 f"✅ Пользователь разбанен\n\n"
-                f"👤 Пользователь: {user.full_name} ({user.telegram_id})",
+                f"👤 Пользователь: {safe_text(user.full_name)} ({user.telegram_id})",
                 reply_markup=back_keyboard()
             )
 
@@ -1108,7 +1132,7 @@ async def start_give_tokens(callback: CallbackQuery, state: FSMContext):
     for user in recent_users:
         active_sub = user.get_active_subscription()
         sub_emoji = "💎" if active_sub else ""
-        button_text = f"{sub_emoji} {user.full_name} (ID: {user.telegram_id})"
+        button_text = f"{sub_emoji} {safe_text(user.full_name)} (ID: {user.telegram_id})"
         builder.button(
             text=button_text[:64],
             callback_data=f"admin:give_tokens_to:{user.telegram_id}"
@@ -1229,10 +1253,30 @@ async def process_give_tokens_amount(message: Message, state: FSMContext):
                 subscription_type="admin_gift"
             )
 
+            # Get total tokens after adding
+            total_tokens = user.get_total_tokens()
+
+            # Send notification to user
+            from aiogram import Bot
+            from app.core.config import settings
+            try:
+                main_bot = Bot(token=settings.telegram_bot_token)
+                await main_bot.send_message(
+                    chat_id=user.telegram_id,
+                    text=f"🎉 Поздравляем!\n\n"
+                         f"Вам начислено {amount:,} токенов!\n"
+                         f"💎 Всего токенов: {total_tokens:,}\n\n"
+                         f"Используйте /profile для просмотра баланса."
+                )
+                await main_bot.session.close()
+            except Exception as e:
+                logger.error("notify_user_tokens_error", error=str(e), user_id=user_id)
+
             await message.answer(
                 f"✅ Токены выданы\n\n"
-                f"👤 Пользователь: {user.full_name} ({user.telegram_id})\n"
-                f"💎 Количество: {amount:,} токенов",
+                f"👤 Пользователь: {safe_text(user.full_name)} ({user.telegram_id})\n"
+                f"💎 Количество: {amount:,} токенов\n"
+                f"💎 Всего токенов: {total_tokens:,}",
                 reply_markup=back_keyboard()
             )
 
@@ -1714,7 +1758,7 @@ async def list_users(message: Message):
     text = "👥 Последние 10 пользователей:\n\n"
 
     for user in users:
-        text += f"ID: {user.telegram_id} | {user.full_name}\n"
+        text += f"ID: {user.telegram_id} | {safe_text(user.full_name)}\n"
         text += f"   Создан: {user.created_at.strftime('%d.%m.%Y')}\n\n"
 
     await message.answer(text, reply_markup=back_keyboard())

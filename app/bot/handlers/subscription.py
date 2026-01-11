@@ -4,7 +4,9 @@
 Subscription handlers.
 """
 from aiogram import Router, F
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, Message
+from aiogram.fsm.context import FSMContext
+from aiogram.filters import StateFilter
 
 from app.bot.keyboards.inline import (
     subscription_keyboard,
@@ -155,10 +157,13 @@ async def process_subscription_purchase(callback: CallbackQuery, user: User):
 
 
 @router.callback_query(F.data == "activate_promocode")
-async def activate_promocode(callback: CallbackQuery):
+async def activate_promocode(callback: CallbackQuery, state: FSMContext):
     """Start promocode activation."""
+    from app.bot.states import PromocodeStates
 
-    text = """🔢 **Активация промокода**
+    await state.set_state(PromocodeStates.waiting_for_code)
+
+    text = """🔢 Активация промокода
 
 Отправьте промокод в следующем сообщении.
 
@@ -167,7 +172,7 @@ async def activate_promocode(callback: CallbackQuery):
 – Скидку на подписку
 – Бесплатную подписку
 
-Пример: `PROMO2025`"""
+Пример: PROMO2025"""
 
     await callback.message.edit_text(
         text,
@@ -175,4 +180,103 @@ async def activate_promocode(callback: CallbackQuery):
     )
     await callback.answer()
 
-    # TODO: Set FSM state to wait for promocode
+
+@router.message(StateFilter(PromocodeStates.waiting_for_code))
+async def process_promocode(message: Message, state: FSMContext, user: User):
+    """Process promocode activation."""
+    from app.database.database import async_session_maker
+    from app.database.models.promocode import Promocode, PromocodeUse
+    from app.services.subscription.subscription_service import SubscriptionService
+    from sqlalchemy import select
+    from app.bot.states import PromocodeStates
+
+    code = message.text.strip().upper()
+
+    try:
+        async with async_session_maker() as session:
+        # Find promocode
+        result = await session.execute(
+            select(Promocode).where(Promocode.code == code)
+        )
+        promo = result.scalar_one_or_none()
+
+        if not promo:
+            await message.answer(
+                "❌ Промокод не найден.\n\n"
+                "Проверьте правильность ввода и попробуйте снова."
+            )
+            await state.clear()
+            return
+
+        # Check if promocode is valid
+        if not promo.is_valid:
+            await message.answer(
+                "❌ Промокод недействителен или истек.",
+                reply_markup=back_to_main_keyboard()
+            )
+            await state.clear()
+            return
+
+        # Check if user already used this promocode
+        result = await session.execute(
+            select(PromocodeUse).where(
+                PromocodeUse.promocode_id == promo.id,
+                PromocodeUse.user_id == user.id
+            )
+        )
+        existing_use = result.scalar_one_or_none()
+
+        if existing_use:
+            await message.answer(
+                "❌ Вы уже использовали этот промокод.",
+                reply_markup=back_to_main_keyboard()
+            )
+            await state.clear()
+            return
+
+            # Apply promocode
+            if promo.bonus_type == "tokens":
+                # Give tokens
+                sub_service = SubscriptionService(session)
+                await sub_service.add_eternal_tokens(
+                    user_id=user.id,
+                    tokens=promo.bonus_value,
+                    subscription_type=f"promo_{promo.code}"
+                )
+
+                # Record promocode use
+                promo_use = PromocodeUse(
+                    promocode_id=promo.id,
+                    user_id=user.id,
+                    bonus_received=f"{promo.bonus_value} tokens"
+                )
+                session.add(promo_use)
+
+                # Increment usage count
+                promo.current_uses += 1
+                await session.commit()
+
+                total_tokens = user.get_total_tokens()
+
+                await message.answer(
+                    f"✅ Промокод активирован!\n\n"
+                    f"🎁 Вы получили: {promo.bonus_value:,} токенов\n"
+                    f"💎 Всего токенов: {total_tokens:,}\n\n"
+                    f"Используйте /profile для просмотра баланса.",
+                    reply_markup=back_to_main_keyboard()
+                )
+
+                logger.info(
+                    "promocode_activated",
+                    user_id=user.id,
+                    code=code,
+                    tokens=promo.bonus_value
+                )
+
+    except ValueError:
+        await message.answer("❌ Неверный формат промокода.")
+    except Exception as e:
+        logger.error("promocode_activation_error", error=str(e), user_id=user.id)
+        await message.answer(f"❌ Ошибка активации промокода: {str(e)}")
+
+    await state.clear()
