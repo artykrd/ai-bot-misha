@@ -100,38 +100,45 @@ async def cmd_start(message: Message, user: User):
             try:
                 referrer_telegram_id = int(args[3:])  # Extract ID from "ref123456789"
 
-                # Check if user already has a referral
+                # Use ReferralService to handle referral logic
                 async with async_session_maker() as session:
+                    from app.services.referral import ReferralService
+
+                    referral_service = ReferralService(session)
+
                     # Find referrer
                     referrer_result = await session.execute(
                         select(User).where(User.telegram_id == referrer_telegram_id)
                     )
                     referrer = referrer_result.scalar_one_or_none()
 
-                    # Check if already has referral
-                    existing_referral = await session.execute(
-                        select(Referral).where(Referral.referred_id == user.id)
-                    )
-                    has_referral = existing_referral.scalar_one_or_none()
-
-                    if referrer and not has_referral and referrer.id != user.id:
+                    if referrer and referrer.id != user.id:
                         # Create referral relationship
-                        new_referral = Referral(
+                        referral = await referral_service.create_referral(
                             referrer_id=referrer.id,
                             referred_id=user.id,
                             referral_code=args,
-                            referral_type="user",
-                            tokens_earned=0,
-                            money_earned=0,
-                            is_active=True
+                            referral_type="user"
                         )
-                        session.add(new_referral)
-                        await session.commit()
 
-                        await message.answer(
-                            f"🎉 Вы были приглашены пользователем {referrer.full_name}!\n"
-                            f"Вам начислено 100 бонусных токенов!"
-                        )
+                        if referral:
+                            # Give signup bonus to new user
+                            bonus_given = await referral_service.give_signup_bonus(
+                                user_id=user.id,
+                                bonus_tokens=100
+                            )
+
+                            if bonus_given:
+                                await message.answer(
+                                    f"🎉 Вы были приглашены пользователем {referrer.full_name}!\n"
+                                    f"Вам начислено 100 бонусных токенов!"
+                                )
+                            else:
+                                # Referral created but bonus failed
+                                await message.answer(
+                                    f"🎉 Вы были приглашены пользователем {referrer.full_name}!\n"
+                                    f"⚠️ Возникла проблема с начислением бонуса. Свяжитесь с поддержкой."
+                                )
             except (ValueError, IndexError):
                 pass  # Invalid referral code format
 

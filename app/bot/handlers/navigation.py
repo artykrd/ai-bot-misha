@@ -749,33 +749,16 @@ async def show_referral(callback: CallbackQuery, user: User):
     from sqlalchemy import select, func
     from app.database.models.referral import Referral
 
+    # Get referral statistics using ReferralService
     async with async_session_maker() as session:
-        # Count referrals
-        referral_count_result = await session.execute(
-            select(func.count(Referral.id)).where(
-                Referral.referrer_id == user.id,
-                Referral.is_active == True
-            )
-        )
-        referral_count = referral_count_result.scalar() or 0
+        from app.services.referral import ReferralService
 
-        # Sum tokens earned
-        tokens_earned_result = await session.execute(
-            select(func.sum(Referral.tokens_earned)).where(
-                Referral.referrer_id == user.id,
-                Referral.is_active == True
-            )
-        )
-        tokens_earned = tokens_earned_result.scalar() or 0
+        referral_service = ReferralService(session)
+        stats = await referral_service.get_referral_stats(user.id)
 
-        # Sum money earned
-        money_earned_result = await session.execute(
-            select(func.sum(Referral.money_earned)).where(
-                Referral.referrer_id == user.id,
-                Referral.is_active == True
-            )
-        )
-        money_earned = float(money_earned_result.scalar() or 0)
+        referral_count = stats["referral_count"]
+        tokens_earned = stats["tokens_earned"]
+        money_earned = stats["money_earned"]
 
     # Build referral link for bot
     bot_username = "assistantvirtualsbot"
@@ -783,10 +766,14 @@ async def show_referral(callback: CallbackQuery, user: User):
 
     text = f"""🔹 **Реферальная программа**
 
-Получайте **1 токен** за приглашенного пользователя и **10%** деньгами от каждой его покупки в боте.
+Приглашайте друзей и получайте награды:
+
+💎 **50% токенов** от каждой покупки приглашенного друга
+💰 **10% деньгами** от покупок (для партнеров)
+🎁 **100 токенов** получит ваш друг при регистрации
 
 👥 Приглашено пользователей: **{referral_count}**
-🔶 Получено: **{tokens_earned:,} токенов**
+🔶 Заработано токенов: **{tokens_earned:,}**
 💸 Минимальная сумма вывода: **500 руб.**
 💰 Доступно для вывода: **{money_earned:.2f} руб.**
 
