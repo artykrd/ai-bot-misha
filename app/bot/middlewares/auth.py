@@ -51,6 +51,25 @@ class AuthMiddleware(BaseMiddleware):
                     language_code=telegram_user.language_code
                 )
 
+                # Give new users a test request (small amount of tokens)
+                if created:
+                    from app.services.subscription.subscription_service import SubscriptionService
+
+                    sub_service = SubscriptionService(session)
+                    # Give 5000 tokens for 1 test request (eternal subscription)
+                    # This is enough for one simple text request
+                    await sub_service.add_eternal_tokens(
+                        user_id=user.id,
+                        tokens=5000,
+                        subscription_type="welcome_bonus"
+                    )
+                    logger.info(
+                        "new_user_welcome_bonus",
+                        user_id=user.id,
+                        telegram_id=telegram_user.id,
+                        bonus_tokens=5000
+                    )
+
                 # Add user to handler data
                 data["user"] = user
                 data["user_service"] = user_service

@@ -37,3 +37,16 @@ class CreatePromo(StatesGroup):
 class Broadcast(StatesGroup):
     """States for broadcast message."""
     waiting_for_message = State()
+
+
+class SearchUser(StatesGroup):
+    """States for searching user."""
+    waiting_for_query = State()
+
+
+class ManageUserTariff(StatesGroup):
+    """States for managing user tariff."""
+    waiting_for_user_id = State()
+    waiting_for_tariff_selection = State()
+    waiting_for_custom_days = State()
+    waiting_for_custom_tokens = State()
