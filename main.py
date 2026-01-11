@@ -13,9 +13,16 @@ from app.core.redis_client import redis_client
 from app.core.scheduler import scheduler
 from app.database.database import init_db, close_db
 from app.bot.bot_instance import bot, setup_bot, shutdown_bot
-from app.monitoring import SystemMonitor
 
 logger = get_logger(__name__)
+
+# Try to import monitoring system (optional dependency)
+try:
+    from app.monitoring import SystemMonitor
+    MONITORING_AVAILABLE = True
+except ImportError as e:
+    logger.warning("monitoring_unavailable", error=str(e), message="Install psutil to enable monitoring")
+    MONITORING_AVAILABLE = False
 
 
 async def main() -> None:
@@ -54,10 +61,13 @@ async def main() -> None:
         # Run every hour
         scheduler.add_interval_job(cleanup_expired_subscriptions, hours=1)
 
-        # Start system monitoring
-        monitor = SystemMonitor()
-        monitor.start()
-        logger.info("system_monitoring_started")
+        # Start system monitoring (if available)
+        if MONITORING_AVAILABLE:
+            monitor = SystemMonitor()
+            monitor.start()
+            logger.info("system_monitoring_started")
+        else:
+            logger.info("system_monitoring_skipped", reason="psutil not installed")
 
         logger.info("bot_started_successfully")
 
@@ -73,13 +83,14 @@ async def main() -> None:
     finally:
         logger.info("bot_shutting_down")
 
-        # Stop monitoring
-        try:
-            from app.monitoring.monitor import system_monitor
-            await system_monitor.stop()
-            logger.info("system_monitoring_stopped")
-        except Exception as e:
-            logger.error("monitoring_shutdown_error", error=str(e))
+        # Stop monitoring (if available)
+        if MONITORING_AVAILABLE:
+            try:
+                from app.monitoring.monitor import system_monitor
+                await system_monitor.stop()
+                logger.info("system_monitoring_stopped")
+            except Exception as e:
+                logger.error("monitoring_shutdown_error", error=str(e))
 
         # Shutdown scheduler
         scheduler.shutdown()
