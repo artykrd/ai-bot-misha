@@ -759,8 +759,7 @@ async def show_referral(callback: CallbackQuery, user: User):
         money_earned = float(money_earned_result.scalar() or 0)
 
     # Build referral link for bot
-    # TODO: Get bot username from config
-    bot_username = "GPTchatneiroseti_BOT"
+    bot_username = "assistantvirtualsbot"
     referral_link = f"https://t.me/{bot_username}?start=ref{user.telegram_id}"
 
     text = f"""🔹 **Реферальная программа**

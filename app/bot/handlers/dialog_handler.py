@@ -110,6 +110,16 @@ async def handle_text_message(message: Message, user: User):
         logger.debug(f"User {user.telegram_id} sent message but no active dialog")
         return
 
+    # Check message length (max 2000 characters)
+    if len(message.text) > 2000:
+        await message.answer(
+            "⚠️ Сообщение слишком длинное!\n\n"
+            f"Максимальная длина: 2000 символов\n"
+            f"Ваше сообщение: {len(message.text)} символов\n\n"
+            "Пожалуйста, сократите ваш запрос и попробуйте снова."
+        )
+        return
+
     # Process text message
     await process_dialog_message(
         message=message,

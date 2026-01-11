@@ -454,7 +454,7 @@ def referral_keyboard(user_telegram_id: int = None) -> InlineKeyboardMarkup:
 
     # Share button with dynamic referral link
     if user_telegram_id:
-        bot_username = "GPTchatneiroseti_BOT"  # TODO: Get from config
+        bot_username = "assistantvirtualsbot"
         referral_link = f"https://t.me/{bot_username}?start=ref{user_telegram_id}"
         share_url = f"https://t.me/share/url?url={referral_link}"
         builder.row(
