@@ -59,26 +59,44 @@ def is_admin(user_id: int) -> bool:
 
 
 def safe_text(text: str) -> str:
-    """Escape special characters that could cause Telegram parse errors."""
+    """Remove emoji and special characters that could cause Telegram parse errors."""
     if not text:
         return ""
-    # Remove or replace characters that cause parse issues
-    # Especially problematic: < > & _  * [ ] ( ) ~ ` # + - = | { } . !
+
+    import re
+
+    # Remove all emoji (Unicode ranges)
+    emoji_pattern = re.compile("["
+        u"\U0001F600-\U0001F64F"  # emoticons
+        u"\U0001F300-\U0001F5FF"  # symbols & pictographs
+        u"\U0001F680-\U0001F6FF"  # transport & map symbols
+        u"\U0001F1E0-\U0001F1FF"  # flags
+        u"\U00002700-\U000027BF"  # dingbats
+        u"\U0001F900-\U0001F9FF"  # supplemental symbols
+        u"\U00002600-\U000026FF"  # misc symbols
+        "]+", flags=re.UNICODE)
+    text = emoji_pattern.sub('', text)
+
+    # Replace problematic characters
     replacements = {
-        '<': '‹',
-        '>': '›',
+        '<': '',
+        '>': '',
         '&': 'and',
         '_': ' ',
-        '*': '•',
+        '*': '',
         '[': '(',
         ']': ')',
         '`': "'",
         '~': '-',
         '#': 'No.',
+        '{': '(',
+        '}': ')',
+        '|': '-',
     }
     for old, new in replacements.items():
         text = text.replace(old, new)
-    return text
+
+    return text.strip()
 
 
 # ==================== START COMMAND ====================
@@ -1258,15 +1276,22 @@ async def process_give_tokens_amount(message: Message, state: FSMContext):
 
             # Send notification to user
             from aiogram import Bot
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             from app.core.config import settings
             try:
                 main_bot = Bot(token=settings.telegram_bot_token)
+
+                # Create keyboard with profile button
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="💎 Проверить баланс", callback_data="profile")]
+                ])
+
                 await main_bot.send_message(
                     chat_id=user.telegram_id,
                     text=f"🎉 Поздравляем!\n\n"
                          f"Вам начислено {amount:,} токенов!\n"
-                         f"💎 Всего токенов: {total_tokens:,}\n\n"
-                         f"Используйте /profile для просмотра баланса."
+                         f"💎 Всего токенов: {total_tokens:,}",
+                    reply_markup=keyboard
                 )
                 await main_bot.session.close()
             except Exception as e:

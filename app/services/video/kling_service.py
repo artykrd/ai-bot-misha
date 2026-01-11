@@ -101,11 +101,14 @@ class KlingService(BaseVideoProvider):
                 time=processing_time
             )
 
+            # Стоимость Kling: 80,000 токенов за видео
+            tokens_used = 80000
+
             return VideoResponse(
                 success=True,
                 video_path=video_path,
                 processing_time=processing_time,
-                tokens_used=9000,  # Estimated token cost
+                tokens_used=tokens_used,
                 metadata={
                     "provider": "kling",
                     "model": model,

@@ -258,12 +258,18 @@ async def process_promocode(message: Message, state: FSMContext, user: User):
 
                 total_tokens = user.get_total_tokens()
 
+                # Create keyboard with profile button
+                from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="💎 Проверить баланс", callback_data="profile")],
+                    [InlineKeyboardButton(text="🔙 В главное меню", callback_data="main_menu")]
+                ])
+
                 await message.answer(
                     f"✅ Промокод активирован!\n\n"
                     f"🎁 Вы получили: {promo.bonus_value:,} токенов\n"
-                    f"💎 Всего токенов: {total_tokens:,}\n\n"
-                    f"Используйте /profile для просмотра баланса.",
-                    reply_markup=back_to_main_keyboard()
+                    f"💎 Всего токенов: {total_tokens:,}",
+                    reply_markup=keyboard
                 )
 
                 logger.info(
