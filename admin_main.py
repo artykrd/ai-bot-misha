@@ -66,7 +66,7 @@ async def admin_start(message: Message):
         await message.answer("❌ У вас нет доступа к админ-панели.")
         return
 
-    text = "🔐 **Админ-панель**\n\nВыберите действие из меню ниже:"
+    text = "🔐 Админ-панель\n\nВыберите действие из меню ниже:"
     await message.answer(text, reply_markup=main_admin_menu())
 
 
@@ -80,7 +80,7 @@ async def back_to_menu(callback: CallbackQuery, state: FSMContext):
         return
 
     await state.clear()
-    text = "🔐 **Админ-панель**\n\nВыберите действие из меню ниже:"
+    text = "🔐 Админ-панель\n\nВыберите действие из меню ниже:"
     await callback.message.edit_text(text, reply_markup=main_admin_menu())
     await callback.answer()
 
@@ -118,11 +118,11 @@ async def show_stats_callback(callback: CallbackQuery):
         total_subscriptions = await session.scalar(select(func.count()).select_from(Subscription))
         total_payments = await session.scalar(select(func.count()).select_from(Payment))
 
-    text = f"""📊 **Статистика**
+    text = f"""📊 Статистика
 
-👥 **Пользователи:** {total_users}
-📦 **Подписки:** {total_subscriptions}
-💳 **Платежи:** {total_payments}"""
+👥 Пользователи: {total_users}
+📦 Подписки: {total_subscriptions}
+💳 Платежи: {total_payments}"""
 
     await callback.message.edit_text(text, reply_markup=back_keyboard())
     await callback.answer()
@@ -162,7 +162,7 @@ async def show_users_page(callback: CallbackQuery, page: int = 0):
         )
         users = result.scalars().all()
 
-    text = f"👥 **Пользователи** (стр. {page + 1}/{total_pages})\n"
+    text = f"👥 Пользователи (стр. {page + 1}/{total_pages})\n"
     text += f"Всего: {total_users}\n\n"
 
     # Create inline keyboard with user buttons
@@ -227,24 +227,24 @@ async def user_view_callback(callback: CallbackQuery):
             stats = await user_service.get_user_stats(telegram_id)
 
         user = stats
-        text = f"👤 **Информация о пользователе**\n\n"
-        text += f"**ID:** `{user['telegram_id']}`\n"
-        text += f"**Имя:** {user['full_name']}\n"
+        text = f"👤 Информация о пользователе\n\n"
+        text += f"ID: {user['telegram_id']}\n"
+        text += f"Имя: {user['full_name']}\n"
         if user['username']:
-            text += f"**Username:** @{user['username']}\n"
-        text += f"**Статус:** {'🚫 Забанен' if user['is_banned'] else '✅ Активен'}\n"
-        text += f"**Токенов:** {user['total_tokens']:,}\n"
+            text += f"Username: @{user['username']}\n"
+        text += f"Статус: {'🚫 Забанен' if user['is_banned'] else '✅ Активен'}\n"
+        text += f"Токенов: {user['total_tokens']:,}\n"
 
         if user['has_active_subscription']:
-            text += f"\n📦 **Подписка:** {user['subscription_type']}\n"
+            text += f"\n📦 Подписка: {user['subscription_type']}\n"
             if user['subscription_expires_at']:
-                text += f"**Истекает:** {user['subscription_expires_at'].strftime('%d.%m.%Y %H:%M')}\n"
+                text += f"Истекает: {user['subscription_expires_at'].strftime('%d.%m.%Y %H:%M')}\n"
         else:
-            text += f"\n📦 **Подписка:** Нет активной\n"
+            text += f"\n📦 Подписка: Нет активной\n"
 
-        text += f"\n🕐 **Зарегистрирован:** {user['created_at'].strftime('%d.%m.%Y %H:%M')}\n"
+        text += f"\n🕐 Зарегистрирован: {user['created_at'].strftime('%d.%m.%Y %H:%M')}\n"
         if user['last_activity']:
-            text += f"**Последняя активность:** {user['last_activity'].strftime('%d.%m.%Y %H:%M')}\n"
+            text += f"Последняя активность: {user['last_activity'].strftime('%d.%m.%Y %H:%M')}\n"
 
         await callback.message.edit_text(text, reply_markup=user_management_keyboard(telegram_id))
         await callback.answer()
@@ -265,7 +265,7 @@ async def start_search_user(callback: CallbackQuery, state: FSMContext):
 
     await state.set_state(SearchUser.waiting_for_query)
     await callback.message.edit_text(
-        "🔍 **Поиск пользователя**\n\n"
+        "🔍 Поиск пользователя\n\n"
         "Введите Telegram ID или username пользователя:",
         reply_markup=cancel_keyboard()
     )
@@ -313,25 +313,25 @@ async def process_search_query(message: Message, state: FSMContext):
                 user_service = UserService(session)
                 stats = await user_service.get_user_stats(user.telegram_id)
 
-                text = f"👤 **Найден пользователь**\n\n"
-                text += f"**ID:** `{stats['telegram_id']}`\n"
-                text += f"**Имя:** {stats['full_name']}\n"
+                text = f"👤 Найден пользователь\n\n"
+                text += f"ID: {stats['telegram_id']}\n"
+                text += f"Имя: {stats['full_name']}\n"
                 if stats['username']:
-                    text += f"**Username:** @{stats['username']}\n"
-                text += f"**Статус:** {'🚫 Забанен' if stats['is_banned'] else '✅ Активен'}\n"
-                text += f"**Токенов:** {stats['total_tokens']:,}\n"
+                    text += f"Username: @{stats['username']}\n"
+                text += f"Статус: {'🚫 Забанен' if stats['is_banned'] else '✅ Активен'}\n"
+                text += f"Токенов: {stats['total_tokens']:,}\n"
 
                 if stats['has_active_subscription']:
-                    text += f"\n📦 **Подписка:** {stats['subscription_type']}\n"
+                    text += f"\n📦 Подписка: {stats['subscription_type']}\n"
                     if stats['subscription_expires_at']:
-                        text += f"**Истекает:** {stats['subscription_expires_at'].strftime('%d.%m.%Y %H:%M')}\n"
+                        text += f"Истекает: {stats['subscription_expires_at'].strftime('%d.%m.%Y %H:%M')}\n"
                 else:
-                    text += f"\n📦 **Подписка:** Нет активной\n"
+                    text += f"\n📦 Подписка: Нет активной\n"
 
                 await message.answer(text, reply_markup=user_management_keyboard(user.telegram_id))
             else:
                 # Show list of found users
-                text = f"🔍 **Найдено пользователей:** {len(users)}\n\n"
+                text = f"🔍 Найдено пользователей: {len(users)}\n\n"
                 from aiogram.utils.keyboard import InlineKeyboardBuilder
                 builder = InlineKeyboardBuilder()
 
@@ -395,20 +395,20 @@ async def user_details_callback(callback: CallbackQuery):
             # Get active subscription
             active_sub = user.get_active_subscription()
 
-            text = f"👁️ **Детальная информация**\n\n"
-            text += f"**ID:** `{user.telegram_id}`\n"
-            text += f"**Имя:** {user.full_name}\n"
+            text = f"👁️ Детальная информация\n\n"
+            text += f"ID: {user.telegram_id}\n"
+            text += f"Имя: {user.full_name}\n"
             if user.username:
-                text += f"**Username:** @{user.username}\n"
-            text += f"**Язык:** {user.language_code}\n"
-            text += f"**Статус:** {'🚫 Забанен' if user.is_banned else '✅ Активен'}\n"
+                text += f"Username: @{user.username}\n"
+            text += f"Язык: {user.language_code}\n"
+            text += f"Статус: {'🚫 Забанен' if user.is_banned else '✅ Активен'}\n"
             if user.is_banned and user.ban_reason:
-                text += f"**Причина бана:** {user.ban_reason}\n"
+                text += f"Причина бана: {user.ban_reason}\n"
 
-            text += f"\n💎 **Токенов всего:** {user.get_total_tokens():,}\n"
+            text += f"\n💎 Токенов всего: {user.get_total_tokens():,}\n"
 
             if active_sub:
-                text += f"\n📦 **Активная подписка:**\n"
+                text += f"\n📦 Активная подписка:\n"
                 text += f"   Тип: {active_sub.subscription_type}\n"
                 text += f"   Токенов: {active_sub.tokens_remaining:,} из {active_sub.tokens_amount:,}\n"
                 if active_sub.expires_at:
@@ -416,16 +416,16 @@ async def user_details_callback(callback: CallbackQuery):
                 else:
                     text += f"   Вечная подписка\n"
             else:
-                text += f"\n📦 **Активной подписки нет**\n"
+                text += f"\n📦 Активной подписки нет\n"
 
-            text += f"\n📊 **Статистика:**\n"
+            text += f"\n📊 Статистика:\n"
             text += f"   Подписок куплено: {total_subs}\n"
             text += f"   Запросов сделано: {total_requests}\n"
             text += f"   Платежей: {total_payments}\n"
 
-            text += f"\n🕐 **Создан:** {user.created_at.strftime('%d.%m.%Y %H:%M')}\n"
+            text += f"\n🕐 Создан: {user.created_at.strftime('%d.%m.%Y %H:%M')}\n"
             if user.last_activity:
-                text += f"**Последняя активность:** {user.last_activity.strftime('%d.%m.%Y %H:%M')}\n"
+                text += f"Последняя активность: {user.last_activity.strftime('%d.%m.%Y %H:%M')}\n"
 
             await callback.message.edit_text(text, reply_markup=user_management_keyboard(telegram_id))
             await callback.answer()
@@ -471,7 +471,7 @@ async def user_requests_callback(callback: CallbackQuery):
             )
             requests = result.scalars().all()
 
-            text = f"📊 **История запросов**\n"
+            text = f"📊 История запросов\n"
             text += f"Пользователь: {user.full_name}\n\n"
 
             if not requests:
@@ -484,7 +484,7 @@ async def user_requests_callback(callback: CallbackQuery):
                         "failed": "❌"
                     }.get(req.status, "❓")
 
-                    text += f"{status_emoji} **{req.request_type}** | {req.ai_model}\n"
+                    text += f"{status_emoji} {req.request_type} | {req.ai_model}\n"
                     text += f"   Токенов: {req.tokens_cost}\n"
                     if req.prompt:
                         prompt_preview = req.prompt[:50] + "..." if len(req.prompt) > 50 else req.prompt
@@ -513,8 +513,8 @@ async def user_give_tokens_shortcut(callback: CallbackQuery, state: FSMContext):
     await state.set_state(GiveTokens.waiting_for_amount)
 
     await callback.message.edit_text(
-        f"💰 **Выдача токенов**\n"
-        f"User ID: `{telegram_id}`\n\n"
+        f"💰 Выдача токенов\n"
+        f"User ID: {telegram_id}\n\n"
         "Введите количество токенов:",
         reply_markup=cancel_keyboard()
     )
@@ -533,8 +533,8 @@ async def user_ban_shortcut(callback: CallbackQuery, state: FSMContext):
     await state.set_state(BanUser.waiting_for_reason)
 
     await callback.message.edit_text(
-        f"🚫 **Бан пользователя**\n"
-        f"User ID: `{telegram_id}`\n\n"
+        f"🚫 Бан пользователя\n"
+        f"User ID: {telegram_id}\n\n"
         "Введите причину бана:",
         reply_markup=cancel_keyboard()
     )
@@ -550,8 +550,8 @@ async def user_tariff_callback(callback: CallbackQuery):
 
     telegram_id = int(callback.data.split(":")[-1])
 
-    text = f"📦 **Изменение тарифа**\n"
-    text += f"User ID: `{telegram_id}`\n\n"
+    text = f"📦 Изменение тарифа\n"
+    text += f"User ID: {telegram_id}\n\n"
     text += "Выберите тариф:"
 
     # Store telegram_id in callback data
@@ -615,14 +615,14 @@ async def assign_tariff_callback(callback: CallbackQuery):
             # Show updated user info
             stats = await user_service.get_user_stats(telegram_id)
 
-            text = f"👤 **Информация о пользователе**\n\n"
-            text += f"**ID:** `{stats['telegram_id']}`\n"
-            text += f"**Имя:** {stats['full_name']}\n"
-            text += f"**Токенов:** {stats['total_tokens']:,}\n"
-            text += f"\n📦 **Новая подписка:** {tariff_type}\n"
+            text = f"👤 Информация о пользователе\n\n"
+            text += f"ID: {stats['telegram_id']}\n"
+            text += f"Имя: {stats['full_name']}\n"
+            text += f"Токенов: {stats['total_tokens']:,}\n"
+            text += f"\n📦 Новая подписка: {tariff_type}\n"
 
             if stats['subscription_expires_at']:
-                text += f"**Истекает:** {stats['subscription_expires_at'].strftime('%d.%m.%Y %H:%M')}\n"
+                text += f"Истекает: {stats['subscription_expires_at'].strftime('%d.%m.%Y %H:%M')}\n"
 
             await callback.message.edit_text(text, reply_markup=user_management_keyboard(telegram_id))
 
@@ -647,7 +647,7 @@ async def unlimited_menu_callback(callback: CallbackQuery):
         await callback.answer("❌ Нет доступа")
         return
 
-    text = "🔗 **Безлимитные пригласительные ссылки**\n\nВыберите действие:"
+    text = "🔗 Безлимитные пригласительные ссылки\n\nВыберите действие:"
     await callback.message.edit_text(text, reply_markup=unlimited_links_menu())
     await callback.answer()
 
@@ -661,7 +661,7 @@ async def start_create_unlimited(callback: CallbackQuery, state: FSMContext):
 
     await state.set_state(CreateUnlimitedLink.waiting_for_days)
     await callback.message.edit_text(
-        "➕ **Создание безлимитной ссылки**\n\n"
+        "➕ Создание безлимитной ссылки\n\n"
         "Введите количество дней (например: 7, 14, 30):",
         reply_markup=cancel_keyboard()
     )
@@ -766,15 +766,15 @@ async def process_unlimited_description(message: Message, state: FSMContext):
 
             invite_url = f"https://t.me/{bot_username}?start={invite_code}"
 
-            text = f"""✅ **Безлимитная ссылка создана!**
+            text = f"""✅ Безлимитная ссылка создана!
 
-🔗 **Код:** `{invite_code}`
-📅 **Длительность:** {duration_days} дней
-👥 **Макс. использований:** {max_uses if max_uses else '∞'}
-📝 **Описание:** {description if description else 'Нет'}
+🔗 Код: {invite_code}
+📅 Длительность: {duration_days} дней
+👥 Макс. использований: {max_uses if max_uses else '∞'}
+📝 Описание: {description if description else 'Нет'}
 
 Ссылка для приглашений:
-`{invite_url}`
+{invite_url}
 
 Пользователи, перешедшие по этой ссылке, получат безлимитный доступ на {duration_days} дней!"""
 
@@ -817,14 +817,14 @@ async def list_unlimited_links_callback(callback: CallbackQuery):
         await callback.answer()
         return
 
-    text = "🔗 **Безлимитные пригласительные ссылки:**\n\n"
+    text = "🔗 Безлимитные пригласительные ссылки:\n\n"
 
     for link in links:
         status = "✅ Активна" if link.is_active else "❌ Неактивна"
         if link.is_active and not link.is_valid:
             status = "⚠️ Истекла"
 
-        text += f"**Код:** `{link.invite_code}`\n"
+        text += f"Код: {link.invite_code}\n"
         text += f"📅 Длительность: {link.duration_days} дней\n"
         text += f"👥 Использований: {link.current_uses}"
         if link.max_uses:
@@ -850,7 +850,7 @@ async def ban_menu_callback(callback: CallbackQuery):
         await callback.answer("❌ Нет доступа")
         return
 
-    text = "🔨 **Управление банами**\n\nВыберите действие:"
+    text = "🔨 Управление банами\n\nВыберите действие:"
     await callback.message.edit_text(text, reply_markup=ban_menu())
     await callback.answer()
 
@@ -864,7 +864,7 @@ async def start_ban_user(callback: CallbackQuery, state: FSMContext):
 
     await state.set_state(BanUser.waiting_for_user_id)
     await callback.message.edit_text(
-        "🚫 **Бан пользователя**\n\n"
+        "🚫 Бан пользователя\n\n"
         "Введите Telegram ID пользователя:",
         reply_markup=cancel_keyboard()
     )
@@ -915,9 +915,9 @@ async def process_ban_reason(message: Message, state: FSMContext):
             )
 
             await message.answer(
-                f"✅ **Пользователь забанен**\n\n"
-                f"👤 **Пользователь:** {user.full_name} (`{user.telegram_id}`)\n"
-                f"📝 **Причина:** {reason}",
+                f"✅ Пользователь забанен\n\n"
+                f"👤 Пользователь: {user.full_name} ({user.telegram_id})\n"
+                f"📝 Причина: {reason}",
                 reply_markup=back_keyboard()
             )
 
@@ -937,18 +937,106 @@ async def process_ban_reason(message: Message, state: FSMContext):
 
 @admin_router.callback_query(F.data == "admin:unban_user")
 async def start_unban_user(callback: CallbackQuery, state: FSMContext):
-    """Start unban user flow."""
+    """Show list of banned users."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    from app.database.database import async_session_maker
+    from app.database.models import User
+    from sqlalchemy import select
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    async with async_session_maker() as session:
+        # Get banned users
+        result = await session.execute(
+            select(User).where(User.is_banned == True).order_by(User.created_at.desc()).limit(20)
+        )
+        banned_users = result.scalars().all()
+
+    if not banned_users:
+        await callback.message.edit_text(
+            "✅ Нет забаненных пользователей",
+            reply_markup=back_keyboard()
+        )
+        await callback.answer()
+        return
+
+    text = f"🚫 Забаненные пользователи ({len(banned_users)}):\n\n"
+    text += "Выберите пользователя для разбана:\n"
+
+    builder = InlineKeyboardBuilder()
+
+    for user in banned_users:
+        button_text = f"{user.full_name} (ID: {user.telegram_id})"
+        if user.ban_reason:
+            button_text += f" - {user.ban_reason[:20]}"
+        builder.button(
+            text=button_text[:64],
+            callback_data=f"admin:unban_confirm:{user.telegram_id}"
+        )
+
+    builder.button(text="🔍 Ввести ID вручную", callback_data="admin:unban_manual")
+    builder.button(text="🔙 Назад", callback_data="admin:ban_menu")
+    builder.adjust(1)
+
+    await callback.message.edit_text(text, reply_markup=builder.as_markup())
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data == "admin:unban_manual")
+async def unban_manual(callback: CallbackQuery, state: FSMContext):
+    """Manual unban by ID input."""
     if not is_admin(callback.from_user.id):
         await callback.answer("❌ Нет доступа")
         return
 
     await state.set_state(UnbanUser.waiting_for_user_id)
     await callback.message.edit_text(
-        "✅ **Разбан пользователя**\n\n"
+        "✅ Разбан пользователя\n\n"
         "Введите Telegram ID пользователя:",
         reply_markup=cancel_keyboard()
     )
     await callback.answer()
+
+
+@admin_router.callback_query(F.data.startswith("admin:unban_confirm:"))
+async def unban_confirm(callback: CallbackQuery):
+    """Unban user by callback."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    telegram_id = int(callback.data.split(":")[-1])
+
+    from app.database.database import async_session_maker
+    from app.services.user.user_service import UserService
+
+    try:
+        async with async_session_maker() as session:
+            user_service = UserService(session)
+            user = await user_service.unban_user(
+                telegram_id=telegram_id,
+                admin_id=callback.from_user.id
+            )
+
+            await callback.message.edit_text(
+                f"✅ Пользователь разбанен\n\n"
+                f"👤 Пользователь: {user.full_name} ({user.telegram_id})",
+                reply_markup=back_keyboard()
+            )
+
+            logger.info(
+                "admin_unban_user",
+                admin_id=callback.from_user.id,
+                user_id=telegram_id
+            )
+
+            await callback.answer("✅ Пользователь разбанен", show_alert=True)
+
+    except Exception as e:
+        logger.error("admin_unban_error", error=str(e), user_id=telegram_id)
+        await callback.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
 
 
 @admin_router.message(StateFilter(UnbanUser.waiting_for_user_id))
@@ -971,8 +1059,8 @@ async def process_unban_user_id(message: Message, state: FSMContext):
             )
 
             await message.answer(
-                f"✅ **Пользователь разбанен**\n\n"
-                f"👤 **Пользователь:** {user.full_name} (`{user.telegram_id}`)",
+                f"✅ Пользователь разбанен\n\n"
+                f"👤 Пользователь: {user.full_name} ({user.telegram_id})",
                 reply_markup=back_keyboard()
             )
 
@@ -995,15 +1083,94 @@ async def process_unban_user_id(message: Message, state: FSMContext):
 
 @admin_router.callback_query(F.data == "admin:give_tokens")
 async def start_give_tokens(callback: CallbackQuery, state: FSMContext):
-    """Start give tokens flow."""
+    """Show recent users list for token giving."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    from app.database.database import async_session_maker
+    from app.database.models import User
+    from sqlalchemy import select
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    async with async_session_maker() as session:
+        # Get last 10 users
+        result = await session.execute(
+            select(User).order_by(User.last_activity.desc().nullslast()).limit(10)
+        )
+        recent_users = result.scalars().all()
+
+    text = f"💰 Выдача токенов\n\n"
+    text += f"Последние активные пользователи:\n"
+
+    builder = InlineKeyboardBuilder()
+
+    for user in recent_users:
+        active_sub = user.get_active_subscription()
+        sub_emoji = "💎" if active_sub else ""
+        button_text = f"{sub_emoji} {user.full_name} (ID: {user.telegram_id})"
+        builder.button(
+            text=button_text[:64],
+            callback_data=f"admin:give_tokens_to:{user.telegram_id}"
+        )
+
+    builder.button(text="🔍 Поиск пользователя", callback_data="admin:give_tokens_search")
+    builder.button(text="✏️ Ввести ID вручную", callback_data="admin:give_tokens_manual")
+    builder.button(text="🔙 Назад", callback_data="admin:back")
+    builder.adjust(1)
+
+    await callback.message.edit_text(text, reply_markup=builder.as_markup())
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data == "admin:give_tokens_search")
+async def give_tokens_search(callback: CallbackQuery, state: FSMContext):
+    """Search user for giving tokens."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    await state.set_state(SearchUser.waiting_for_query)
+    await state.update_data(return_action="give_tokens")
+    await callback.message.edit_text(
+        "🔍 Поиск пользователя\n\n"
+        "Введите Telegram ID или username:",
+        reply_markup=cancel_keyboard()
+    )
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data == "admin:give_tokens_manual")
+async def give_tokens_manual(callback: CallbackQuery, state: FSMContext):
+    """Manual token giving by ID input."""
     if not is_admin(callback.from_user.id):
         await callback.answer("❌ Нет доступа")
         return
 
     await state.set_state(GiveTokens.waiting_for_user_id)
     await callback.message.edit_text(
-        "💰 **Выдача токенов**\n\n"
+        "💰 Выдача токенов\n\n"
         "Введите Telegram ID пользователя:",
+        reply_markup=cancel_keyboard()
+    )
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data.startswith("admin:give_tokens_to:"))
+async def give_tokens_to_user(callback: CallbackQuery, state: FSMContext):
+    """Give tokens to selected user."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    telegram_id = int(callback.data.split(":")[-1])
+    await state.update_data(user_id=telegram_id)
+    await state.set_state(GiveTokens.waiting_for_amount)
+
+    await callback.message.edit_text(
+        f"💰 Выдача токенов\n"
+        f"User ID: {telegram_id}\n\n"
+        "Введите количество токенов:",
         reply_markup=cancel_keyboard()
     )
     await callback.answer()
@@ -1063,9 +1230,9 @@ async def process_give_tokens_amount(message: Message, state: FSMContext):
             )
 
             await message.answer(
-                f"✅ **Токены выданы**\n\n"
-                f"👤 **Пользователь:** {user.full_name} (`{user.telegram_id}`)\n"
-                f"💎 **Количество:** {amount:,} токенов",
+                f"✅ Токены выданы\n\n"
+                f"👤 Пользователь: {user.full_name} ({user.telegram_id})\n"
+                f"💎 Количество: {amount:,} токенов",
                 reply_markup=back_keyboard()
             )
 
@@ -1109,7 +1276,7 @@ async def show_payments_callback(callback: CallbackQuery):
         await callback.answer()
         return
 
-    text = "💳 **Последние 20 платежей:**\n\n"
+    text = "💳 Последние 20 платежей:\n\n"
 
     for payment in payments:
         status_emoji = {
@@ -1119,9 +1286,9 @@ async def show_payments_callback(callback: CallbackQuery):
             "refunded": "↩️"
         }.get(payment.status, "❓")
 
-        text += f"{status_emoji} **ID:** `{payment.payment_id}`\n"
+        text += f"{status_emoji} ID: {payment.payment_id}\n"
         text += f"💰 Сумма: {payment.amount} {payment.currency}\n"
-        text += f"👤 User ID: `{payment.user_id}`\n"
+        text += f"👤 User ID: {payment.user_id}\n"
         text += f"📊 Статус: {payment.status}\n"
         text += f"🕐 {payment.created_at.strftime('%d.%m.%Y %H:%M')}\n\n"
 
@@ -1138,7 +1305,7 @@ async def promo_menu_callback(callback: CallbackQuery):
         await callback.answer("❌ Нет доступа")
         return
 
-    text = "🎁 **Управление промокодами**\n\nВыберите действие:"
+    text = "🎁 Управление промокодами\n\nВыберите действие:"
     await callback.message.edit_text(text, reply_markup=promo_menu())
     await callback.answer()
 
@@ -1152,7 +1319,7 @@ async def start_create_promo(callback: CallbackQuery, state: FSMContext):
 
     await state.set_state(CreatePromo.waiting_for_code)
     await callback.message.edit_text(
-        "➕ **Создание промокода**\n\n"
+        "➕ Создание промокода\n\n"
         "Введите код промокода (например: WELCOME2024):",
         reply_markup=cancel_keyboard()
     )
@@ -1189,6 +1356,7 @@ async def process_promo_tokens(message: Message, state: FSMContext):
 
     from app.database.database import async_session_maker
     from app.database.models.promocode import Promocode
+    from sqlalchemy import select
 
     try:
         tokens = int(message.text.strip())
@@ -1208,7 +1376,7 @@ async def process_promo_tokens(message: Message, state: FSMContext):
 
             if existing:
                 await message.answer(
-                    f"❌ Промокод с кодом `{code}` уже существует.",
+                    f"❌ Промокод с кодом {code} уже существует.",
                     reply_markup=back_keyboard()
                 )
                 await state.clear()
@@ -1229,10 +1397,10 @@ async def process_promo_tokens(message: Message, state: FSMContext):
             await session.refresh(promo)
 
             await message.answer(
-                f"✅ **Промокод создан!**\n\n"
-                f"🎁 **Код:** `{code}`\n"
-                f"💎 **Бонус:** {tokens:,} токенов\n"
-                f"👥 **Использований:** Неограничено",
+                f"✅ Промокод создан!\n\n"
+                f"🎁 Код: {code}\n"
+                f"💎 Бонус: {tokens:,} токенов\n"
+                f"👥 Использований: Неограничено",
                 reply_markup=back_keyboard()
             )
 
@@ -1274,14 +1442,14 @@ async def list_promos_callback(callback: CallbackQuery):
         await callback.answer()
         return
 
-    text = "🎁 **Промокоды:**\n\n"
+    text = "🎁 Промокоды:\n\n"
 
     for promo in promos:
         status = "✅ Активен" if promo.is_active else "❌ Неактивен"
         if promo.is_active and not promo.is_valid:
             status = "⚠️ Истек"
 
-        text += f"**Код:** `{promo.code}`\n"
+        text += f"Код: {promo.code}\n"
         text += f"💎 Бонус: {promo.bonus_value:,} токенов\n"
         text += f"👥 Использований: {promo.current_uses}"
         if promo.max_uses:
@@ -1317,11 +1485,11 @@ async def show_logs_callback(callback: CallbackQuery):
         await callback.answer()
         return
 
-    text = "📝 **Последние 15 действий:**\n\n"
+    text = "📝 Последние 15 действий:\n\n"
 
     for log in logs:
-        text += f"🔹 **{log.action}**\n"
-        text += f"👤 Admin ID: `{log.admin_id}`\n"
+        text += f"🔹 {log.action}\n"
+        text += f"👤 Admin ID: {log.admin_id}\n"
         if log.target_type and log.target_id:
             text += f"🎯 Target: {log.target_type} #{log.target_id}\n"
         text += f"🕐 {log.created_at.strftime('%d.%m.%Y %H:%M:%S')}\n\n"
@@ -1334,16 +1502,49 @@ async def show_logs_callback(callback: CallbackQuery):
 
 @admin_router.callback_query(F.data == "admin:broadcast")
 async def start_broadcast(callback: CallbackQuery, state: FSMContext):
-    """Start broadcast message."""
+    """Show broadcast filter selection."""
     if not is_admin(callback.from_user.id):
         await callback.answer("❌ Нет доступа")
         return
 
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    text = "📢 Рассылка сообщения\n\n"
+    text += "Выберите целевую аудиторию:"
+
+    builder = InlineKeyboardBuilder()
+    builder.button(text="👥 Всем пользователям", callback_data="admin:broadcast_filter:all")
+    builder.button(text="💎 С активной подпиской", callback_data="admin:broadcast_filter:subscribed")
+    builder.button(text="🆓 Без подписки", callback_data="admin:broadcast_filter:no_subscription")
+    builder.button(text="🔙 Назад", callback_data="admin:back")
+    builder.adjust(1)
+
+    await callback.message.edit_text(text, reply_markup=builder.as_markup())
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data.startswith("admin:broadcast_filter:"))
+async def broadcast_filter_selected(callback: CallbackQuery, state: FSMContext):
+    """Start broadcast with selected filter."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    filter_type = callback.data.split(":")[-1]
+    await state.update_data(broadcast_filter=filter_type)
     await state.set_state(Broadcast.waiting_for_message)
+
+    filter_names = {
+        "all": "всем пользователям",
+        "subscribed": "пользователям с активной подпиской",
+        "no_subscription": "пользователям без подписки"
+    }
+
     await callback.message.edit_text(
-        "📢 **Рассылка сообщения**\n\n"
-        "Введите текст сообщения для рассылки всем пользователям:\n\n"
-        "⚠️ Будьте осторожны! Сообщение будет отправлено всем активным пользователям.",
+        f"📢 Рассылка сообщения\n\n"
+        f"Целевая аудитория: {filter_names.get(filter_type, 'всем')}\n\n"
+        f"Введите текст сообщения:\n\n"
+        f"⚠️ Будьте осторожны! Сообщение будет отправлено выбранной аудитории.",
         reply_markup=cancel_keyboard()
     )
     await callback.answer()
@@ -1361,6 +1562,8 @@ async def process_broadcast_message(message: Message, state: FSMContext):
     from aiogram import Bot
 
     broadcast_text = message.text
+    data = await state.get_data()
+    filter_type = data.get('broadcast_filter', 'all')
 
     try:
         # Get main bot instance
@@ -1368,19 +1571,32 @@ async def process_broadcast_message(message: Message, state: FSMContext):
         main_bot = Bot(token=settings.telegram_bot_token)
 
         async with async_session_maker() as session:
-            # Get all non-banned users
-            result = await session.execute(
-                select(User).where(User.is_banned == False)
-            )
-            users = result.scalars().all()
+            # Build query based on filter
+            query = select(User).where(User.is_banned == False)
+
+            if filter_type == "subscribed":
+                # Get users with active subscription
+                users_result = await session.execute(query)
+                all_users = users_result.scalars().all()
+                users = [u for u in all_users if u.get_active_subscription() is not None]
+            elif filter_type == "no_subscription":
+                # Get users without active subscription
+                users_result = await session.execute(query)
+                all_users = users_result.scalars().all()
+                users = [u for u in all_users if u.get_active_subscription() is None]
+            else:
+                # All users
+                result = await session.execute(query)
+                users = result.scalars().all()
 
             total_users = len(users)
             success_count = 0
             failed_count = 0
+            errors = []  # Store error details
 
             # Send initial status
             status_msg = await message.answer(
-                f"📤 **Начинаю рассылку...**\n\n"
+                f"📤 Начинаю рассылку...\n\n"
                 f"👥 Всего пользователей: {total_users}\n"
                 f"✅ Отправлено: 0\n"
                 f"❌ Ошибок: 0"
@@ -1391,23 +1607,24 @@ async def process_broadcast_message(message: Message, state: FSMContext):
                 try:
                     await main_bot.send_message(
                         chat_id=user.telegram_id,
-                        text=broadcast_text,
-                        parse_mode="Markdown"
+                        text=broadcast_text
                     )
                     success_count += 1
                 except Exception as e:
                     failed_count += 1
+                    error_msg = str(e)
+                    errors.append(f"User {user.telegram_id}: {error_msg[:50]}")
                     logger.error(
                         "broadcast_send_error",
                         user_id=user.telegram_id,
-                        error=str(e)
+                        error=error_msg
                     )
 
                 # Update status every 10 messages
                 if i % 10 == 0 or i == total_users:
                     try:
                         await status_msg.edit_text(
-                            f"📤 **Рассылка в процессе...**\n\n"
+                            f"📤 Рассылка в процессе...\n\n"
                             f"👥 Всего пользователей: {total_users}\n"
                             f"✅ Отправлено: {success_count}\n"
                             f"❌ Ошибок: {failed_count}\n"
@@ -1416,18 +1633,27 @@ async def process_broadcast_message(message: Message, state: FSMContext):
                     except:
                         pass
 
-            # Final status
-            await status_msg.edit_text(
-                f"✅ **Рассылка завершена!**\n\n"
-                f"👥 Всего пользователей: {total_users}\n"
-                f"✅ Успешно отправлено: {success_count}\n"
-                f"❌ Ошибок: {failed_count}",
-                reply_markup=back_keyboard()
-            )
+            # Final status with error details
+            final_text = f"✅ Рассылка завершена!\n\n"
+            final_text += f"👥 Всего пользователей: {total_users}\n"
+            final_text += f"✅ Успешно отправлено: {success_count}\n"
+            final_text += f"❌ Ошибок: {failed_count}"
+
+            if errors and len(errors) <= 10:
+                final_text += "\n\n❌ Детали ошибок:\n"
+                for error in errors[:10]:
+                    final_text += f"  • {error}\n"
+            elif errors:
+                final_text += f"\n\n❌ Показаны первые 10 из {len(errors)} ошибок:\n"
+                for error in errors[:10]:
+                    final_text += f"  • {error}\n"
+
+            await status_msg.edit_text(final_text, reply_markup=back_keyboard())
 
             logger.info(
                 "admin_broadcast_complete",
                 admin_id=message.from_user.id,
+                filter=filter_type,
                 total=total_users,
                 success=success_count,
                 failed=failed_count
@@ -1460,11 +1686,11 @@ async def show_stats(message: Message):
         total_subscriptions = await session.scalar(select(func.count()).select_from(Subscription))
         total_payments = await session.scalar(select(func.count()).select_from(Payment))
 
-    text = f"""📊 **Статистика**
+    text = f"""📊 Статистика
 
-👥 **Пользователи:** {total_users}
-📦 **Подписки:** {total_subscriptions}
-💳 **Платежи:** {total_payments}"""
+👥 Пользователи: {total_users}
+📦 Подписки: {total_subscriptions}
+💳 Платежи: {total_payments}"""
 
     await message.answer(text, reply_markup=back_keyboard())
 
@@ -1485,10 +1711,10 @@ async def list_users(message: Message):
         )
         users = result.scalars().all()
 
-    text = "👥 **Последние 10 пользователей:**\n\n"
+    text = "👥 Последние 10 пользователей:\n\n"
 
     for user in users:
-        text += f"ID: `{user.telegram_id}` | {user.full_name}\n"
+        text += f"ID: {user.telegram_id} | {user.full_name}\n"
         text += f"   Создан: {user.created_at.strftime('%d.%m.%Y')}\n\n"
 
     await message.answer(text, reply_markup=back_keyboard())
@@ -1514,14 +1740,14 @@ async def list_unlimited_links_command(message: Message):
         await message.answer("📋 Безлимитных ссылок пока нет.", reply_markup=back_keyboard())
         return
 
-    text = "🔗 **Безлимитные пригласительные ссылки:**\n\n"
+    text = "🔗 Безлимитные пригласительные ссылки:\n\n"
 
     for link in links:
         status = "✅ Активна" if link.is_active else "❌ Неактивна"
         if link.is_active and not link.is_valid:
             status = "⚠️ Истекла"
 
-        text += f"**Код:** `{link.invite_code}`\n"
+        text += f"Код: {link.invite_code}\n"
         text += f"📅 Длительность: {link.duration_days} дней\n"
         text += f"👥 Использований: {link.current_uses}"
         if link.max_uses:
@@ -1551,7 +1777,7 @@ async def deactivate_unlimited_link(message: Message):
     if len(parts) < 2:
         await message.answer(
             "❌ Неверный формат.\n\n"
-            "Используйте: `/deactivate_unlimited <invite_code>`"
+            "Используйте: /deactivate_unlimited <invite_code>"
         )
         return
 
@@ -1564,14 +1790,14 @@ async def deactivate_unlimited_link(message: Message):
         link = result.scalar_one_or_none()
 
         if not link:
-            await message.answer(f"❌ Ссылка с кодом `{invite_code}` не найдена.")
+            await message.answer(f"❌ Ссылка с кодом {invite_code} не найдена.")
             return
 
         link.is_active = False
         await session.commit()
 
         await message.answer(
-            f"✅ Ссылка `{invite_code}` деактивирована.\n"
+            f"✅ Ссылка {invite_code} деактивирована.\n"
             f"Использовано раз: {link.current_uses}",
             reply_markup=back_keyboard()
         )
