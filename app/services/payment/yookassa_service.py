@@ -74,19 +74,22 @@ class YooKassaService:
             truncated_description = description[:128] if len(description) > 128 else description
 
             # Create receipt for 54-FZ compliance
+            # Note: Using phone as placeholder - YooKassa will collect email on payment form
             receipt = {
                 "customer": {
-                    "email": f"user{user_telegram_id}@telegram.bot"  # Telegram doesn't provide email, use placeholder
+                    "phone": "+79000000000"  # Placeholder - YooKassa will ask user for email on payment form
                 },
                 "items": [
                     {
                         "description": truncated_description,
-                        "quantity": "1",
+                        "quantity": "1.00",
                         "amount": {
                             "value": str(amount),
                             "currency": "RUB"
                         },
-                        "vat_code": 1  # без НДС
+                        "vat_code": 1,  # без НДС
+                        "payment_subject": "service",  # Услуга/подписка
+                        "payment_mode": "full_payment"  # Полная оплата
                     }
                 ]
             }
