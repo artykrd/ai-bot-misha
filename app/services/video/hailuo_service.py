@@ -126,11 +126,14 @@ class HailuoService(BaseVideoProvider):
                 model=model
             )
 
+            # Стоимость Hailuo: 90,000 токенов за видео
+            tokens_used = 90000
+
             return VideoResponse(
                 success=True,
                 video_path=video_path,
                 processing_time=processing_time,
-                tokens_used=7000,  # Estimated token cost
+                tokens_used=tokens_used,
                 metadata={
                     "provider": "hailuo",
                     "model": model,

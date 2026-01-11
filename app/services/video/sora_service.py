@@ -94,9 +94,13 @@ class SoraService(BaseVideoProvider):
                 time=processing_time
             )
 
+            # Стоимость Sora 2: 250,600 токенов за видео
+            tokens_used = 250600
+
             return VideoResponse(
                 success=True,
                 video_path=video_path,
+                tokens_used=tokens_used,
                 processing_time=processing_time,
                 metadata={
                     "model": model,

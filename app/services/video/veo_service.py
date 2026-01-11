@@ -162,10 +162,9 @@ class VeoService(BaseVideoProvider):
                 time=processing_time
             )
 
-            # ИСПРАВЛЕНО: Правильный расчёт стоимости Veo 3.1
-            # Veo 3.1 реально стоит ~$4 за 10 сек = $0.40/сек
-            # При цене $0.01/1000 токенов: $0.40 = 40,000 токенов/сек
-            tokens_per_second = 40000
+            # Стоимость Veo 3.1: 116,000 токенов за 8 секунд видео
+            # tokens_per_second = 116,000 / 8 = 14,500 токенов/сек
+            tokens_per_second = 14500
             tokens_used = tokens_per_second * duration
 
             logger.info(
