@@ -32,6 +32,11 @@ async def main() -> None:
         # Setup bot (middlewares, handlers) and get dispatcher
         dp = await setup_bot()
 
+        # Setup error notifications to admin bot
+        from app.core.error_notifier import setup_error_notifications
+        setup_error_notifications(bot)
+        logger.info("error_notifications_enabled", admin_count=len(settings.admin_user_ids))
+
         # Start background scheduler
         scheduler.start()
 

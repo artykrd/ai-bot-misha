@@ -53,6 +53,22 @@ def setup_logging() -> None:
     file_handler.suffix = "%Y-%m-%d.txt"
     handlers.append(file_handler)
 
+    # ERROR ONLY handler - single file that never rotates
+    # Only logs ERROR and CRITICAL level messages
+    error_handler = logging.FileHandler(
+        filename=log_dir / "error.log",
+        mode='a',  # Append mode
+        encoding="utf-8",
+    )
+    error_handler.setLevel(logging.ERROR)
+    # Add timestamp format for errors
+    error_formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    error_handler.setFormatter(error_formatter)
+    handlers.append(error_handler)
+
     # Configure standard logging
     logging.basicConfig(
         format="%(message)s",
