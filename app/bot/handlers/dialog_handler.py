@@ -24,6 +24,27 @@ logger = get_logger(__name__)
 router = Router(name="dialog_handler")
 
 
+def escape_html_text(text: str) -> str:
+    """
+    Escape special HTML characters to prevent Telegram parse errors.
+
+    Args:
+        text: Raw text that may contain HTML special characters
+
+    Returns:
+        Text with HTML special characters escaped
+    """
+    if not text:
+        return ""
+
+    # Escape HTML special characters
+    text = text.replace("&", "&amp;")  # Must be first!
+    text = text.replace("<", "&lt;")
+    text = text.replace(">", "&gt;")
+
+    return text
+
+
 def split_long_message(text: str, max_length: int = 4000) -> list[str]:
     """
     Split long message into chunks that fit Telegram's message limit.
@@ -290,7 +311,8 @@ async def process_dialog_message(
 
         # Send response
         if response["success"]:
-            response_text = response["content"]
+            # Escape HTML special characters to prevent parse errors
+            response_text = escape_html_text(response["content"])
 
             # Add cost info if enabled
             if dialog["show_costs"]:
