@@ -366,13 +366,17 @@ async def nano_format_select(callback: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("bot.nb.prms.chs:ratio|"))
-async def nano_format_selected(callback: CallbackQuery):
+async def nano_format_selected(callback: CallbackQuery, state: FSMContext):
     """Handle Nano Banana format selection."""
     format_value = callback.data.split("|")[1]
+
+    # Save format to state
+    await state.update_data(nano_aspect_ratio=format_value)
+
     await callback.answer(f"✅ Формат установлен: {format_value}")
-    # Save to user state/database
+
     # Return to Nano Banana menu
-    await show_nano_banana(callback)
+    await show_nano_banana(callback, state)
 
 
 @router.callback_query(F.data == "bot.nb.multi")
