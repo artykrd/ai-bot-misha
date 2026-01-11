@@ -146,6 +146,62 @@ async def yukassa_webhook(request: Request):
                             tokens=tokens
                         )
 
+                        # Award referrer if exists
+                        from app.services.referral import ReferralService
+                        from decimal import Decimal
+
+                        referral_service = ReferralService(session)
+                        tokens_awarded, money_awarded = await referral_service.award_referrer_for_purchase(
+                            referred_user_id=payment.user_id,
+                            tokens_purchased=tokens,
+                            money_paid=Decimal(str(payment.amount))
+                        )
+
+                        # Send notification to referrer if reward was given
+                        if tokens_awarded or money_awarded:
+                            try:
+                                from app.database.models.user import User
+                                from sqlalchemy import select
+                                from aiogram import Bot
+                                from app.core.config import settings
+
+                                # Get referred user info
+                                user_result = await session.execute(
+                                    select(User).where(User.id == payment.user_id)
+                                )
+                                referred_user = user_result.scalar_one_or_none()
+
+                                # Get referrer
+                                referrer = await referral_service.get_referrer(payment.user_id)
+
+                                if referrer and referred_user:
+                                    bot = Bot(token=settings.telegram_bot_token)
+
+                                    if tokens_awarded:
+                                        await bot.send_message(
+                                            chat_id=referrer.telegram_id,
+                                            text=f"🎉 **Вам начислено {tokens_awarded:,} токенов!**\n\n"
+                                                 f"Ваш реферал {referred_user.full_name or 'пользователь'} совершил покупку.",
+                                            parse_mode="Markdown"
+                                        )
+                                    elif money_awarded:
+                                        await bot.send_message(
+                                            chat_id=referrer.telegram_id,
+                                            text=f"💰 **Вам начислено {money_awarded:.2f} руб!**\n\n"
+                                                 f"Ваш партнерский реферал {referred_user.full_name or 'пользователь'} совершил покупку.",
+                                            parse_mode="Markdown"
+                                        )
+
+                                    await bot.session.close()
+
+                            except Exception as notify_error:
+                                # Don't fail payment if notification fails
+                                logger.warning(
+                                    "referral_notification_failed",
+                                    error=str(notify_error),
+                                    user_id=payment.user_id
+                                )
+
                 elif payment_type == "subscription":
                     # Activate subscription
                     days = int(metadata.get("days", 30))
@@ -181,6 +237,63 @@ async def yukassa_webhook(request: Request):
                         days=days,
                         tokens=tokens
                     )
+
+                    # Award referrer if exists
+                    if tokens:
+                        from app.services.referral import ReferralService
+                        from decimal import Decimal
+
+                        referral_service = ReferralService(session)
+                        tokens_awarded, money_awarded = await referral_service.award_referrer_for_purchase(
+                            referred_user_id=payment.user_id,
+                            tokens_purchased=tokens,
+                            money_paid=Decimal(str(payment.amount))
+                        )
+
+                        # Send notification to referrer if reward was given
+                        if tokens_awarded or money_awarded:
+                            try:
+                                from app.database.models.user import User
+                                from sqlalchemy import select
+                                from aiogram import Bot
+                                from app.core.config import settings
+
+                                # Get referred user info
+                                user_result = await session.execute(
+                                    select(User).where(User.id == payment.user_id)
+                                )
+                                referred_user = user_result.scalar_one_or_none()
+
+                                # Get referrer
+                                referrer = await referral_service.get_referrer(payment.user_id)
+
+                                if referrer and referred_user:
+                                    bot = Bot(token=settings.telegram_bot_token)
+
+                                    if tokens_awarded:
+                                        await bot.send_message(
+                                            chat_id=referrer.telegram_id,
+                                            text=f"🎉 **Вам начислено {tokens_awarded:,} токенов!**\n\n"
+                                                 f"Ваш реферал {referred_user.full_name or 'пользователь'} оформил подписку.",
+                                            parse_mode="Markdown"
+                                        )
+                                    elif money_awarded:
+                                        await bot.send_message(
+                                            chat_id=referrer.telegram_id,
+                                            text=f"💰 **Вам начислено {money_awarded:.2f} руб!**\n\n"
+                                                 f"Ваш партнерский реферал {referred_user.full_name or 'пользователь'} оформил подписку.",
+                                            parse_mode="Markdown"
+                                        )
+
+                                    await bot.session.close()
+
+                            except Exception as notify_error:
+                                # Don't fail payment if notification fails
+                                logger.warning(
+                                    "referral_notification_failed",
+                                    error=str(notify_error),
+                                    user_id=payment.user_id
+                                )
 
             elif webhook_data["event"] == "payment.canceled":
                 # Payment was canceled

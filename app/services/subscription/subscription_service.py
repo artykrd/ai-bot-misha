@@ -20,7 +20,7 @@ TARIFFS = {
     "21days": {"days": 21, "tokens": 500000, "price": 289},
     "30days_1m": {"days": 30, "tokens": 1000000, "price": 597},
     "30days_5m": {"days": 30, "tokens": 5000000, "price": 2790},
-    "unlimited_1day": {"days": 1, "tokens": -1, "price": 199},  # -1 = unlimited
+    "unlimited_1day": {"days": 1, "tokens": -1, "price": 649},  # -1 = unlimited
     "eternal_150k": {"days": None, "tokens": 150000, "price": 149},
     "eternal_250k": {"days": None, "tokens": 250000, "price": 279},
     "eternal_500k": {"days": None, "tokens": 500000, "price": 519},
@@ -146,3 +146,95 @@ class SubscriptionService:
             logger.info("expired_subscriptions_deactivated", count=count)
 
         return count
+
+    async def add_eternal_tokens(
+        self,
+        user_id: int,
+        tokens: int,
+        subscription_type: str = "eternal_purchase"
+    ) -> Subscription:
+        """
+        Add eternal tokens to user (tokens that never expire).
+
+        Args:
+            user_id: User ID
+            tokens: Number of tokens to add
+            subscription_type: Type of subscription (default: "eternal_purchase")
+
+        Returns:
+            Created Subscription object
+        """
+        from datetime import datetime, timezone
+        from decimal import Decimal
+
+        subscription = Subscription(
+            user_id=user_id,
+            subscription_type=subscription_type,
+            tokens_amount=tokens,
+            tokens_used=0,
+            price=Decimal('0.00'),  # Price already paid
+            is_active=True,
+            started_at=datetime.now(timezone.utc),
+            expires_at=None  # Eternal - never expires
+        )
+
+        self.session.add(subscription)
+        await self.session.commit()
+        await self.session.refresh(subscription)
+
+        logger.info(
+            "eternal_tokens_added",
+            user_id=user_id,
+            tokens=tokens,
+            subscription_type=subscription_type
+        )
+
+        return subscription
+
+    async def add_subscription_tokens(
+        self,
+        user_id: int,
+        tokens: int,
+        days: int = 30,
+        subscription_type: str = "premium_subscription"
+    ) -> Subscription:
+        """
+        Add time-limited subscription tokens to user.
+
+        Args:
+            user_id: User ID
+            tokens: Number of tokens to add
+            days: Number of days subscription is valid
+            subscription_type: Type of subscription (default: "premium_subscription")
+
+        Returns:
+            Created Subscription object
+        """
+        from datetime import datetime, timezone, timedelta
+        from decimal import Decimal
+
+        subscription = Subscription(
+            user_id=user_id,
+            subscription_type=subscription_type,
+            tokens_amount=tokens,
+            tokens_used=0,
+            price=Decimal('0.00'),  # Price already paid
+            is_active=True,
+            started_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc) + timedelta(days=days)
+        )
+
+        self.session.add(subscription)
+        await self.session.commit()
+        await self.session.refresh(subscription)
+
+        logger.info(
+            "subscription_tokens_added",
+            user_id=user_id,
+            tokens=tokens,
+            days=days,
+            subscription_type=subscription_type
+        )
+
+        return subscription
+
