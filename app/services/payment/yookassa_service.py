@@ -70,6 +70,9 @@ class YooKassaService:
                 **(metadata or {})
             }
 
+            # Limit description to 128 characters as per YooKassa API requirements
+            truncated_description = description[:128] if len(description) > 128 else description
+
             # Create payment
             payment = YooKassaPayment.create({
                 "amount": {
@@ -81,7 +84,7 @@ class YooKassaService:
                     "return_url": self.return_url
                 },
                 "capture": True,  # Auto-capture payment
-                "description": description,
+                "description": truncated_description,
                 "metadata": payment_metadata
             }, idempotency_key)
 
@@ -103,11 +106,26 @@ class YooKassaService:
             }
 
         except Exception as e:
+            # Get detailed error information
+            error_detail = str(e)
+            error_type = type(e).__name__
+
+            # Try to extract response details if it's an HTTP error
+            response_text = ""
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    response_text = e.response.text if hasattr(e.response, 'text') else str(e.response)
+                except:
+                    pass
+
             logger.error(
                 "yookassa_create_payment_error",
-                error=str(e),
+                error=error_detail,
+                error_type=error_type,
+                response=response_text,
                 amount=amount,
-                user_id=user_telegram_id
+                user_id=user_telegram_id,
+                description=truncated_description if 'truncated_description' in locals() else description[:50]
             )
             return None
 

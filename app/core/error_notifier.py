@@ -17,6 +17,7 @@ class ErrorNotifier:
     """
     Handles error notifications to admin bot.
     Includes throttling to prevent spam.
+    Uses separate admin bot token for notifications.
     """
 
     def __init__(self):
@@ -24,10 +25,24 @@ class ErrorNotifier:
         self.last_notification_time = defaultdict(lambda: datetime.min)
         self.notification_cooldown = timedelta(minutes=5)  # 5 minutes between same error notifications
         self.error_counts = defaultdict(int)
+        self._initialize_bot()
+
+    def _initialize_bot(self):
+        """Initialize admin bot using admin bot token from settings."""
+        try:
+            if settings.telegram_admin_bot_token:
+                self.bot = Bot(token=settings.telegram_admin_bot_token)
+                logging.info("Error notifier initialized with admin bot")
+        except Exception as e:
+            logging.warning(f"Failed to initialize admin bot for error notifications: {e}")
 
     def set_bot(self, bot: Bot):
-        """Set the bot instance for sending notifications."""
-        self.bot = bot
+        """
+        Set the bot instance for sending notifications.
+        Note: This is deprecated, bot is now initialized from settings.
+        """
+        # Keep for backwards compatibility but don't use
+        pass
 
     async def notify_admins(self, error_type: str, error_message: str, details: str = ""):
         """
@@ -61,18 +76,30 @@ class ErrorNotifier:
         count_text = f" (повторилось {count + 1} раз)" if count > 0 else ""
         self.error_counts[error_key] = 0  # Reset counter
 
-        # Format message
-        message = f"""🚨 **Ошибка в боте**{count_text}
+        # Escape markdown special characters
+        def escape_markdown(text: str) -> str:
+            """Escape markdown special characters."""
+            special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+            for char in special_chars:
+                text = text.replace(char, f'\\{char}')
+            return text
 
-📁 **Модуль:** {error_type}
-❌ **Ошибка:** {error_message}
+        # Format message with escaped content
+        safe_error_type = escape_markdown(str(error_type))
+        safe_error_message = escape_markdown(str(error_message))
+        safe_details = escape_markdown(str(details)) if details else 'Нет дополнительных деталей'
 
-📝 **Подробности:**
-{details if details else 'Нет дополнительных деталей'}
+        message = f"""🚨 *Ошибка в боте*{count_text}
 
-🕐 **Время:** {now.strftime('%Y-%m-%d %H:%M:%S')}
+📁 *Модуль:* {safe_error_type}
+❌ *Ошибка:* {safe_error_message}
 
-💡 **Действие:** Проверьте логи в logs/error.log"""
+📝 *Подробности:*
+{safe_details}
+
+🕐 *Время:* {now.strftime('%Y-%m-%d %H:%M:%S')}
+
+💡 *Действие:* Проверьте логи в logs/error\\.log"""
 
         # Send to all admins
         for admin_id in settings.admin_user_ids:
