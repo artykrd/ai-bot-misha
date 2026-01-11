@@ -13,6 +13,7 @@ from app.core.redis_client import redis_client
 from app.core.scheduler import scheduler
 from app.database.database import init_db, close_db
 from app.bot.bot_instance import bot, setup_bot, shutdown_bot
+from app.monitoring import SystemMonitor
 
 logger = get_logger(__name__)
 
@@ -53,6 +54,11 @@ async def main() -> None:
         # Run every hour
         scheduler.add_interval_job(cleanup_expired_subscriptions, hours=1)
 
+        # Start system monitoring
+        monitor = SystemMonitor()
+        monitor.start()
+        logger.info("system_monitoring_started")
+
         logger.info("bot_started_successfully")
 
         # Start polling
@@ -66,6 +72,14 @@ async def main() -> None:
         raise
     finally:
         logger.info("bot_shutting_down")
+
+        # Stop monitoring
+        try:
+            from app.monitoring.monitor import system_monitor
+            await system_monitor.stop()
+            logger.info("system_monitoring_stopped")
+        except Exception as e:
+            logger.error("monitoring_shutdown_error", error=str(e))
 
         # Shutdown scheduler
         scheduler.shutdown()
