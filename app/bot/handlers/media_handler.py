@@ -357,6 +357,11 @@ async def start_nano(callback: CallbackQuery, state: FSMContext, user: User):
     )
 
     await state.set_state(MediaState.waiting_for_image_prompt)
+
+    # Get existing data or set defaults
+    data = await state.get_data()
+    current_ratio = data.get("nano_aspect_ratio", "auto")
+
     await state.update_data(
         service="nano_banana",
         nano_is_pro=False,
@@ -364,7 +369,7 @@ async def start_nano(callback: CallbackQuery, state: FSMContext, user: User):
         reference_image_paths=[],
         photo_caption_prompt=None,
         multi_images_count=0,
-        nano_aspect_ratio="auto"  # Default aspect ratio
+        nano_aspect_ratio=current_ratio  # Preserve existing format or set default
     )
 
     await callback.message.answer(text, reply_markup=nano_banana_keyboard(is_pro=False), parse_mode="Markdown")
@@ -398,6 +403,11 @@ async def start_nano_pro(callback: CallbackQuery, state: FSMContext, user: User)
     )
 
     await state.set_state(MediaState.waiting_for_image_prompt)
+
+    # Get existing data or set defaults
+    data = await state.get_data()
+    current_ratio = data.get("nano_aspect_ratio", "auto")
+
     await state.update_data(
         service="nano_banana",
         nano_is_pro=True,
@@ -405,7 +415,7 @@ async def start_nano_pro(callback: CallbackQuery, state: FSMContext, user: User)
         reference_image_paths=[],
         photo_caption_prompt=None,
         multi_images_count=0,
-        nano_aspect_ratio="auto"  # Default aspect ratio
+        nano_aspect_ratio=current_ratio  # Preserve existing format or set default
     )
 
     await callback.message.answer(text, reply_markup=nano_banana_keyboard(is_pro=True), parse_mode="Markdown")
