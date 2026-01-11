@@ -84,8 +84,13 @@ class Settings(BaseSettings):
     debug: bool = Field(False, description="Debug mode")
     log_level: str = Field("INFO", description="Logging level")
 
-    app_host: str = Field("0.0.0.0", description="FastAPI host")
-    app_port: int = Field(8000, description="FastAPI port")
+    app_host: str = Field("127.0.0.1", description="FastAPI host")
+    port: Optional[int] = Field(None, description="FastAPI port (ENV: PORT)")
+
+    @property
+    def app_port(self) -> int:
+        """Get app port from PORT env variable or default to 8000."""
+        return self.port if self.port is not None else 8000
 
     # =====================================
     # FILE STORAGE
