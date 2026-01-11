@@ -130,6 +130,18 @@ class ErrorNotificationHandler(logging.Handler):
     def emit(self, record: logging.LogRecord):
         """Handle log record and send notification if needed."""
         try:
+            # Increment error counter for monitoring
+            try:
+                from app.monitoring.daily_report import daily_report_generator
+                import asyncio
+                try:
+                    loop = asyncio.get_event_loop()
+                    loop.create_task(daily_report_generator.increment_error_count())
+                except RuntimeError:
+                    pass
+            except Exception:
+                pass
+
             # Extract module information
             module_name = record.name.split('.')[-1] if record.name else "Unknown"
 
