@@ -73,6 +73,24 @@ class YooKassaService:
             # Limit description to 128 characters as per YooKassa API requirements
             truncated_description = description[:128] if len(description) > 128 else description
 
+            # Create receipt for 54-FZ compliance
+            receipt = {
+                "customer": {
+                    "email": f"user{user_telegram_id}@telegram.bot"  # Telegram doesn't provide email, use placeholder
+                },
+                "items": [
+                    {
+                        "description": truncated_description,
+                        "quantity": "1",
+                        "amount": {
+                            "value": str(amount),
+                            "currency": "RUB"
+                        },
+                        "vat_code": 1  # без НДС
+                    }
+                ]
+            }
+
             # Create payment
             payment = YooKassaPayment.create({
                 "amount": {
@@ -85,6 +103,7 @@ class YooKassaService:
                 },
                 "capture": True,  # Auto-capture payment
                 "description": truncated_description,
+                "receipt": receipt,  # Required for 54-FZ compliance
                 "metadata": payment_metadata
             }, idempotency_key)
 

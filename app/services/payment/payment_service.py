@@ -70,7 +70,8 @@ class PaymentService:
         )
 
         if not yookassa_data:
-            logger.error("payment_create_failed", error="YooKassa payment creation failed")
+            # Don't log as ERROR here since yookassa_service already logged the detailed error
+            logger.warning("payment_create_failed", error="YooKassa payment creation failed", user_id=user_id)
             return None
 
         # Create payment record in database
