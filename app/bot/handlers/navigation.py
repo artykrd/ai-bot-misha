@@ -765,13 +765,7 @@ async def eternal_token_selected(callback: CallbackQuery, user: User):
     await process_subscription_purchase(callback, user)
 
 
-@router.callback_query(F.data == "activate_promocode")
-async def activate_promocode(callback: CallbackQuery):
-    """Activate promocode."""
-    await callback.answer(
-        "⚠️ Активация промокодов будет доступна в следующей версии",
-        show_alert=True
-    )
+# Promocode activation is handled in subscription.py
 
 
 # Profile and Referral
