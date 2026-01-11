@@ -326,7 +326,16 @@ async def show_nano_banana(callback: CallbackQuery, state: FSMContext):
 
     # Set FSM state to wait for prompt
     await state.set_state(MediaState.waiting_for_image_prompt)
-    await state.update_data(service="nano_banana")
+
+    # Get existing data or set defaults
+    data = await state.get_data()
+    current_ratio = data.get("nano_aspect_ratio", "auto")
+
+    await state.update_data(
+        service="nano_banana",
+        nano_aspect_ratio=current_ratio,  # Preserve existing format or set default
+        nano_is_pro=False
+    )
 
     # Use answer() instead of edit_text() because callback may come from media message
     await callback.message.answer(
@@ -337,9 +346,15 @@ async def show_nano_banana(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(F.data == "bot.nb.prms:ratio")
-async def nano_format_select(callback: CallbackQuery):
+async def nano_format_select(callback: CallbackQuery, state: FSMContext):
     """Show Nano Banana format selection."""
-    text = """📐 **Выберите формат создаваемого фото в Nano Banana**
+    # Get current format from state
+    data = await state.get_data()
+    current_ratio = data.get("nano_aspect_ratio", "auto")
+
+    text = f"""📐 **Выберите формат создаваемого фото в Nano Banana**
+
+**Текущий формат:** {current_ratio}
 
 **1:1:** идеально подходит для профильных фото в соцсетях, таких как VK, Telegram и т.д
 
@@ -356,7 +371,7 @@ async def nano_format_select(callback: CallbackQuery):
     try:
         await callback.message.edit_text(
             text,
-            reply_markup=nano_format_keyboard()
+            reply_markup=nano_format_keyboard(current_ratio)
         )
     except TelegramBadRequest as e:
         # Ignore error if message content hasn't changed
@@ -375,8 +390,8 @@ async def nano_format_selected(callback: CallbackQuery, state: FSMContext):
 
     await callback.answer(f"✅ Формат установлен: {format_value}")
 
-    # Return to Nano Banana menu
-    await show_nano_banana(callback, state)
+    # Show updated format selection menu with checkmark on selected format
+    await nano_format_select(callback, state)
 
 
 @router.callback_query(F.data == "bot.nb.multi")

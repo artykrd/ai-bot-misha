@@ -164,19 +164,26 @@ def nano_banana_keyboard(is_pro: bool = False) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def nano_format_keyboard() -> InlineKeyboardMarkup:
-    """Nano Banana format selection keyboard."""
+def nano_format_keyboard(current_ratio: str = "auto") -> InlineKeyboardMarkup:
+    """Nano Banana format selection keyboard with current selection marked."""
     builder = InlineKeyboardBuilder()
 
+    # Define all available ratios
+    ratios = ["1:1", "2:3", "3:2", "16:9", "9:16", "auto"]
+
+    # Add checkmark to selected ratio
+    def format_button_text(ratio: str) -> str:
+        return f"✅ {ratio}" if ratio == current_ratio else ratio
+
     builder.row(
-        InlineKeyboardButton(text="1:1", callback_data="bot.nb.prms.chs:ratio|1:1"),
-        InlineKeyboardButton(text="2:3", callback_data="bot.nb.prms.chs:ratio|2:3"),
-        InlineKeyboardButton(text="3:2", callback_data="bot.nb.prms.chs:ratio|3:2")
+        InlineKeyboardButton(text=format_button_text("1:1"), callback_data="bot.nb.prms.chs:ratio|1:1"),
+        InlineKeyboardButton(text=format_button_text("2:3"), callback_data="bot.nb.prms.chs:ratio|2:3"),
+        InlineKeyboardButton(text=format_button_text("3:2"), callback_data="bot.nb.prms.chs:ratio|3:2")
     )
     builder.row(
-        InlineKeyboardButton(text="16:9", callback_data="bot.nb.prms.chs:ratio|16:9"),
-        InlineKeyboardButton(text="9:16", callback_data="bot.nb.prms.chs:ratio|9:16"),
-        InlineKeyboardButton(text="✅ auto", callback_data="bot.nb.prms.chs:ratio|auto")
+        InlineKeyboardButton(text=format_button_text("16:9"), callback_data="bot.nb.prms.chs:ratio|16:9"),
+        InlineKeyboardButton(text=format_button_text("9:16"), callback_data="bot.nb.prms.chs:ratio|9:16"),
+        InlineKeyboardButton(text=format_button_text("auto"), callback_data="bot.nb.prms.chs:ratio|auto")
     )
     builder.row(
         InlineKeyboardButton(text="⬅️ Вернуться в Nano Banana", callback_data="bot.nano")
