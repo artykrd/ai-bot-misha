@@ -11,13 +11,14 @@ logger = get_logger(__name__)
 ACTIVE_DIALOGS: Dict[int, Dict[str, Any]] = {}
 
 
-# Model ID to AI service mapping
+# Model ID to AI service mapping with new billing system
 MODEL_MAPPINGS = {
     324: {
         "name": "GPT 4.1 Mini",
         "provider": "openai",
         "model_id": "gpt-4o-mini",
-        "cost_per_request": 500,
+        "billing_id": "gpt-4.1-mini",  # New billing config ID
+        "cost_per_request": 500,  # Legacy fallback
         "supports_vision": True,
         "supports_voice": True,
         "supports_files": True
@@ -26,6 +27,7 @@ MODEL_MAPPINGS = {
         "name": "GPT 4o",
         "provider": "openai",
         "model_id": "gpt-4o",
+        "billing_id": "gpt-4o",
         "cost_per_request": 1000,
         "supports_vision": True,
         "supports_voice": True,
@@ -35,6 +37,7 @@ MODEL_MAPPINGS = {
         "name": "O3 Mini",
         "provider": "openai",
         "model_id": "o3-mini",
+        "billing_id": "o3-mini",
         "cost_per_request": 700,
         "supports_vision": False,
         "supports_voice": False,
@@ -44,6 +47,7 @@ MODEL_MAPPINGS = {
         "name": "Deepseek Chat",
         "provider": "deepseek",
         "model_id": "deepseek-chat",
+        "billing_id": "deepseek-chat",
         "cost_per_request": 600,
         "supports_vision": False,
         "supports_voice": False,
@@ -53,6 +57,7 @@ MODEL_MAPPINGS = {
         "name": "Deepseek R1",
         "provider": "deepseek",
         "model_id": "deepseek-reasoner",
+        "billing_id": "deepseek-r1",
         "cost_per_request": 800,
         "supports_vision": False,
         "supports_voice": False,
@@ -62,6 +67,7 @@ MODEL_MAPPINGS = {
         "name": "Gemini Flash 2.0",
         "provider": "google",
         "model_id": "gemini-2.0-flash-001",
+        "billing_id": "gemini-flash-2.0",
         "cost_per_request": 400,
         "supports_vision": True,
         "supports_voice": True,
@@ -71,6 +77,7 @@ MODEL_MAPPINGS = {
         "name": "nano Banana",
         "provider": "google",
         "model_id": "gemini-2.0-flash-exp",
+        "billing_id": "nano-banana-text",
         "cost_per_request": 900,
         "supports_vision": True,
         "supports_voice": True,
@@ -80,6 +87,7 @@ MODEL_MAPPINGS = {
         "name": "Sonar с поиском",
         "provider": "perplexity",
         "model_id": "sonar",
+        "billing_id": "sonar",
         "cost_per_request": 700,
         "supports_vision": False,
         "supports_voice": False,
@@ -89,6 +97,7 @@ MODEL_MAPPINGS = {
         "name": "Sonar Pro",
         "provider": "perplexity",
         "model_id": "sonar-pro",
+        "billing_id": "sonar-pro",
         "cost_per_request": 1000,
         "supports_vision": False,
         "supports_voice": False,
@@ -98,6 +107,7 @@ MODEL_MAPPINGS = {
         "name": "Claude 4",
         "provider": "anthropic",
         "model_id": "claude-sonnet-4-20250514",
+        "billing_id": "claude-4",
         "cost_per_request": 1200,
         "supports_vision": True,
         "supports_voice": False,
@@ -107,6 +117,7 @@ MODEL_MAPPINGS = {
         "name": "Claude 3.5 Haiku",
         "provider": "anthropic",
         "model_id": "claude-3-5-haiku-20241022",
+        "billing_id": "claude-4",  # Using claude-4 billing for now
         "cost_per_request": 600,
         "supports_vision": True,
         "supports_voice": False,
@@ -116,6 +127,7 @@ MODEL_MAPPINGS = {
         "name": "GPT 4o-mini",
         "provider": "openai",
         "model_id": "gpt-4o-mini",
+        "billing_id": "gpt-4.1-mini",
         "cost_per_request": 250,
         "supports_vision": True,
         "supports_voice": True,
@@ -125,6 +137,7 @@ MODEL_MAPPINGS = {
         "name": "Анализ текста",
         "provider": "openai",
         "model_id": "gpt-4o-mini",
+        "billing_id": "gpt-4.1-mini",
         "cost_per_request": 500,
         "supports_vision": True,
         "supports_voice": True,
@@ -135,6 +148,7 @@ MODEL_MAPPINGS = {
         "name": "Генератор промптов",
         "provider": "openai",
         "model_id": "gpt-4o-mini",
+        "billing_id": "gpt-4.1-mini",
         "cost_per_request": 500,
         "supports_vision": False,
         "supports_voice": False,
@@ -145,6 +159,7 @@ MODEL_MAPPINGS = {
         "name": "GPT 5 Mini",
         "provider": "openai",
         "model_id": "gpt-4o-mini",  # Fallback to 4o-mini until GPT-5 is available
+        "billing_id": "gpt-5-mini",
         "cost_per_request": 600,
         "supports_vision": True,
         "supports_voice": True,
@@ -166,6 +181,7 @@ def set_active_dialog(user_id: int, dialog_id: int, history_enabled: bool = Fals
         "model_name": model_config["name"],
         "provider": model_config["provider"],
         "model_id": model_config["model_id"],
+        "billing_id": model_config.get("billing_id", model_config["model_id"]),  # New billing ID
         "cost_per_request": model_config["cost_per_request"],
         "history_enabled": history_enabled,
         "show_costs": show_costs,
