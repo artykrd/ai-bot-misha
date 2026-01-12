@@ -24,7 +24,7 @@ class MonitoringNotifier:
         self.bot: Optional[Bot] = None
         self.last_notification_time = defaultdict(lambda: datetime.min)
         self.warning_cooldown = timedelta(minutes=15)  # 15 minutes for warnings
-        self.critical_cooldown = timedelta(minutes=5)  # 5 minutes for critical
+        self.critical_cooldown = timedelta(minutes=1)  # 1 minute for critical - near instant
         self._initialize_bot()
 
     def _initialize_bot(self):
