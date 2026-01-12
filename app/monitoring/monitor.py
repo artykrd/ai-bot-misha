@@ -163,8 +163,8 @@ class SystemMonitor:
                 # Store metrics for daily report
                 await daily_report_generator.store_metrics()
 
-                # Wait 5 minutes before next check
-                await asyncio.sleep(300)
+                # Wait 1 minute before next check (for near-instant critical alerts)
+                await asyncio.sleep(60)
 
             except asyncio.CancelledError:
                 logger.info("monitoring_loop_cancelled")
@@ -190,11 +190,11 @@ class SystemMonitor:
         # Start monitoring loop in background
         self._monitoring_task = asyncio.create_task(self.monitoring_loop())
 
-        # Schedule daily report (at 3:00 AM UTC)
-        scheduler.add_daily_job(
-            daily_report_generator.send_daily_report,
-            time_str="03:00"
-        )
+        # Daily report disabled - only critical alerts are sent instantly
+        # scheduler.add_daily_job(
+        #     daily_report_generator.send_daily_report,
+        #     time_str="03:00"
+        # )
 
         logger.info("monitoring_started")
 
