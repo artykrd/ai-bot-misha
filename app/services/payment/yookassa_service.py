@@ -212,7 +212,7 @@ class YooKassaService:
 
             logger.info(
                 "yookassa_webhook_received",
-                event=notification.event,
+                webhook_event=notification.event,
                 payment_id=payment.id,
                 status=payment.status
             )
