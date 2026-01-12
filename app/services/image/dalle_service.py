@@ -8,6 +8,7 @@ import aiohttp
 
 from app.core.config import settings
 from app.core.logger import get_logger
+from app.core.billing_config import get_image_model_billing
 from app.services.image.base import BaseImageProvider, ImageResponse
 from app.bot.utils.image_utils import compress_image_if_needed, ensure_png_format
 
@@ -168,13 +169,8 @@ class DalleService(BaseImageProvider):
                 time=processing_time
             )
 
-            # Estimate token usage based on model and quality
-            # DALL-E 3 HD: ~8000 tokens, standard: ~4000 tokens
-            # DALL-E 2: ~2000 tokens
-            if model == "dall-e-3":
-                tokens_used = 8000 if quality == "hd" else 4000
-            else:
-                tokens_used = 2000
+            dalle_billing = get_image_model_billing("dalle3")
+            tokens_used = dalle_billing.tokens_per_generation
 
             return ImageResponse(
                 success=True,
@@ -318,7 +314,7 @@ class DalleService(BaseImageProvider):
                     "model": model,
                     "size": size,
                     "input_path": image_path,
-                    "tokens_used": 2000
+                    "tokens_used": get_image_model_billing("dalle3").tokens_per_generation
                 }
             )
 

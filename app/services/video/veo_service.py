@@ -10,6 +10,7 @@ import asyncio
 
 from app.core.config import settings
 from app.core.logger import get_logger
+from app.core.billing_config import get_video_model_billing
 from app.services.video.base import BaseVideoProvider, VideoResponse
 
 logger = get_logger(__name__)
@@ -162,18 +163,8 @@ class VeoService(BaseVideoProvider):
                 time=processing_time
             )
 
-            # Стоимость Veo 3.1: 116,000 токенов за 8 секунд видео
-            # tokens_per_second = 116,000 / 8 = 14,500 токенов/сек
-            tokens_per_second = 14500
-            tokens_used = tokens_per_second * duration
-
-            logger.info(
-                "veo_cost_calculated",
-                duration=duration,
-                tokens_per_second=tokens_per_second,
-                total_tokens=tokens_used,
-                estimated_cost_usd=round((tokens_used / 1000) * 0.01, 2)
-            )
+            veo_billing = get_video_model_billing("veo-3.1-fast")
+            tokens_used = veo_billing.tokens_per_generation
 
             return VideoResponse(
                 success=True,
@@ -187,8 +178,7 @@ class VeoService(BaseVideoProvider):
                     "aspect_ratio": aspect_ratio,
                     "resolution": resolution,
                     "mode": mode,
-                    "prompt": prompt,
-                    "cost_per_second": tokens_per_second
+                    "prompt": prompt
                 }
             )
 

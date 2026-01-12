@@ -77,20 +77,12 @@ async def process_subscription_purchase(callback: CallbackQuery, user: User):
     """Process subscription purchase."""
     from app.database.database import async_session_maker
     from app.services.payment import PaymentService
-    from decimal import Decimal
+    from app.core.subscription_plans import ETERNAL_PLANS
 
     subscription_type = callback.data.split(":")[1]
 
-    # Define tariff details
-    TARIFFS = {
-        "eternal_150k": {"tokens": 150000, "price": Decimal("149.00"), "name": "150,000 токенов"},
-        "eternal_250k": {"tokens": 250000, "price": Decimal("279.00"), "name": "250,000 токенов"},
-        "eternal_500k": {"tokens": 500000, "price": Decimal("519.00"), "name": "500,000 токенов"},
-        "eternal_1m": {"tokens": 1000000, "price": Decimal("999.00"), "name": "1,000,000 токенов"},
-    }
-
-    tariff = TARIFFS.get(subscription_type)
-    if not tariff:
+    plan = ETERNAL_PLANS.get(subscription_type)
+    if not plan:
         await callback.answer("❌ Неизвестный тариф", show_alert=True)
         return
 
@@ -98,7 +90,7 @@ async def process_subscription_purchase(callback: CallbackQuery, user: User):
         "subscription_purchase_initiated",
         user_id=user.id,
         subscription_type=subscription_type,
-        amount=tariff["price"]
+        amount=plan.price
     )
 
     # Create payment
@@ -107,11 +99,11 @@ async def process_subscription_purchase(callback: CallbackQuery, user: User):
 
         payment = await payment_service.create_payment(
             user_id=user.id,
-            amount=tariff["price"],
-            description=f"Покупка {tariff['name']}",
+            amount=plan.price,
+            description=f"Покупка {plan.display_name}",
             metadata={
                 "subscription_type": subscription_type,
-                "tokens": tariff["tokens"],
+                "tokens": plan.tokens,
                 "type": "eternal_tokens"
             }
         )
@@ -141,8 +133,8 @@ async def process_subscription_purchase(callback: CallbackQuery, user: User):
 
     text = f"""💳 **Оплата токенов**
 
-📦 **Тариф:** {tariff['name']}
-💰 **Стоимость:** {tariff['price']} руб.
+📦 **Тариф:** {plan.display_name}
+💰 **Стоимость:** {plan.price} руб.
 
 🔹 Токены вечные и никогда не сгорают
 🔹 После оплаты токены будут автоматически зачислены
@@ -256,7 +248,7 @@ async def process_promocode(message: Message, state: FSMContext, user: User):
                 promo.current_uses += 1
                 await session.commit()
 
-                total_tokens = user.get_total_tokens()
+                total_tokens = await sub_service.get_available_tokens(user.id)
 
                 # Create keyboard with profile button
                 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton

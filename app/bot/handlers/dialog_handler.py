@@ -248,9 +248,18 @@ async def process_dialog_message(
         # Pre-check if user has enough tokens for estimated cost
         async with async_session_maker() as session:
             sub_service = SubscriptionService(session)
-            total_tokens = await sub_service.get_user_total_tokens(user.id)
+            total_tokens = await sub_service.get_available_tokens(user.id)
 
             if total_tokens < estimated_tokens:
+                logger.warning(
+                    "insufficient_tokens_precheck",
+                    available_tokens=total_tokens,
+                    required_tokens=estimated_tokens,
+                    billing_id=model_billing_id,
+                    dialog_id=dialog.get("dialog_id"),
+                    model_name=dialog.get("model_name"),
+                    user_id=user.id,
+                )
                 await message.answer(
                     f"❌ Недостаточно токенов!\n\n"
                     f"Примерная стоимость запроса: {estimated_tokens:,} токенов\n"
@@ -269,6 +278,15 @@ async def process_dialog_message(
             try:
                 await sub_service.check_and_use_tokens(user.id, tokens_cost)
             except InsufficientTokensError as e:
+                logger.warning(
+                    "insufficient_tokens_fixed_cost",
+                    available_tokens=e.details.get("available"),
+                    required_tokens=tokens_cost,
+                    billing_id=model_billing_id,
+                    dialog_id=dialog.get("dialog_id"),
+                    model_name=dialog.get("model_name"),
+                    user_id=user.id,
+                )
                 await message.answer(
                     f"❌ Недостаточно токенов!\n\n"
                     f"Требуется: {tokens_cost:,} токенов\n"

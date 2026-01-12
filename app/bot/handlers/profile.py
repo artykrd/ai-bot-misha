@@ -11,118 +11,71 @@ from app.bot.keyboards.inline import profile_keyboard, subscription_manage_keybo
 from app.database.models.user import User
 from app.database.database import async_session_maker
 from app.services.subscription.subscription_service import SubscriptionService
+from app.core.billing_config import (
+    get_text_model_billing,
+    get_image_model_billing,
+    get_video_model_billing,
+    format_token_amount,
+)
 
 router = Router(name="profile")
-
-
-# Token costs for different services
-TOKEN_COSTS = {
-    "gpt-4-mini": 500,
-    "gpt-4-mini-vision": 3000,
-    "nano-banana": 8000,
-    "gpt-image": 8000,
-    "midjourney": 20000,
-    "dalle": 10000,
-    "stable-diffusion": 15000,
-    "recraft": 15000,
-    "faceswap": 8000,
-    "photo-enhance": 2000,
-    "bg-replace": 15000,
-    "bg-remove": 8000,
-    "vectorize": 8000,
-    "sora": 50000,
-    "veo": 50000,
-    "mj-video": 30000,
-    "hailuo": 30000,
-    "luma": 30000,
-    "kling": 30000,
-    "kling-effects": 30000,
-    "suno": 20000,
-    "whisper-per-min": 1000,
-    "tts-per-1k-chars": 1,
-}
 
 
 def calculate_service_availability(total_tokens: int) -> str:
     """Calculate what services are available with current token balance."""
     lines = []
 
-    if total_tokens >= TOKEN_COSTS["gpt-4-mini"]:
-        count = total_tokens // TOKEN_COSTS["gpt-4-mini"]
-        lines.append(f"- {count} запросов к ChatGPT 4 Omni Mini;")
+    gpt_billing = get_text_model_billing("gpt-4.1-mini")
+    gpt_estimate = gpt_billing.calculate_cost(500, 1000)
+    count = total_tokens // gpt_estimate
+    lines.append(f"- {count} запросов к ChatGPT 4.1 Mini (оценка);")
 
-    if total_tokens >= TOKEN_COSTS["gpt-4-mini-vision"]:
-        count = total_tokens // TOKEN_COSTS["gpt-4-mini-vision"]
-        lines.append(f"- {count} запросов к ChatGPT Omni Mini с обработкой фотографий;")
+    nano_billing = get_image_model_billing("nano-banana-image")
+    dalle_billing = get_image_model_billing("dalle3")
+    stable_billing = get_image_model_billing("stable-diffusion")
+    recraft_billing = get_image_model_billing("recraft")
+    face_billing = get_image_model_billing("face-swap")
 
-    if total_tokens >= TOKEN_COSTS["nano-banana"]:
-        count = total_tokens // TOKEN_COSTS["nano-banana"]
+    if total_tokens >= nano_billing.tokens_per_generation:
+        count = total_tokens // nano_billing.tokens_per_generation
         lines.append(f"- Nano Banana: {count} запроса;")
 
-    if total_tokens >= TOKEN_COSTS["gpt-image"]:
-        count = total_tokens // TOKEN_COSTS["gpt-image"]
-        lines.append(f"- GPT Image 1: {count} запроса;")
+    if total_tokens >= dalle_billing.tokens_per_generation:
+        count = total_tokens // dalle_billing.tokens_per_generation
+        lines.append(f"- DALL·E 3: {count} запросов;")
 
-    count = total_tokens // TOKEN_COSTS["midjourney"]
-    lines.append(f"- Midjourney: {count} запросов;")
-
-    count = total_tokens // TOKEN_COSTS["dalle"]
-    lines.append(f"- DALL·E: {count} запрос{'ов' if count != 1 else ''};")
-
-    count = total_tokens // TOKEN_COSTS["stable-diffusion"]
+    count = total_tokens // stable_billing.tokens_per_generation
     lines.append(f"- Stable Diffusion: {count} запросов;")
 
-    count = total_tokens // TOKEN_COSTS["recraft"]
+    count = total_tokens // recraft_billing.tokens_per_generation
     lines.append(f"- Recraft: {count} запросов;")
 
-    if total_tokens >= TOKEN_COSTS["faceswap"]:
-        count = total_tokens // TOKEN_COSTS["faceswap"]
-        lines.append(f"- Замена лиц: {count} запроса для замены лиц;")
+    count = total_tokens // face_billing.tokens_per_generation
+    lines.append(f"- Face Swap: {count} запросов;")
 
-    if total_tokens >= TOKEN_COSTS["photo-enhance"]:
-        count = total_tokens // TOKEN_COSTS["photo-enhance"]
-        lines.append(f"- Улучшение фото: {count} запросов;")
+    sora_billing = get_video_model_billing("sora2")
+    veo_billing = get_video_model_billing("veo-3.1-fast")
+    mj_sd_billing = get_video_model_billing("midjourney-video-sd")
+    hailuo_billing = get_video_model_billing("hailuo")
+    luma_billing = get_video_model_billing("luma")
+    kling_billing = get_video_model_billing("kling-video")
+    kling_fx_billing = get_video_model_billing("kling-effects")
 
-    count = total_tokens // TOKEN_COSTS["bg-replace"]
-    lines.append(f"- Замена фона: {count} запросов;")
+    lines.append(f"- Sora 2: {total_tokens // sora_billing.tokens_per_generation} запросов;")
+    lines.append(f"- Veo 3.1: {total_tokens // veo_billing.tokens_per_generation} запросов;")
+    lines.append(f"- Midjourney Video SD: {total_tokens // mj_sd_billing.tokens_per_generation} запросов;")
+    lines.append(f"- Hailuo: {total_tokens // hailuo_billing.tokens_per_generation} запросов;")
+    lines.append(f"- Luma: {total_tokens // luma_billing.tokens_per_generation} запросов;")
+    lines.append(f"- Kling: {total_tokens // kling_billing.tokens_per_generation} запросов;")
+    lines.append(f"- Kling Effects: {total_tokens // kling_fx_billing.tokens_per_generation} запросов;")
 
-    if total_tokens >= TOKEN_COSTS["bg-remove"]:
-        count = total_tokens // TOKEN_COSTS["bg-remove"]
-        lines.append(f"- Удаление фона: {count} запроса;")
+    suno_cost = 20000
+    whisper_cost = 1000
+    tts_cost = 1
 
-    if total_tokens >= TOKEN_COSTS["vectorize"]:
-        count = total_tokens // TOKEN_COSTS["vectorize"]
-        lines.append(f"- Векторизация фото: {count} запроса;")
-
-    count = total_tokens // TOKEN_COSTS["sora"]
-    lines.append(f"- Sora 2: {count} запросов;")
-
-    count = total_tokens // TOKEN_COSTS["veo"]
-    lines.append(f"- Veo 3.1: {count} запросов;")
-
-    count = total_tokens // TOKEN_COSTS["mj-video"]
-    lines.append(f"- Midjourney Video: {count} запросов;")
-
-    count = total_tokens // TOKEN_COSTS["hailuo"]
-    lines.append(f"- Hailuo: {count} запросов;")
-
-    count = total_tokens // TOKEN_COSTS["luma"]
-    lines.append(f"- Luma Dream Machine: {count} запросов;")
-
-    count = total_tokens // TOKEN_COSTS["kling"]
-    lines.append(f"- Kling: {count} запросов;")
-
-    count = total_tokens // TOKEN_COSTS["kling-effects"]
-    lines.append(f"- Kling Effects: {count} запросов;")
-
-    count = total_tokens // TOKEN_COSTS["suno"]
-    lines.append(f"- Создание песен: {count} запросов (Suno);")
-
-    minutes = total_tokens // TOKEN_COSTS["whisper-per-min"]
-    lines.append(f"- {minutes} минут расшифровки аудио;")
-
-    chars = total_tokens // TOKEN_COSTS["tts-per-1k-chars"] * 1000
-    lines.append(f"- {chars:,} символов перевода текста в голос.")
+    lines.append(f"- Создание песен: {total_tokens // suno_cost} запросов (Suno);")
+    lines.append(f"- {total_tokens // whisper_cost} минут расшифровки аудио;")
+    lines.append(f"- {(total_tokens // tts_cost) * 1000:,} символов перевода текста в голос.")
 
     return "\n".join(lines)
 
@@ -142,7 +95,7 @@ async def show_profile(event, user: User, state: FSMContext):
     async with async_session_maker() as session:
         sub_service = SubscriptionService(session)
 
-        total_tokens = await sub_service.get_user_total_tokens(user.id)
+        total_tokens = await sub_service.get_available_tokens(user.id)
         # Get total spent tokens (placeholder for now)
         spent_tokens = 0  # TODO: implement tracking
 
@@ -188,7 +141,7 @@ async def show_tokens_info(callback: CallbackQuery, user: User):
 
     async with async_session_maker() as session:
         sub_service = SubscriptionService(session)
-        total_tokens = await sub_service.get_user_total_tokens(user.id)
+        total_tokens = await sub_service.get_available_tokens(user.id)
 
     text = f"""💎 **Токены**
 
@@ -202,13 +155,18 @@ async def show_tokens_info(callback: CallbackQuery, user: User):
 • Пригласить друзей (реферальная программа)
 • Активировать промокод
 
-**Стоимость запросов:**
-• ChatGPT 4 Mini — 500 токенов
-• Nano Banana (фото) — 6,380 токенов
-• DALL-E 3 — 5,300 токенов
-• Sora 2 (видео) — 50,600 токенов
-• Hailuo (видео) — 90,000 токенов
-• Kling (видео) — 80,000 токенов
+**Стоимость запросов (фиксированная для медиа):**
+• Nano Banana (фото) — {format_token_amount(get_image_model_billing("nano-banana-image").tokens_per_generation)} токенов
+• Banana PRO (фото) — {format_token_amount(get_image_model_billing("banana-pro").tokens_per_generation)} токенов
+• DALL-E 3 — {format_token_amount(get_image_model_billing("dalle3").tokens_per_generation)} токенов
+• Stable Diffusion — {format_token_amount(get_image_model_billing("stable-diffusion").tokens_per_generation)} токенов
+• Recraft — {format_token_amount(get_image_model_billing("recraft").tokens_per_generation)} токенов
+• Sora 2 (видео) — {format_token_amount(get_video_model_billing("sora2").tokens_per_generation)} токенов
+• Veo 3.1 Fast (видео) — {format_token_amount(get_video_model_billing("veo-3.1-fast").tokens_per_generation)} токенов
+• Kling (видео) — {format_token_amount(get_video_model_billing("kling-video").tokens_per_generation)} токенов
+• Kling Effects (видео) — {format_token_amount(get_video_model_billing("kling-effects").tokens_per_generation)} токенов
+• Hailuo (видео) — {format_token_amount(get_video_model_billing("hailuo").tokens_per_generation)} токенов
+• Luma (видео) — {format_token_amount(get_video_model_billing("luma").tokens_per_generation)} токенов
 • Suno (музыка) — 17,600 токенов
 • Whisper (расшифровка) — 1,200 токенов/мин
 

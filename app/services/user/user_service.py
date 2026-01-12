@@ -115,8 +115,10 @@ class UserService:
     async def get_user_stats(self, telegram_id: int) -> dict:
         """Get user statistics."""
         user = await self.get_user_by_telegram_id(telegram_id)
+        from app.services.subscription.subscription_service import SubscriptionService
 
-        total_tokens = user.get_total_tokens()
+        sub_service = SubscriptionService(self.session)
+        total_tokens = await sub_service.get_available_tokens(user.id)
         active_sub = user.get_active_subscription()
 
         return {

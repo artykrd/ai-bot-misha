@@ -100,7 +100,7 @@ class User(Base, BaseModel, TimestampMixin):
         """Get total available tokens across all subscriptions."""
         total = 0
         for sub in self.subscriptions:
-            if sub.is_active:
+            if sub.is_active and not sub.is_expired:
                 remaining = sub.tokens_amount - sub.tokens_used
                 if remaining > 0:
                     total += remaining

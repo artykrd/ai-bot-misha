@@ -17,42 +17,43 @@ from collections import defaultdict
 
 from app.core.logger import get_logger
 from app.core.redis_client import redis_client
+from app.core.billing_config import get_video_model_billing
 
 logger = get_logger(__name__)
 
 
-# Стоимость моделей в токенах (пересчитано с реальных цен)
-# Veo 3.1: ~$4 за 10 сек = $0.40/сек
-# При условной цене $0.01/1000 токенов -> $0.40 = 40,000 токенов/сек
+veo_billing = get_video_model_billing("veo-3.1-fast")
+sora_billing = get_video_model_billing("sora2")
+luma_billing = get_video_model_billing("luma")
+hailuo_billing = get_video_model_billing("hailuo")
+kling_billing = get_video_model_billing("kling-video")
+
+# Стоимость моделей в токенах (единый источник правды)
 MODEL_COSTS = {
     "veo-3.1": {
-        "base_cost_per_second": 40000,  # 40k токенов за секунду видео
-        "min_duration": 4,
-        "max_duration": 8,
-        "default_duration": 4,  # Эконом-режим по умолчанию
+        "base_cost": veo_billing.tokens_per_generation,
+        "default_duration": 8,
         "requires_confirmation": True,
-        "description": "Veo 3.1 (очень дорого)"
+        "description": "Veo 3.1 Fast"
     },
     "sora-2": {
-        "base_cost_per_second": 20000,
-        "min_duration": 5,
-        "max_duration": 20,
-        "default_duration": 5,
+        "base_cost": sora_billing.tokens_per_generation,
+        "default_duration": 10,
         "requires_confirmation": True,
         "description": "Sora 2"
     },
     "luma": {
-        "base_cost": 8000,
+        "base_cost": luma_billing.tokens_per_generation,
         "requires_confirmation": False,
         "description": "Luma Dream Machine"
     },
     "hailuo": {
-        "base_cost": 7000,
+        "base_cost": hailuo_billing.tokens_per_generation,
         "requires_confirmation": False,
         "description": "Hailuo MiniMax"
     },
     "kling": {
-        "base_cost": 9000,
+        "base_cost": kling_billing.tokens_per_generation,
         "requires_confirmation": False,
         "description": "Kling AI"
     }
@@ -157,7 +158,7 @@ class CostGuard:
         else:
             # Фиксированная стоимость
             estimated_tokens = config.get("base_cost", 1000)
-            duration = None
+            duration = duration or config.get("default_duration")
             warning = None
 
         # Конвертируем в USD (условно $0.01 за 1000 токенов)

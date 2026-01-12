@@ -290,6 +290,10 @@ TOKEN_PRICE_RUB = 0.000588
 # ==============================================
 # HELPER FUNCTIONS
 # ==============================================
+def format_token_amount(tokens: int) -> str:
+    """Format token amount with spaced thousands."""
+    return f"{tokens:,}".replace(",", " ")
+
 
 def get_text_model_billing(model_id: str) -> Optional[TextModelBilling]:
     """
@@ -306,6 +310,17 @@ def get_text_model_billing(model_id: str) -> Optional[TextModelBilling]:
         model_id = LEGACY_TEXT_MODEL_MAP[model_id]
 
     return TEXT_MODELS.get(model_id)
+
+
+def format_text_model_pricing(model_id: str) -> Optional[str]:
+    """Format pricing info for text models."""
+    billing = get_text_model_billing(model_id)
+    if not billing:
+        return None
+    return (
+        f"{billing.display_name} — база {format_token_amount(billing.base_tokens)} "
+        f"+ {billing.per_gpt_token} за токен AI"
+    )
 
 
 def get_image_model_billing(model_id: str) -> Optional[FixedModelBilling]:

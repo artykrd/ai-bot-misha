@@ -9,6 +9,7 @@ import aiohttp
 
 from app.core.config import settings
 from app.core.logger import get_logger
+from app.core.billing_config import get_image_model_billing
 from app.services.image.base import BaseImageProvider, ImageResponse
 
 logger = get_logger(__name__)
@@ -112,10 +113,8 @@ class RecraftService(BaseImageProvider):
                 time=processing_time
             )
 
-            # Estimate token usage based on model
-            # V2: ~2200 tokens ($0.022)
-            # V3: ~4000 tokens ($0.04)
-            tokens_used = 2200 if model == "recraftv2" else 4000
+            recraft_billing = get_image_model_billing("recraft")
+            tokens_used = recraft_billing.tokens_per_generation
 
             return ImageResponse(
                 success=True,

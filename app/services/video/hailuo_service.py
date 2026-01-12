@@ -12,6 +12,7 @@ import aiohttp
 
 from app.core.config import settings
 from app.core.logger import get_logger
+from app.core.billing_config import get_video_model_billing
 from app.services.video.base import BaseVideoProvider, VideoResponse
 
 logger = get_logger(__name__)
@@ -126,8 +127,8 @@ class HailuoService(BaseVideoProvider):
                 model=model
             )
 
-            # Стоимость Hailuo: 90,000 токенов за видео
-            tokens_used = 90000
+            hailuo_billing = get_video_model_billing("hailuo")
+            tokens_used = hailuo_billing.tokens_per_generation
 
             return VideoResponse(
                 success=True,

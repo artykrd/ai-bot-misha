@@ -10,6 +10,7 @@ import os
 
 from app.core.config import settings
 from app.core.logger import get_logger
+from app.core.billing_config import get_image_model_billing
 from app.services.image.base import BaseImageProvider, ImageResponse
 
 logger = get_logger(__name__)
@@ -171,8 +172,8 @@ class GeminiImageService(BaseImageProvider):
                 time=processing_time
             )
 
-            # Estimate token usage (Imagen is relatively cheap)
-            tokens_used = 3000
+            gemini_billing = get_image_model_billing("nano-banana-image")
+            tokens_used = gemini_billing.tokens_per_generation
 
             return ImageResponse(
                 success=True,
