@@ -59,7 +59,7 @@ async def calculate_balance_songs(user_id: int, tokens_per_song: int) -> int:
     """Calculate how many songs user can create with current balance."""
     async with async_session_maker() as session:
         sub_service = SubscriptionService(session)
-        user_tokens = await sub_service.get_user_total_tokens(user_id)
+        user_tokens = await sub_service.get_available_tokens(user_id)
     return user_tokens // tokens_per_song
 
 

@@ -3,6 +3,7 @@ Dialog context management for tracking active user dialogs.
 """
 from typing import Optional, Dict, Any
 from app.core.logger import get_logger
+from app.core.billing_config import get_text_model_billing
 
 logger = get_logger(__name__)
 
@@ -166,6 +167,23 @@ MODEL_MAPPINGS = {
         "supports_files": True
     },
 }
+
+
+def _validate_model_mappings() -> None:
+    """Validate dialog -> billing mapping to prevent silent mismatches."""
+    for dialog_id, config in MODEL_MAPPINGS.items():
+        billing_id = config.get("billing_id", config.get("model_id"))
+        if not get_text_model_billing(billing_id):
+            logger.error(
+                "invalid_dialog_billing_mapping",
+                dialog_id=dialog_id,
+                billing_id=billing_id,
+                model_id=config.get("model_id"),
+                model_name=config.get("name"),
+            )
+
+
+_validate_model_mappings()
 
 
 def set_active_dialog(user_id: int, dialog_id: int, history_enabled: bool = False, show_costs: bool = False):

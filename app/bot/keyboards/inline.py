@@ -335,38 +335,20 @@ def audio_tools_keyboard() -> InlineKeyboardMarkup:
 
 def subscription_keyboard() -> InlineKeyboardMarkup:
     """Subscription selection keyboard with new billing prices."""
+    from app.core.subscription_plans import list_subscription_plans
+
     builder = InlineKeyboardBuilder()
 
-    builder.row(
-        InlineKeyboardButton(
-            text="7 дней — 150,000 токенов — 88 руб.",
-            callback_data="shop_select_tariff_1"
+    for plan in list_subscription_plans():
+        builder.row(
+            InlineKeyboardButton(
+                text=(
+                    f"{plan.display_name} — {plan.price} руб."
+                ),
+                callback_data=f"shop_select_tariff_{plan.plan_id}"
+            )
         )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="14 дней — 250,000 токенов — 176 руб.",
-            callback_data="shop_select_tariff_2"
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="21 день — 500,000 токенов — 260 руб.",
-            callback_data="shop_select_tariff_3"
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="30 дней — 1,000,000 токенов — 537 руб.",
-            callback_data="shop_select_tariff_6"
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="30 дней — 5,000,000 токенов — 2,511 руб.",
-            callback_data="shop_select_tariff_21"
-        )
-    )
+
     builder.row(
         InlineKeyboardButton(
             text="🔥 Безлимит на 1 день",
@@ -394,32 +376,18 @@ def subscription_keyboard() -> InlineKeyboardMarkup:
 
 def eternal_tokens_keyboard() -> InlineKeyboardMarkup:
     """Eternal tokens selection keyboard."""
+    from app.core.subscription_plans import ETERNAL_PLANS
+    from app.core.billing_config import format_token_amount
+
     builder = InlineKeyboardBuilder()
 
-    builder.row(
-        InlineKeyboardButton(
-            text="150,000 токенов — 149 руб.",
-            callback_data="buy:eternal_150k"
+    for plan in ETERNAL_PLANS.values():
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{format_token_amount(plan.tokens)} токенов — {plan.price} руб.",
+                callback_data=f"buy:{plan.subscription_type}"
+            )
         )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="250,000 токенов — 279 руб.",
-            callback_data="buy:eternal_250k"
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="500,000 токенов — 519 руб.",
-            callback_data="buy:eternal_500k"
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="1,000,000 токенов — 999 руб.",
-            callback_data="buy:eternal_1m"
-        )
-    )
     builder.row(
         InlineKeyboardButton(text="⬅️ Назад", callback_data="bot#shop")
     )

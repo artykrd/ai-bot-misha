@@ -35,15 +35,16 @@ async def cmd_shop(message: Message):
 async def cmd_models(message: Message):
     """Models command - show model selection."""
     from app.bot.handlers.text_ai import select_ai_model
-    text = """🤖 **Выбор AI модели**
+    from app.core.billing_config import format_text_model_pricing
+    text = f"""🤖 **Выбор AI модели**
 
 Выберите модель для диалога:
 
-**GPT-4 Omni** - самая продвинутая модель OpenAI (1000 токенов)
-**GPT-4 Mini** - быстрая и доступная модель (250 токенов)
-**Claude 4** - модель от Anthropic (1200 токенов)
-**Gemini Pro** - модель от Google (900 токенов)
-**DeepSeek** - отличная альтернатива (800 токенов)"""
+• {format_text_model_pricing("gpt-4o")}
+• {format_text_model_pricing("gpt-4.1-mini")}
+• {format_text_model_pricing("claude-4")}
+• {format_text_model_pricing("gemini-flash-2.0")}
+• {format_text_model_pricing("deepseek-chat")}"""
 
     from app.bot.keyboards.inline import ai_models_keyboard
     await message.answer(text, reply_markup=ai_models_keyboard(), parse_mode=ParseMode.MARKDOWN)
@@ -108,11 +109,13 @@ async def cmd_sora(message: Message, state):
     """Sora 2 command - directly open Sora interface."""
     from app.bot.keyboards.inline import back_to_main_keyboard
     from app.bot.handlers.media_handler import MediaState
+    from app.core.billing_config import get_video_model_billing, format_token_amount
 
+    sora_billing = get_video_model_billing("sora2")
     text = (
         "**Sora 2 - Video Generation**\n\n"
         "Sora 2 может создавать реалистичные видео длительностью до 20 секунд по вашему описанию.\n\n"
-        "💰 **Стоимость:** ~15,000 токенов за видео\n\n"
+        f"💰 **Стоимость:** {format_token_amount(sora_billing.tokens_per_generation)} токенов за видео\n\n"
         "✏️ **Отправьте текстовое описание видео, которое вы хотите создать**"
     )
 
@@ -129,7 +132,9 @@ async def cmd_veo(message: Message, state):
     """Veo 3.1 command - directly open Veo interface."""
     from app.bot.keyboards.inline import back_to_main_keyboard
     from app.bot.handlers.media_handler import MediaState
+    from app.core.billing_config import get_video_model_billing, format_token_amount
 
+    veo_billing = get_video_model_billing("veo-3.1-fast")
     text = (
         "🌊 **Veo 3.1 - Video Generation**\n\n"
         "Google Veo создаёт реалистичные HD видео по вашему описанию.\n\n"
@@ -137,7 +142,7 @@ async def cmd_veo(message: Message, state):
         "• Длительность: 8 секунд\n"
         "• Разрешение: 720p\n"
         "• Форматы: 16:9, 9:16, 1:1, 4:3, 3:4\n\n"
-        "💰 **Стоимость:** ~15,000 токенов за видео\n\n"
+        f"💰 **Стоимость:** {format_token_amount(veo_billing.tokens_per_generation)} токенов за видео\n\n"
         "✏️ **Отправьте описание видео**\n"
         "_Чем детальнее описание, тем лучше результат!_\n\n"
         "**Примеры:**\n"
@@ -157,17 +162,19 @@ async def cmd_nano(message: Message, state):
     """Nano Banana command - directly open Nano Banana interface."""
     from app.bot.keyboards.inline import nano_banana_keyboard
     from app.bot.handlers.media_handler import MediaState, cleanup_temp_images
+    from app.core.billing_config import get_image_model_billing, format_token_amount
 
     # Clean up any old images from previous sessions
     await cleanup_temp_images(state)
 
-    text = """🍌 **Nano Banana · твори и экспериментируй**
+    nano_billing = get_image_model_billing("nano-banana-image")
+    text = f"""🍌 **Nano Banana · твори и экспериментируй**
 
 📖 **Создавайте:**
 – Создает фотографии по промпту и по вашим изображениям;
 – Она отлично наследует исходное фото и может работать с ним. Попросите её, например, "перенести этот стиль на новое изображение".
 
-**Стоимость:** 3,000 токенов за запрос
+**Стоимость:** {format_token_amount(nano_billing.tokens_per_generation)} токенов за запрос
 
 ✏️ **Отправьте текстовый запрос для генерации изображения**"""
 
@@ -199,14 +206,16 @@ async def cmd_image(message: Message, state: FSMContext):
     """GPT Image command - DALL-E image generation."""
     from app.bot.states import MediaState
     from app.bot.handlers.media_handler import cleanup_temp_images
+    from app.core.billing_config import get_image_model_billing, format_token_amount
 
     # Clean up any old images from previous sessions
     await cleanup_temp_images(state)
 
+    dalle_billing = get_image_model_billing("dalle3")
     text = (
         "🖼 **GPT Image 1 (DALL-E 3)**\n\n"
         "Создайте уникальные изображения по текстовому описанию.\n\n"
-        "💰 **Стоимость:** 5,300 токенов за запрос\n\n"
+        f"💰 **Стоимость:** {format_token_amount(dalle_billing.tokens_per_generation)} токенов за запрос\n\n"
         "✏️ **Отправьте описание изображения**"
     )
 
@@ -249,8 +258,13 @@ async def cmd_dalle(message: Message, state: FSMContext):
 @router.message(Command("recraft"))
 async def cmd_recraft(message: Message):
     """Recraft command."""
+    from app.core.billing_config import get_image_model_billing, format_token_amount
+    recraft_billing = get_image_model_billing("recraft")
     await message.answer(
-        "🎨 <b>Recraft</b>\n\n⚠️ Функционал в разработке\n\nСтоимость: 15,000 токенов за запрос",
+        (
+            "🎨 <b>Recraft</b>\n\n⚠️ Функционал в разработке\n\n"
+            f"Стоимость: {format_token_amount(recraft_billing.tokens_per_generation)} токенов за запрос"
+        ),
         reply_markup=main_menu_keyboard(),
         parse_mode=ParseMode.HTML
     )
@@ -259,8 +273,13 @@ async def cmd_recraft(message: Message):
 @router.message(Command("faceswap"))
 async def cmd_faceswap(message: Message):
     """Faceswap command."""
+    from app.core.billing_config import get_image_model_billing, format_token_amount
+    face_billing = get_image_model_billing("face-swap")
     await message.answer(
-        "👤 <b>Замена лица на фото</b>\n\n⚠️ Функционал в разработке\n\nСтоимость: 8,000 токенов за запрос",
+        (
+            "👤 <b>Замена лица на фото</b>\n\n⚠️ Функционал в разработке\n\n"
+            f"Стоимость: {format_token_amount(face_billing.tokens_per_generation)} токенов за запрос"
+        ),
         reply_markup=main_menu_keyboard(),
         parse_mode=ParseMode.HTML
     )
@@ -311,8 +330,15 @@ async def cmd_whisper(message: Message, state: FSMContext):
 @router.message(Command("mvideo"))
 async def cmd_mvideo(message: Message):
     """Midjourney Video command."""
+    from app.core.billing_config import get_video_model_billing, format_token_amount
+    mj_sd = get_video_model_billing("midjourney-video-sd")
+    mj_hd = get_video_model_billing("midjourney-video-hd")
     await message.answer(
-        "🎬 <b>Midjourney Video</b>\n\n⚠️ Функционал в разработке\n\nСтоимость: 30,000 токенов за запрос",
+        (
+            "🎬 <b>Midjourney Video</b>\n\n⚠️ Функционал в разработке\n\n"
+            f"Стоимость: {format_token_amount(mj_sd.tokens_per_generation)} токенов (SD) / "
+            f"{format_token_amount(mj_hd.tokens_per_generation)} токенов (HD)"
+        ),
         reply_markup=main_menu_keyboard(),
         parse_mode=ParseMode.HTML
     )
@@ -323,11 +349,13 @@ async def cmd_luma(message: Message, state):
     """Luma Dream Machine command - directly open Luma interface."""
     from app.bot.keyboards.inline import back_to_main_keyboard
     from app.bot.handlers.media_handler import MediaState
+    from app.core.billing_config import get_video_model_billing, format_token_amount
 
+    luma_billing = get_video_model_billing("luma")
     text = (
         "🌙 **Luma Dream Machine**\n\n"
         "Luma создаёт качественные видео по вашему описанию.\n\n"
-        "💰 **Стоимость:** ~8,000 токенов за видео\n\n"
+        f"💰 **Стоимость:** {format_token_amount(luma_billing.tokens_per_generation)} токенов за видео\n\n"
         "🎨 **Режимы работы:**\n"
         "• **Text-to-Video:** Просто отправьте описание видео\n"
         "• **Image-to-Video:** Отправьте фото, затем описание\n\n"

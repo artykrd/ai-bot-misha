@@ -11,6 +11,7 @@ import asyncio
 
 from app.core.config import settings
 from app.core.logger import get_logger
+from app.core.billing_config import get_image_model_billing
 from app.services.image.base import BaseImageProvider, ImageResponse
 
 logger = get_logger(__name__)
@@ -196,8 +197,9 @@ class NanoBananaService(BaseImageProvider):
                 time=processing_time
             )
 
-            # Token usage: approximately 3,000 tokens per image
-            tokens_used = 3000 * number_of_images
+            billing_id = "banana-pro" if "3-pro" in model else "nano-banana-image"
+            nano_billing = get_image_model_billing(billing_id)
+            tokens_used = nano_billing.tokens_per_generation * number_of_images
 
             return ImageResponse(
                 success=True,

@@ -36,25 +36,6 @@ router = Router(name="navigation")
 DIALOG_STATES = {}
 
 
-# Model names mapping
-MODEL_NAMES = {
-    324: ("4️⃣ GPT 4.1 Mini", "gpt-4.1-mini"),
-    325: ("4️⃣ GPT 4o", "gpt-4o"),
-    326: ("💫 O3 Mini", "o3-mini"),
-    327: ("🐳 Deepseek Чат", "deepseek-chat"),
-    328: ("🐳 Deepseek R1", "deepseek-r1"),
-    329: ("⚡ Gemini Flash 2.0", "gemini-flash-2.0"),
-    330: ("🛡 nano Banana", "google/gemini-2.5-pro-preview"),
-    331: ("🌐 Sonar с поиском", "perplexity/sonar-search"),
-    332: ("💻 Sonar Pro", "perplexity/sonar-pro"),
-    333: ("📔 Claude 4", "anthropic/claude-3.7"),
-    334: ("📘 Claude 3.5 Haiku", "anthropic/claude-3.5"),
-    338: ("🤖 GPT 4o-mini", "gpt-4o-mini"),
-    335: ("🔍 Анализ текста", "gpt-4-mini-analysis"),
-    336: ("🌆 Генератор промптов", "gpt-4-mini-prompts"),
-    337: ("🔥 GPT 5 Mini", "gpt-5-mini"),
-}
-
 
 def get_dialog_state(user_id: int, dialog_id: int) -> dict:
     """Get dialog state for user."""
@@ -98,7 +79,7 @@ async def back_to_main(callback: CallbackQuery, user: User, state: FSMContext):
 
     async with async_session_maker() as session:
         sub_service = SubscriptionService(session)
-        total_tokens = await sub_service.get_user_total_tokens(user.id)
+        total_tokens = await sub_service.get_available_tokens(user.id)
 
     text = f"""👋🏻 **Привет!** У тебя на балансе **{total_tokens:,} токенов** ** **– используй их для запросов к нейросетям.
 
@@ -137,28 +118,27 @@ async def back_to_main(callback: CallbackQuery, user: User, state: FSMContext):
 @router.callback_query(F.data == "bot.llm_models")
 async def show_models(callback: CallbackQuery):
     """Show AI models selection."""
-    text = """🤖 **Языковые модели**
+    from app.core.billing_config import format_text_model_pricing
 
-**GPT Models:**
-• **GPT 4.1 Mini** – быстрая модель с отличным качеством (500 токенов)
-• **GPT 4o** – самая продвинутая модель (1000 токенов)
-• **GPT 5 Mini** – новейшая модель OpenAI (600 токенов)
-• **O3 Mini** – модель для сложных рассуждений (700 токенов)
-
-**Claude Models:**
-• **Claude 4** – новейшая модель от Anthropic (1200 токенов)
-
-**Google Models:**
-• **Gemini Flash 2.0** – быстрая и эффективная модель (400 токенов)
-• **nano Banana** – продвинутая модель для сложных задач (900 токенов)
-
-**DeepSeek Models:**
-• **Deepseek Чат** – отличная альтернатива для диалогов (600 токенов)
-• **Deepseek R1** – модель с расширенными возможностями (800 токенов)
-
-**Perplexity Models:**
-• **Sonar с поиском** – модель с доступом к интернету (700 токенов)
-• **Sonar Pro** – продвинутая версия с поиском (1000 токенов)"""
+    text = (
+        "🤖 **Языковые модели**\n\n"
+        "**GPT Models:**\n"
+        f"• {format_text_model_pricing('gpt-4.1-mini')}\n"
+        f"• {format_text_model_pricing('gpt-4o')}\n"
+        f"• {format_text_model_pricing('gpt-5-mini')}\n"
+        f"• {format_text_model_pricing('o3-mini')}\n\n"
+        "**Claude Models:**\n"
+        f"• {format_text_model_pricing('claude-4')}\n\n"
+        "**Google Models:**\n"
+        f"• {format_text_model_pricing('gemini-flash-2.0')}\n"
+        f"• {format_text_model_pricing('nano-banana-text')}\n\n"
+        "**DeepSeek Models:**\n"
+        f"• {format_text_model_pricing('deepseek-chat')}\n"
+        f"• {format_text_model_pricing('deepseek-r1')}\n\n"
+        "**Perplexity Models:**\n"
+        f"• {format_text_model_pricing('sonar')}\n"
+        f"• {format_text_model_pricing('sonar-pro')}"
+    )
 
     try:
         await callback.message.edit_text(
@@ -176,7 +156,7 @@ async def show_models(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("bot.start_chatgpt_dialog_"))
 async def start_dialog(callback: CallbackQuery, user: User):
     """Start or continue a dialog with specific model."""
-    from app.bot.handlers.dialog_context import set_active_dialog
+    from app.bot.handlers.dialog_context import set_active_dialog, MODEL_MAPPINGS
 
     # Parse callback data
     callback_parts = callback.data.split("#")
@@ -206,8 +186,12 @@ async def start_dialog(callback: CallbackQuery, user: User):
     # Set active dialog in context
     set_active_dialog(user.telegram_id, dialog_id, history_enabled, show_costs)
 
-    # Get model info
-    model_name, model_id = MODEL_NAMES.get(dialog_id, ("Unknown Model", "unknown"))
+    model_config = MODEL_MAPPINGS.get(dialog_id)
+    if not model_config:
+        await callback.answer("❌ Неизвестная модель", show_alert=True)
+        return
+    model_name = model_config["name"]
+    model_id = model_config["model_id"]
 
     # Build history status text
     history_status = "сохраняется (📈)" if history_enabled else "не сохраняется"
@@ -313,14 +297,16 @@ __ℹ️ Выберите нейросеть для генерации виде�
 async def show_nano_banana(callback: CallbackQuery, state: FSMContext):
     """Show Nano Banana interface."""
     from app.bot.handlers.media_handler import MediaState
+    from app.core.billing_config import get_image_model_billing, format_token_amount
 
-    text = """🍌 **Nano Banana · твори и экспериментируй**
+    nano_billing = get_image_model_billing("nano-banana-image")
+    text = f"""🍌 **Nano Banana · твори и экспериментируй**
 
 📖 **Создавайте:**
 – Создает фотографии по промпту и по вашим изображениям;
 – Она отлично наследует исходное фото и может работать с ним. Попросите её, например, "перенести этот стиль на новое изображение".
 
-**Стоимость:** 3,000 токенов за запрос
+**Стоимость:** {format_token_amount(nano_billing.tokens_per_generation)} токенов за запрос
 
 ✏️ **Отправьте текстовый запрос для генерации изображения**"""
 
@@ -398,11 +384,16 @@ async def nano_format_selected(callback: CallbackQuery, state: FSMContext):
 async def nano_multi_images(callback: CallbackQuery, state: FSMContext):
     """Show Nano Banana multiple images generation menu."""
     from app.bot.keyboards.inline import nano_multi_images_keyboard
+    from app.core.billing_config import get_image_model_billing, format_token_amount
 
     # Get current PRO status
     data = await state.get_data()
     nano_is_pro = data.get("nano_is_pro", False)
     model_display = "Gemini 3 Pro" if nano_is_pro else "Gemini 2.5 Flash"
+
+    cost_per_image = get_image_model_billing(
+        "banana-pro" if nano_is_pro else "nano-banana-image"
+    ).tokens_per_generation
 
     text = f"""🎨 **Создание нескольких изображений ({model_display})**
 
@@ -417,7 +408,7 @@ async def nano_multi_images(callback: CallbackQuery, state: FSMContext):
 • Загрузите одно фото → получите несколько вариаций одной сцены
 • Без фото → получите несколько разных изображений по промпту
 
-💰 **Стоимость:** ~3,000 токенов × количество изображений
+💰 **Стоимость:** {format_token_amount(cost_per_image)} токенов × количество изображений
 
 📌 **Выберите количество изображений для генерации:**"""
 
@@ -438,6 +429,7 @@ async def nano_multi_count_selected(callback: CallbackQuery, state: FSMContext):
     """Handle multiple images count selection."""
     from app.bot.handlers.media_handler import MediaState
     from app.bot.keyboards.inline import back_to_main_keyboard
+    from app.core.billing_config import get_image_model_billing, format_token_amount
 
     count = int(callback.data.split(":")[1])
 
@@ -447,13 +439,15 @@ async def nano_multi_count_selected(callback: CallbackQuery, state: FSMContext):
     model_display = "Nano Banana PRO (Gemini 3)" if nano_is_pro else "Nano Banana (Gemini 2.5)"
 
     # Calculate cost
-    cost_per_image = 3000
+    cost_per_image = get_image_model_billing(
+        "banana-pro" if nano_is_pro else "nano-banana-image"
+    ).tokens_per_generation
     total_cost = cost_per_image * count
 
     text = f"""✅ **Выбрано: {count} изображений**
 
 🍌 **Модель:** {model_display}
-💰 **Стоимость:** ~{total_cost:,} токенов
+💰 **Стоимость:** {format_token_amount(total_cost)} токенов
 
 📸 **Инструкция:**
 
@@ -641,27 +635,28 @@ async def tariff_selected(callback: CallbackQuery, user: User):
     """Handle tariff selection."""
     from app.database.database import async_session_maker
     from app.services.payment import PaymentService
-    from decimal import Decimal
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     from aiogram.types import InlineKeyboardButton
+    from app.core.subscription_plans import get_subscription_plan, UNLIMITED_PLAN
+    from app.core.logger import get_logger
+
+    logger = get_logger(__name__)
 
     # Extract tariff ID
     tariff_id = callback.data.split("_")[-1]
 
-    # Define subscription tariffs
-    TARIFFS = {
-        "1": {"days": 7, "tokens": 150000, "price": Decimal("98.00"), "name": "7 дней — 150,000 токенов"},
-        "2": {"days": 14, "tokens": 250000, "price": Decimal("196.00"), "name": "14 дней — 250,000 токенов"},
-        "3": {"days": 21, "tokens": 500000, "price": Decimal("289.00"), "name": "21 день — 500,000 токенов"},
-        "6": {"days": 30, "tokens": 1000000, "price": Decimal("597.00"), "name": "30 дней — 1,000,000 токенов"},
-        "21": {"days": 30, "tokens": 5000000, "price": Decimal("2790.00"), "name": "30 дней — 5,000,000 токенов"},
-        "22": {"days": 1, "tokens": None, "price": Decimal("649.00"), "name": "Безлимит на 1 день"},
-    }
-
-    tariff = TARIFFS.get(tariff_id)
-    if not tariff:
-        await callback.answer("❌ Неизвестный тариф", show_alert=True)
-        return
+    plan = get_subscription_plan(tariff_id)
+    if tariff_id == "22":
+        tariff = UNLIMITED_PLAN
+        tariff_name = "Безлимит на 1 день"
+        tariff_tokens = None
+    else:
+        if not plan:
+            await callback.answer("❌ Неизвестный тариф", show_alert=True)
+            return
+        tariff = plan
+        tariff_name = plan.display_name
+        tariff_tokens = plan.tokens
 
     # Create payment
     async with async_session_maker() as session:
@@ -669,12 +664,12 @@ async def tariff_selected(callback: CallbackQuery, user: User):
 
         payment = await payment_service.create_payment(
             user_id=user.id,
-            amount=tariff["price"],
-            description=f"Подписка: {tariff['name']}",
+            amount=tariff.price,
+            description=f"Подписка: {tariff_name}",
             metadata={
                 "tariff_id": tariff_id,
-                "days": tariff["days"],
-                "tokens": tariff["tokens"],
+                "days": tariff.days,
+                "tokens": tariff_tokens,
                 "type": "subscription"
             }
         )
@@ -690,6 +685,16 @@ async def tariff_selected(callback: CallbackQuery, user: User):
             await callback.answer("❌ Ошибка получения ссылки на оплату", show_alert=True)
             return
 
+    logger.info(
+        "subscription_payment_created",
+        plan_id=tariff_id,
+        amount_rub=float(tariff.price),
+        tokens_granted=tariff_tokens,
+        duration_days=tariff.days,
+        user_id=user.id,
+        payment_id=payment.payment_id,
+    )
+
     # Build payment message
     builder = InlineKeyboardBuilder()
     builder.row(
@@ -699,32 +704,45 @@ async def tariff_selected(callback: CallbackQuery, user: User):
         InlineKeyboardButton(text="⬅️ Назад", callback_data="bot#shop")
     )
 
-    tokens_text = f"{tariff['tokens']:,} токенов" if tariff['tokens'] else "Безлимит"
+    tokens_text = f"{tariff_tokens:,} токенов" if tariff_tokens else "Безлимит"
 
     # Special detailed description for unlimited tariff
     if tariff_id == "22":
+        from app.core.billing_config import (
+            get_text_model_billing,
+            get_image_model_billing,
+            get_video_model_billing,
+            format_token_amount,
+        )
+        gpt_billing = get_text_model_billing("gpt-4.1-mini")
+        nano_billing = get_image_model_billing("nano-banana-image")
+        dalle_billing = get_image_model_billing("dalle3")
+        sora_billing = get_video_model_billing("sora2")
+        veo_billing = get_video_model_billing("veo-3.1-fast")
+        hailuo_billing = get_video_model_billing("hailuo")
+        kling_billing = get_video_model_billing("kling-video")
+
         text = f"""💳 **Оплата подписки**
 
-📦 **Тариф:** {tariff['name']}
-💰 **Стоимость:** {tariff['price']} руб.
-⏰ **Срок:** {tariff['days']} день
+📦 **Тариф:** {tariff_name}
+💰 **Стоимость:** {tariff.price} руб.
+⏰ **Срок:** {tariff.days} день
 
 🎯 **Что вы получаете:**
 
 **💬 Чат с ChatGPT:**
-• ~3000 запросов к GPT 4 Omni Mini
-• ~600 запросов с фотографиями
+• Базовая стоимость: {format_token_amount(gpt_billing.base_tokens)} токенов
+• За каждый токен AI: {gpt_billing.per_gpt_token} внутренних токенов
 
 **🖼 Генерация изображений:**
-• Nano Banana: ~235 изображений
-• DALL-E 3: ~150 изображений
+• Nano Banana: {format_token_amount(nano_billing.tokens_per_generation)} токенов за изображение
+• DALL-E 3: {format_token_amount(dalle_billing.tokens_per_generation)} токенов за изображение
 
 **🎬 Генерация видео:**
-• Sora 2: ~4 видео
-• Veo 3.1: ~8 видео (4K качество)
-• Midjourney Video: ~2 видео
-• Hailuo: ~11 видео
-• Kling: ~12 видео
+• Sora 2: {format_token_amount(sora_billing.tokens_per_generation)} токенов за видео
+• Veo 3.1 Fast: {format_token_amount(veo_billing.tokens_per_generation)} токенов за видео
+• Hailuo: {format_token_amount(hailuo_billing.tokens_per_generation)} токенов за видео
+• Kling: {format_token_amount(kling_billing.tokens_per_generation)} токенов за видео
 
 **🎵 Генерация аудио:**
 • Suno: ~85 песен (по 2 мин)
@@ -736,9 +754,9 @@ async def tariff_selected(callback: CallbackQuery, user: User):
     else:
         text = f"""💳 **Оплата подписки**
 
-📦 **Тариф:** {tariff['name']}
-💰 **Стоимость:** {tariff['price']} руб.
-⏰ **Срок:** {tariff['days']} дней
+📦 **Тариф:** {tariff_name}
+💰 **Стоимость:** {tariff.price} руб.
+⏰ **Срок:** {tariff.days} дней
 🎁 **Токены:** {tokens_text}
 
 После оплаты подписка будет автоматически активирована.
@@ -982,7 +1000,15 @@ async def show_faq(callback: CallbackQuery):
 @router.callback_query(F.data == "help.tokens")
 async def show_help_tokens(callback: CallbackQuery):
     """Show help about tokens."""
-    text = """💎 <b>Токены</b>
+    from app.core.billing_config import (
+        format_token_amount,
+        get_text_model_billing,
+        get_image_model_billing,
+        get_video_model_billing,
+    )
+    gpt_billing = get_text_model_billing("gpt-4.1-mini")
+
+    text = f"""💎 <b>Токены</b>
 
 <b>Что такое токены?</b>
 Токены — это внутренняя валюта бота. За токены вы можете использовать все AI-модели: ChatGPT, генерацию изображений, видео, музыки и многое другое.
@@ -993,14 +1019,17 @@ async def show_help_tokens(callback: CallbackQuery):
 • Активировать промокод
 
 <b>Стоимость запросов:</b>
-• ChatGPT 4 Mini — 500 токенов
-• Nano Banana (фото) — 6,380 токенов
-• DALL-E 3 — 5,300 токенов
-• Sora 2 (видео) — 250,600 токенов
-• Veo 3.1 (видео) — 116,000 токенов
-• Midjourney Video (видео) — 348,000 токенов
-• Hailuo (видео) — 90,000 токенов
-• Kling (видео) — 80,000 токенов
+• ChatGPT 4.1 Mini — база {format_token_amount(gpt_billing.base_tokens)} + {gpt_billing.per_gpt_token} за токен AI
+• Nano Banana (фото) — {format_token_amount(get_image_model_billing("nano-banana-image").tokens_per_generation)} токенов
+• Banana PRO (фото) — {format_token_amount(get_image_model_billing("banana-pro").tokens_per_generation)} токенов
+• DALL-E 3 — {format_token_amount(get_image_model_billing("dalle3").tokens_per_generation)} токенов
+• Sora 2 (видео) — {format_token_amount(get_video_model_billing("sora2").tokens_per_generation)} токенов
+• Veo 3.1 Fast (видео) — {format_token_amount(get_video_model_billing("veo-3.1-fast").tokens_per_generation)} токенов
+• Midjourney Video SD (видео) — {format_token_amount(get_video_model_billing("midjourney-video-sd").tokens_per_generation)} токенов
+• Midjourney Video HD (видео) — {format_token_amount(get_video_model_billing("midjourney-video-hd").tokens_per_generation)} токенов
+• Hailuo (видео) — {format_token_amount(get_video_model_billing("hailuo").tokens_per_generation)} токенов
+• Kling (видео) — {format_token_amount(get_video_model_billing("kling-video").tokens_per_generation)} токенов
+• Kling Effects (видео) — {format_token_amount(get_video_model_billing("kling-effects").tokens_per_generation)} токенов
 • Suno (музыка) — 17,600 токенов
 • Whisper (расшифровка) — 1,200 токенов/мин
 

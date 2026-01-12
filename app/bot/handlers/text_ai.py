@@ -219,7 +219,7 @@ async def process_ai_request(message: Message, user: User, state: FSMContext):
         has_balance = await sub_service.check_token_balance(user.id, estimated_tokens)
 
         if not has_balance:
-            total_tokens = await sub_service.get_user_total_tokens(user.id)
+            total_tokens = await sub_service.get_available_tokens(user.id)
             await message.answer(
                 f"❌ Недостаточно токенов!\n\n"
                 f"Примерная стоимость запроса: {estimated_tokens:,} токенов\n"

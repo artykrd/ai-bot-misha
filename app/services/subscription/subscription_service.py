@@ -8,26 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.models.subscription import Subscription
 from app.database.repositories.subscription import SubscriptionRepository
 from app.core.logger import get_logger
-from app.core.exceptions import InsufficientTokensError, SubscriptionExpiredError
+from app.core.exceptions import InsufficientTokensError
+from app.core.subscription_plans import get_subscription_tariff, get_all_tariffs
 
 logger = get_logger(__name__)
 
 
-# Subscription tariffs configuration (updated with new token billing system)
-TARIFFS = {
-    # Token packages (as per new billing system)
-    "7days": {"days": 7, "tokens": 150000, "price": 88},
-    "14days": {"days": 14, "tokens": 250000, "price": 176},
-    "21days": {"days": 21, "tokens": 500000, "price": 260},
-    "30days_1m": {"days": 30, "tokens": 1000000, "price": 537},
-    "30days_5m": {"days": 30, "tokens": 5000000, "price": 2511},
-    # Legacy tariffs (kept for backward compatibility)
-    "unlimited_1day": {"days": 1, "tokens": -1, "price": 649},  # -1 = unlimited
-    "eternal_150k": {"days": None, "tokens": 150000, "price": 149},
-    "eternal_250k": {"days": None, "tokens": 250000, "price": 279},
-    "eternal_500k": {"days": None, "tokens": 500000, "price": 519},
-    "eternal_1m": {"days": None, "tokens": 1000000, "price": 999},
-}
+TARIFFS = get_all_tariffs()
 
 
 class SubscriptionService:
@@ -43,17 +30,16 @@ class SubscriptionService:
         subscription_type: str
     ) -> Subscription:
         """Create a new subscription for user."""
-        if subscription_type not in TARIFFS:
+        tariff = get_subscription_tariff(subscription_type)
+        if not tariff:
             raise ValueError(f"Invalid subscription type: {subscription_type}")
-
-        tariff = TARIFFS[subscription_type]
 
         subscription = await self.repository.create_subscription(
             user_id=user_id,
             subscription_type=subscription_type,
-            tokens_amount=tariff["tokens"] if tariff["tokens"] != -1 else 999999999,
-            price=tariff["price"],
-            duration_days=tariff["days"]
+            tokens_amount=tariff.tokens if not tariff.is_unlimited else 999999999,
+            price=float(tariff.price),
+            duration_days=tariff.days
         )
 
         logger.info(
@@ -87,15 +73,8 @@ class SubscriptionService:
         Returns:
             True if user has enough tokens
         """
-        subscription = await self.get_active_subscription(user_id)
-
-        if not subscription:
-            return False
-
-        if subscription.is_expired:
-            return False
-
-        return subscription.can_use_tokens(tokens_required)
+        available_tokens = await self.get_available_tokens(user_id)
+        return available_tokens >= tokens_required
 
     async def check_and_use_tokens(
         self,
@@ -110,60 +89,84 @@ class SubscriptionService:
 
         Raises:
             InsufficientTokensError: If user doesn't have enough tokens
-            SubscriptionExpiredError: If subscription is expired
         """
-        subscription = await self.get_active_subscription(user_id)
+        subscriptions = await self.repository.get_user_subscriptions(
+            user_id,
+            active_only=True
+        )
+        subscriptions = [sub for sub in subscriptions if not sub.is_expired]
 
-        if not subscription:
+        if not subscriptions:
             raise InsufficientTokensError(
                 "No active subscription found",
                 {"required": tokens_required, "available": 0}
             )
 
-        if subscription.is_expired:
-            raise SubscriptionExpiredError(
-                "Subscription has expired",
-                {"expired_at": subscription.expires_at}
+        available_tokens = sum(sub.tokens_remaining for sub in subscriptions)
+        if available_tokens < tokens_required:
+            logger.warning(
+                "insufficient_tokens",
+                user_id=user_id,
+                available_tokens=available_tokens,
+                required_tokens=tokens_required,
+                billing_id=None,
+                dialog_id=None,
+                model_name=None,
             )
-
-        if not subscription.can_use_tokens(tokens_required):
             raise InsufficientTokensError(
-                f"Insufficient tokens: need {tokens_required}, have {subscription.tokens_remaining}",
+                f"Insufficient tokens: need {tokens_required}, have {available_tokens}",
                 {
                     "required": tokens_required,
-                    "available": subscription.tokens_remaining
+                    "available": available_tokens
                 }
             )
 
-        # Use tokens
-        success = await self.repository.use_tokens(subscription.id, tokens_required)
+        subscriptions.sort(
+            key=lambda sub: (sub.expires_at is None, sub.expires_at)
+        )
 
-        if not success:
+        remaining = tokens_required
+        for sub in subscriptions:
+            if remaining <= 0:
+                break
+            available = sub.tokens_remaining
+            if available <= 0:
+                continue
+            to_deduct = min(available, remaining)
+            sub.use_tokens(to_deduct)
+            remaining -= to_deduct
+
+        if remaining > 0:
             raise InsufficientTokensError("Failed to use tokens")
+
+        await self.session.commit()
 
         logger.info(
             "tokens_used",
             user_id=user_id,
-            subscription_id=subscription.id,
+            subscription_id=subscriptions[0].id,
             amount=tokens_required,
-            remaining=subscription.tokens_remaining - tokens_required
+            remaining=available_tokens - tokens_required
         )
 
-        return subscription
+        return subscriptions[0]
 
-    async def get_user_total_tokens(self, user_id: int) -> int:
-        """Get total available tokens for user."""
+    async def get_available_tokens(self, user_id: int) -> int:
+        """Get total available tokens across all active subscriptions."""
         subscriptions = await self.repository.get_user_subscriptions(
             user_id,
             active_only=True
         )
 
-        total = 0
-        for sub in subscriptions:
-            if not sub.is_expired:
-                total += sub.tokens_remaining
+        return sum(
+            sub.tokens_remaining
+            for sub in subscriptions
+            if not sub.is_expired
+        )
 
-        return total
+    async def get_user_total_tokens(self, user_id: int) -> int:
+        """Get total available tokens for user (backward compatibility)."""
+        return await self.get_available_tokens(user_id)
 
     async def deactivate_expired_subscriptions(self) -> int:
         """Deactivate all expired subscriptions (background task)."""
@@ -264,4 +267,3 @@ class SubscriptionService:
         )
 
         return subscription
-

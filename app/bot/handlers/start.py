@@ -142,7 +142,12 @@ async def cmd_start(message: Message, user: User):
             except (ValueError, IndexError):
                 pass  # Invalid referral code format
 
-    total_tokens = user.get_total_tokens()
+    from app.database.database import async_session_maker
+    from app.services.subscription.subscription_service import SubscriptionService
+
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+        total_tokens = await sub_service.get_available_tokens(user.id)
 
     welcome_text = f"""👋🏻 **Привет!** У тебя на балансе **{total_tokens:,} токенов** – используй их для запросов к нейросетям.
 
@@ -180,7 +185,7 @@ async def show_main_menu(callback: CallbackQuery, user: User):
 
     async with async_session_maker() as session:
         sub_service = SubscriptionService(session)
-        total_tokens = await sub_service.get_user_total_tokens(user.id)
+        total_tokens = await sub_service.get_available_tokens(user.id)
 
     welcome_text = f"""👋🏻 **Привет!** У тебя на балансе **{total_tokens:,} токенов** ** **– используй их для запросов к нейросетям.
 

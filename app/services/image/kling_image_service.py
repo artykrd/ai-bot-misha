@@ -9,6 +9,7 @@ import aiohttp
 
 from app.core.config import settings
 from app.core.logger import get_logger
+from app.core.billing_config import get_image_model_billing
 from app.services.image.base import BaseImageProvider, ImageResponse
 
 logger = get_logger(__name__)
@@ -107,11 +108,9 @@ class KlingImageService(BaseImageProvider):
                 time=processing_time
             )
 
-            # Estimate token usage based on resolution and number of images
             n = kwargs.get("n", 1)
-            resolution = kwargs.get("resolution", "1k")
-            tokens_per_image = 5000 if resolution == "2k" else 3000
-            tokens_used = tokens_per_image * n
+            kling_billing = get_image_model_billing("kling-image")
+            tokens_used = kling_billing.tokens_per_generation * n
 
             return ImageResponse(
                 success=True,

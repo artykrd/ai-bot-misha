@@ -9,6 +9,7 @@ import aiohttp
 
 from app.core.config import settings
 from app.core.logger import get_logger
+from app.core.billing_config import get_video_model_billing
 from app.services.video.base import BaseVideoProvider, VideoResponse
 
 logger = get_logger(__name__)
@@ -94,8 +95,8 @@ class SoraService(BaseVideoProvider):
                 time=processing_time
             )
 
-            # Стоимость Sora 2: 250,600 токенов за видео
-            tokens_used = 250600
+            sora_billing = get_video_model_billing("sora2")
+            tokens_used = sora_billing.tokens_per_generation
 
             return VideoResponse(
                 success=True,

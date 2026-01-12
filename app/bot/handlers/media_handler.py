@@ -32,6 +32,11 @@ from app.database.database import async_session_maker
 from app.core.logger import get_logger
 from app.core.exceptions import InsufficientTokensError
 from app.core.cost_guard import cost_guard
+from app.core.billing_config import (
+    get_image_model_billing,
+    get_video_model_billing,
+    format_token_amount,
+)
 from app.core.temp_files import get_temp_file_path, cleanup_temp_file
 from app.services.video import VeoService, SoraService, LumaService, HailuoService, KlingService
 from app.services.image import DalleService, GeminiImageService, StabilityService, RemoveBgService, NanoBananaService, KlingImageService, RecraftService
@@ -55,6 +60,13 @@ async def cleanup_temp_images(state: FSMContext):
         file_path = data.get(key)
         if file_path:
             cleanup_temp_file(file_path)
+
+
+async def get_available_tokens(user_id: int) -> int:
+    """Fetch available tokens for user from subscriptions."""
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+        return await sub_service.get_available_tokens(user_id)
 
 
 def resize_image_if_needed(image_path: str, max_size_mb: float = 2.0, max_dimension: int = 2048) -> str:
@@ -133,8 +145,9 @@ def resize_image_if_needed(image_path: str, max_size_mb: float = 2.0, max_dimens
 @router.callback_query(F.data == "bot.veo")
 async def start_veo(callback: CallbackQuery, state: FSMContext, user: User):
     # Get user's total tokens
-    total_tokens = user.get_total_tokens()
-    videos_available = int(total_tokens / 98000) if total_tokens > 0 else 0
+    total_tokens = await get_available_tokens(user.id)
+    veo_billing = get_video_model_billing("veo-3.1-fast")
+    videos_available = int(total_tokens / veo_billing.tokens_per_generation) if total_tokens > 0 else 0
 
     text = (
         "🌊 Veo 3.1 · лучший генератор видео\n\n"
@@ -148,7 +161,8 @@ async def start_veo(callback: CallbackQuery, state: FSMContext, user: User):
         "Модель: Veo 3.1 Fast\n"
         "Формат: 16:9\n"
         "Сид: 0\n\n"
-        f"🔹 Баланса хватит на {videos_available} видео. Стоимость генерации видео: 98 000 токенов"
+        f"🔹 Баланса хватит на {videos_available} видео. "
+        f"Стоимость генерации видео: {format_token_amount(veo_billing.tokens_per_generation)} токенов"
     )
 
     await state.set_state(MediaState.waiting_for_video_prompt)
@@ -160,8 +174,9 @@ async def start_veo(callback: CallbackQuery, state: FSMContext, user: User):
 
 @router.callback_query(F.data == "bot.sora")
 async def start_sora(callback: CallbackQuery, state: FSMContext, user: User):
-    total_tokens = user.get_total_tokens()
-    videos_available = int(total_tokens / 43000) if total_tokens > 0 else 0
+    total_tokens = await get_available_tokens(user.id)
+    sora_billing = get_video_model_billing("sora2")
+    videos_available = int(total_tokens / sora_billing.tokens_per_generation) if total_tokens > 0 else 0
 
     text = (
         "☁️ Sora 2 · вирусные ролики с озвучкой\n\n"
@@ -174,7 +189,8 @@ async def start_sora(callback: CallbackQuery, state: FSMContext, user: User):
         "Длительность: 10 сек.\n"
         "Качество: стандартное\n"
         "Формат: 16:9\n\n"
-        f"🔹 Баланса хватит на {videos_available} видео. Стоимость генерации видео (10 секунд): 43 000 токенов\n\n"
+        f"🔹 Баланса хватит на {videos_available} видео. Стоимость генерации видео (10 секунд): "
+        f"{format_token_amount(sora_billing.tokens_per_generation)} токенов\n\n"
         "⚠️ Функционал в разработке."
     )
 
@@ -184,10 +200,11 @@ async def start_sora(callback: CallbackQuery, state: FSMContext, user: User):
 
 @router.callback_query(F.data == "bot.luma")
 async def start_luma(callback: CallbackQuery, state: FSMContext, user: User):
+    luma_billing = get_video_model_billing("luma")
     text = (
         "🌙 **Luma Dream Machine**\n\n"
         "Luma создаёт качественные видео по вашему описанию.\n\n"
-        "💰 **Стоимость:** Стоимость генерации видео: 85 000 токенов\n\n"
+        f"💰 **Стоимость:** Стоимость генерации видео: {format_token_amount(luma_billing.tokens_per_generation)} токенов\n\n"
         "🎨 **Режимы работы:**\n"
         "• **Text-to-Video:** Просто отправьте описание видео\n"
         "• **Image-to-Video:** Отправьте фото, затем описание\n\n"
@@ -204,8 +221,9 @@ async def start_luma(callback: CallbackQuery, state: FSMContext, user: User):
 
 @router.callback_query(F.data == "bot.hailuo")
 async def start_hailuo(callback: CallbackQuery, state: FSMContext, user: User):
-    total_tokens = user.get_total_tokens()
-    videos_available = int(total_tokens / 90000) if total_tokens > 0 else 0
+    total_tokens = await get_available_tokens(user.id)
+    hailuo_billing = get_video_model_billing("hailuo")
+    videos_available = int(total_tokens / hailuo_billing.tokens_per_generation) if total_tokens > 0 else 0
 
     text = (
         "🎥 Hailuo · создание видео\n\n"
@@ -220,7 +238,8 @@ async def start_hailuo(callback: CallbackQuery, state: FSMContext, user: User):
         "Автоперевод: включен\n\n"
         "📝 Выбранная модель принимает только текстовый запрос, вы можете изменить модель на понравившуюся "
         "или прикрепить фото с текстом и я автоматически изменю модель на t2v-01-director.\n\n"
-        f"🔹 Токенов хватит на {videos_available} запросов. 1 запрос = 90,000 токенов."
+        f"🔹 Токенов хватит на {videos_available} запросов. "
+        f"1 запрос = {format_token_amount(hailuo_billing.tokens_per_generation)} токенов."
     )
 
     await state.set_state(MediaState.waiting_for_video_prompt)
@@ -232,10 +251,11 @@ async def start_hailuo(callback: CallbackQuery, state: FSMContext, user: User):
 
 @router.callback_query(F.data == "bot.kling_effects")
 async def start_kling_effects(callback: CallbackQuery, state: FSMContext, user: User):
+    kling_effects_billing = get_video_model_billing("kling-effects")
     text = (
         "Kling Effects\n\n"
         "Создание видео с эффектами от Kling AI.\n\n"
-        "Стоимость: ~10,000 токенов за видео\n\n"
+        f"Стоимость: {format_token_amount(kling_effects_billing.tokens_per_generation)} токенов за видео\n\n"
         "Отправьте текстовое описание видео с эффектом."
     )
 
@@ -287,8 +307,9 @@ async def start_kling_image(callback: CallbackQuery, state: FSMContext, user: Us
 @router.callback_query(F.data == "bot.kling_video")
 async def start_kling_video(callback: CallbackQuery, state: FSMContext, user: User):
     """Start Kling video generation."""
-    total_tokens = user.get_total_tokens()
-    videos_available = int(total_tokens / 80000) if total_tokens > 0 else 0
+    total_tokens = await get_available_tokens(user.id)
+    kling_billing = get_video_model_billing("kling-video")
+    videos_available = int(total_tokens / kling_billing.tokens_per_generation) if total_tokens > 0 else 0
 
     text = (
         "🎞 Kling · меняй реальность\n\n"
@@ -302,7 +323,8 @@ async def start_kling_video(callback: CallbackQuery, state: FSMContext, user: Us
         "Формат видео: 1:1\n"
         "Версия: 2.5\n"
         "Автоперевод: включен\n\n"
-        f"🔹 Токенов хватит на {videos_available} запросов. 1 запрос = 80,000.0 токенов."
+        f"🔹 Токенов хватит на {videos_available} запросов. "
+        f"1 запрос = {format_token_amount(kling_billing.tokens_per_generation)} токенов."
     )
 
     await state.set_state(MediaState.waiting_for_video_prompt)
@@ -320,6 +342,7 @@ async def start_kling_video(callback: CallbackQuery, state: FSMContext, user: Us
 async def start_gpt_image(callback: CallbackQuery, state: FSMContext, user: User):
     # Clean up any old images
     await cleanup_temp_images(state)
+    dalle_billing = get_image_model_billing("dalle3")
 
     text = (
         "**GPT Image (DALL-E 3)**\n\n"
@@ -329,7 +352,7 @@ async def start_gpt_image(callback: CallbackQuery, state: FSMContext, user: User
         "• DALL-E 3 (стандарт)\n"
         "• DALL-E 2\n\n"
         "**Размеры:** 1024x1024, 1792x1024, 1024x1792\n\n"
-        "💰 **Стоимость генерации: 8 500 токенов за изображение**\n\n"
+        f"💰 **Стоимость генерации: {format_token_amount(dalle_billing.tokens_per_generation)} токенов за изображение**\n\n"
         "🎨 **Режимы работы:**\n"
         "• **Text-to-Image:** Отправьте описание изображения\n"
         "• **Image Variation (DALL-E 2):** Отправьте фото для создания вариаций\n\n"
@@ -347,6 +370,7 @@ async def start_gpt_image(callback: CallbackQuery, state: FSMContext, user: User
 async def start_nano(callback: CallbackQuery, state: FSMContext, user: User):
     # Clean up any old images
     await cleanup_temp_images(state)
+    nano_billing = get_image_model_billing("nano-banana-image")
 
     text = (
         "🍌 **Nano Banana (Gemini 2.5 Flash Image)**\n\n"
@@ -354,7 +378,7 @@ async def start_nano(callback: CallbackQuery, state: FSMContext, user: User):
         "📊 **Параметры:**\n"
         "• Форматы: 1:1, 16:9, 9:16, 3:4, 4:3\n"
         "• Высокое качество изображений\n\n"
-        "💰 **Стоимость генерации: 5,500 токенов за изображение**\n\n"
+        f"💰 **Стоимость генерации: {format_token_amount(nano_billing.tokens_per_generation)} токенов за изображение**\n\n"
         "🎨 **Режимы работы:**\n"
         "• **Text-to-Image:** Отправьте описание изображения\n"
         "• **Image-to-Image:** Отправьте **одно или несколько фото** + описание\n"
@@ -393,6 +417,7 @@ async def start_nano(callback: CallbackQuery, state: FSMContext, user: User):
 async def start_nano_pro(callback: CallbackQuery, state: FSMContext, user: User):
     # Clean up any old images
     await cleanup_temp_images(state)
+    banana_billing = get_image_model_billing("banana-pro")
 
     text = (
         "🍌✨ **Banana PRO (Gemini 3 Pro Image)**\n\n"
@@ -402,7 +427,7 @@ async def start_nano_pro(callback: CallbackQuery, state: FSMContext, user: User)
         "• Размеры: 2K, 4K\n"
         "• Высочайшее качество изображений\n"
         "• Улучшенная генерация текста на изображениях\n\n"
-        "💰 **Стоимость генерации: 22,000 токенов за изображение**\n\n"
+        f"💰 **Стоимость генерации: {format_token_amount(banana_billing.tokens_per_generation)} токенов за изображение**\n\n"
         "🎨 **Режимы работы:**\n"
         "• **Text-to-Image:** Отправьте описание изображения\n"
         "• **Image-to-Image:** Отправьте **одно или несколько фото** + описание\n"
@@ -472,6 +497,7 @@ async def start_recraft(callback: CallbackQuery, state: FSMContext, user: User):
     """Recraft AI image generation."""
     # Clean up any old images
     await cleanup_temp_images(state)
+    recraft_billing = get_image_model_billing("recraft")
 
     text = (
         "🎨 **Recraft AI - Image Generation**\n\n"
@@ -480,7 +506,7 @@ async def start_recraft(callback: CallbackQuery, state: FSMContext, user: User):
         "• Модель: Recraft V2 (оптимальное соотношение цена/качество)\n"
         "• Стили: реалистичные, иллюстрации, векторная графика, иконки\n"
         "• Размеры: 1024x1024 и другие соотношения\n\n"
-        "💰 **Стоимость:** ~2,200 токенов (дешевле DALL-E 3)\n\n"
+        f"💰 **Стоимость:** {format_token_amount(recraft_billing.tokens_per_generation)} токенов\n\n"
         "🎨 **Доступные стили:**\n"
         "• **Realistic Image** (по умолчанию) - фотореалистичные изображения\n"
         "• **Digital Illustration** - цифровые иллюстрации\n"
@@ -766,7 +792,7 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
     cost_warning = (
         f"💰 **Стоимость генерации Veo 3.1:**\n\n"
         f"Длительность: {actual_duration} сек\n"
-        f"Стоимость: ~{estimated_tokens:,} токенов (≈${cost_estimate.estimated_cost_usd:.2f})\n\n"
+        f"Стоимость: {format_token_amount(estimated_tokens)} токенов (≈${cost_estimate.estimated_cost_usd:.2f})\n\n"
     )
 
     if cost_estimate.warning_message:
@@ -802,7 +828,7 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
     progress_msg = await message.answer(
         f"🎬 Создаю видео в Veo 3.1 ({mode_text})...\n\n"
         f"⏱ Длительность: {actual_duration} сек\n"
-        f"💰 Стоимость: ~{estimated_tokens:,} токенов\n\n"
+        f"💰 Стоимость: {format_token_amount(estimated_tokens)} токенов\n\n"
         f"⏱ Создание может занять ~2-10 минут.\n"
         f"⚡️ Очень сильная нагрузка на сервис, но результат может появиться намного быстрее."
     )
@@ -832,7 +858,7 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
         # Get user's remaining tokens
         async with async_session_maker() as session:
             sub_service = SubscriptionService(session)
-            user_tokens = await sub_service.get_user_total_tokens(user.id)
+            user_tokens = await sub_service.get_available_tokens(user.id)
 
         # Generate unified notification message
         mode_info = "image-to-video" if image_path else "text-to-video"
@@ -924,7 +950,8 @@ async def process_sora_video(message: Message, user: User, state: FSMContext):
     data = await state.get_data()
     # Get prompt from caption if available, otherwise from message text
     prompt = data.get("photo_caption_prompt") or message.text
-    estimated_tokens = 15000
+    sora_billing = get_video_model_billing("sora2")
+    estimated_tokens = sora_billing.tokens_per_generation
 
     async with async_session_maker() as session:
         sub_service = SubscriptionService(session)
@@ -958,7 +985,7 @@ async def process_sora_video(message: Message, user: User, state: FSMContext):
         # Get user's remaining tokens
         async with async_session_maker() as session:
             sub_service = SubscriptionService(session)
-            user_tokens = await sub_service.get_user_total_tokens(user.id)
+            user_tokens = await sub_service.get_available_tokens(user.id)
 
         # Generate unified notification message
         caption = format_generation_message(
@@ -1007,7 +1034,8 @@ async def process_luma_video(message: Message, user: User, state: FSMContext):
     prompt = data.get("photo_caption_prompt") or message.text
     image_path = data.get("image_path", None)
 
-    estimated_tokens = 8000
+    luma_billing = get_video_model_billing("luma")
+    estimated_tokens = luma_billing.tokens_per_generation
 
     async with async_session_maker() as session:
         sub_service = SubscriptionService(session)
@@ -1064,7 +1092,7 @@ async def process_luma_video(message: Message, user: User, state: FSMContext):
         # Get user's remaining tokens
         async with async_session_maker() as session:
             sub_service = SubscriptionService(session)
-            user_tokens = await sub_service.get_user_total_tokens(user.id)
+            user_tokens = await sub_service.get_available_tokens(user.id)
 
         # Generate unified notification message
         mode_info = "image-to-video" if image_path else "text-to-video"
@@ -1121,7 +1149,8 @@ async def process_hailuo_video(message: Message, user: User, state: FSMContext):
     data = await state.get_data()
     # Get prompt from caption if available, otherwise from message text
     prompt = data.get("photo_caption_prompt") or message.text
-    estimated_tokens = 7000
+    hailuo_billing = get_video_model_billing("hailuo")
+    estimated_tokens = hailuo_billing.tokens_per_generation
 
     async with async_session_maker() as session:
         sub_service = SubscriptionService(session)
@@ -1154,7 +1183,7 @@ async def process_hailuo_video(message: Message, user: User, state: FSMContext):
         # Get user's remaining tokens
         async with async_session_maker() as session:
             sub_service = SubscriptionService(session)
-            user_tokens = await sub_service.get_user_total_tokens(user.id)
+            user_tokens = await sub_service.get_available_tokens(user.id)
 
         # Generate unified notification message
         caption = format_generation_message(
@@ -1203,7 +1232,8 @@ async def process_kling_video(message: Message, user: User, state: FSMContext, i
     prompt = data.get("photo_caption_prompt") or message.text
     image_path = data.get("image_path", None)
 
-    estimated_tokens = 10000 if is_effects else 9000
+    kling_billing = get_video_model_billing("kling-effects" if is_effects else "kling-video")
+    estimated_tokens = kling_billing.tokens_per_generation
 
     async with async_session_maker() as session:
         sub_service = SubscriptionService(session)
@@ -1252,14 +1282,16 @@ async def process_kling_video(message: Message, user: User, state: FSMContext, i
         # Get user's remaining tokens
         async with async_session_maker() as session:
             sub_service = SubscriptionService(session)
-            user_tokens = await sub_service.get_user_total_tokens(user.id)
+            user_tokens = await sub_service.get_available_tokens(user.id)
+
+        tokens_used = estimated_tokens
 
         # Generate unified notification message
         mode_info = "image-to-video" if image_path else "text-to-video"
         caption = format_generation_message(
             content_type=CONTENT_TYPES["video"],
             model_name=service_name,  # "Kling AI" or "Kling Effects"
-            tokens_used=result.tokens_used,
+            tokens_used=tokens_used,
             user_tokens=user_tokens,
             prompt=prompt,
             mode=mode_info
@@ -1450,7 +1482,8 @@ async def process_dalle_image(message: Message, user: User, state: FSMContext):
     reference_image_path = data.get("reference_image_path", None)
 
     # Check and use tokens
-    estimated_tokens = 2000 if reference_image_path else 4000  # Variations are cheaper
+    dalle_billing = get_image_model_billing("dalle3")
+    estimated_tokens = dalle_billing.tokens_per_generation
 
     async with async_session_maker() as session:
         sub_service = SubscriptionService(session)
@@ -1520,7 +1553,7 @@ async def process_dalle_image(message: Message, user: User, state: FSMContext):
         # Get user's remaining tokens
         async with async_session_maker() as session:
             sub_service = SubscriptionService(session)
-            user_tokens = await sub_service.get_user_total_tokens(user.id)
+            user_tokens = await sub_service.get_available_tokens(user.id)
 
         # Build caption in unified format
         image_type = "изображение" if not reference_image_path else "вариацию изображения"
@@ -1586,7 +1619,8 @@ async def process_gemini_image(message: Message, user: User, state: FSMContext):
     prompt = data.get("photo_caption_prompt") or message.text
 
     # Check and use tokens
-    estimated_tokens = 3000  # Imagen 3
+    gemini_billing = get_image_model_billing("nano-banana-image")
+    estimated_tokens = gemini_billing.tokens_per_generation
 
     async with async_session_maker() as session:
         sub_service = SubscriptionService(session)
@@ -1680,7 +1714,8 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
         images_to_generate = 1
 
     # Calculate cost
-    cost_per_image = 3000  # Nano Banana cost per image
+    nano_billing_id = "banana-pro" if nano_is_pro else "nano-banana-image"
+    cost_per_image = get_image_model_billing(nano_billing_id).tokens_per_generation
     estimated_tokens = cost_per_image * images_to_generate
 
     # Check and reserve tokens
@@ -1941,7 +1976,7 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
 
             async with async_session_maker() as session:
                 sub_service = SubscriptionService(session)
-                user_tokens = await sub_service.get_user_total_tokens(user.id)
+                user_tokens = await sub_service.get_available_tokens(user.id)
 
             # Send summary message first
             model_name = "Nano Banana PRO (Gemini 3)" if nano_is_pro else "Nano Banana (Gemini 2.5)"
@@ -2007,7 +2042,7 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
 
         async with async_session_maker() as session:
             sub_service = SubscriptionService(session)
-            user_tokens = await sub_service.get_user_total_tokens(user.id)
+            user_tokens = await sub_service.get_available_tokens(user.id)
 
         # Generate unified notification message
         model_name = "Nano Banana PRO (Gemini 3)" if nano_is_pro else "Nano Banana (Gemini 2.5)"
@@ -2145,7 +2180,8 @@ async def process_kling_image(message: Message, user: User, state: FSMContext):
     prompt = data.get("photo_caption_prompt") or message.text
     reference_image_path = data.get("reference_image_path", None)
 
-    estimated_tokens = 5000 if reference_image_path else 3000  # Kling image cost
+    kling_image_billing = get_image_model_billing("kling-image")
+    estimated_tokens = kling_image_billing.tokens_per_generation
 
     # Check and reserve tokens
     async with async_session_maker() as session:
@@ -2193,7 +2229,7 @@ async def process_kling_image(message: Message, user: User, state: FSMContext):
 
         async with async_session_maker() as session:
             sub_service = SubscriptionService(session)
-            user_tokens = await sub_service.get_user_total_tokens(user.id)
+            user_tokens = await sub_service.get_available_tokens(user.id)
 
         # Generate unified notification message
         info_text = format_generation_message(
@@ -2268,7 +2304,8 @@ async def process_recraft_image(message: Message, user: User, state: FSMContext)
     data = await state.get_data()
     prompt = data.get("photo_caption_prompt") or message.text
 
-    estimated_tokens = 2200  # Recraft V2 cost (cheaper than DALL-E 3)
+    recraft_billing = get_image_model_billing("recraft")
+    estimated_tokens = recraft_billing.tokens_per_generation
 
     # Check and reserve tokens
     async with async_session_maker() as session:
@@ -2312,7 +2349,7 @@ async def process_recraft_image(message: Message, user: User, state: FSMContext)
 
         async with async_session_maker() as session:
             sub_service = SubscriptionService(session)
-            user_tokens = await sub_service.get_user_total_tokens(user.id)
+            user_tokens = await sub_service.get_available_tokens(user.id)
 
         # Generate unified notification message
         info_text = format_generation_message(
@@ -2453,7 +2490,7 @@ async def process_suno_audio(message: Message, user: User, state: FSMContext):
         # Get user's remaining tokens
         async with async_session_maker() as session:
             sub_service = SubscriptionService(session)
-            user_tokens = await sub_service.get_user_total_tokens(user.id)
+            user_tokens = await sub_service.get_available_tokens(user.id)
 
         # Generate unified notification message
         caption = format_generation_message(
@@ -2591,7 +2628,7 @@ async def process_replace_bg_prompt(message: Message, state: FSMContext, user: U
         # Get user's remaining tokens
         async with async_session_maker() as session:
             sub_service = SubscriptionService(session)
-            user_tokens = await sub_service.get_user_total_tokens(user.id)
+            user_tokens = await sub_service.get_available_tokens(user.id)
 
         # Generate caption
         caption = format_generation_message(
@@ -3193,8 +3230,9 @@ async def process_photo_replace_bg_prompt(message: Message, state: FSMContext, u
 
     bg_description = message.text
 
-    # Check and use tokens (Gemini image-to-image: ~3000 tokens)
-    estimated_tokens = 3000
+    # Check and use tokens (Gemini image-to-image)
+    nano_billing = get_image_model_billing("nano-banana-image")
+    estimated_tokens = nano_billing.tokens_per_generation
 
     async with async_session_maker() as session:
         sub_service = SubscriptionService(session)
@@ -3243,7 +3281,7 @@ async def process_photo_replace_bg_prompt(message: Message, state: FSMContext, u
         # Get user's remaining tokens
         async with async_session_maker() as session:
             sub_service = SubscriptionService(session)
-            user_tokens = await sub_service.get_user_total_tokens(user.id)
+            user_tokens = await sub_service.get_available_tokens(user.id)
 
         # Generate caption
         caption = format_generation_message(
@@ -3544,6 +3582,11 @@ async def handle_photo_no_model(message: Message, state: FSMContext):
 @router.callback_query(F.data.startswith("photo_action:"))
 async def handle_photo_action_choice(callback: CallbackQuery, state: FSMContext):
     """Handle user's choice of what to do with the photo."""
+    veo_billing = get_video_model_billing("veo-3.1-fast")
+    luma_billing = get_video_model_billing("luma")
+    kling_billing = get_video_model_billing("kling-video")
+    nano_billing = get_image_model_billing("nano-banana-image")
+    dalle_billing = get_image_model_billing("dalle3")
     action = callback.data.split(":")[1]
 
     data = await state.get_data()
@@ -3579,9 +3622,9 @@ async def handle_photo_action_choice(callback: CallbackQuery, state: FSMContext)
 
         await callback.message.edit_caption(
             caption="🎬 **Выберите модель для генерации видео:**\n\n"
-                    "• **Veo 3.1** - Google, HD качество (~15,000 токенов)\n"
-                    "• **Luma** - Dream Machine (~8,000 токенов)\n"
-                    "• **Kling AI** - Высокое качество (~9,000 токенов)",
+                    f"• **Veo 3.1** - Google, HD качество ({format_token_amount(veo_billing.tokens_per_generation)} токенов)\n"
+                    f"• **Luma** - Dream Machine ({format_token_amount(luma_billing.tokens_per_generation)} токенов)\n"
+                    f"• **Kling AI** - Высокое качество ({format_token_amount(kling_billing.tokens_per_generation)} токенов)",
             reply_markup=keyboard
         )
         await callback.answer()
@@ -3602,8 +3645,8 @@ async def handle_photo_action_choice(callback: CallbackQuery, state: FSMContext)
 
         await callback.message.edit_caption(
             caption="🖼 **Выберите модель для генерации изображения:**\n\n"
-                    "• **Nano Banana** - Gemini 2.5 Flash, image-to-image (~3,000 токенов)\n"
-                    "• **DALL-E** - Image variation (~2,000 токенов)",
+                    f"• **Nano Banana** - Gemini 2.5 Flash, image-to-image ({format_token_amount(nano_billing.tokens_per_generation)} токенов)\n"
+                    f"• **DALL-E** - Image variation ({format_token_amount(dalle_billing.tokens_per_generation)} токенов)",
             reply_markup=keyboard
         )
         await callback.answer()
