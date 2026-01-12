@@ -14,6 +14,8 @@ class AIResponse:
     file_path: Optional[str] = None
     error: Optional[str] = None
     tokens_used: int = 0
+    prompt_tokens: int = 0  # For text models: input tokens
+    completion_tokens: int = 0  # For text models: output tokens
     processing_time: float = 0.0
     metadata: dict = None
 
