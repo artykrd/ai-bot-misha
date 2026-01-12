@@ -208,24 +208,51 @@ class YooKassaService:
         try:
             # Parse webhook notification
             notification = WebhookNotification(webhook_data)
-            payment = notification.object
+            obj = notification.object
+            event_type = notification.event
 
             logger.info(
                 "yookassa_webhook_received",
-                webhook_event=notification.event,
-                payment_id=payment.id,
-                status=payment.status
+                webhook_event=event_type,
+                object_id=obj.id,
+                object_status=obj.status if hasattr(obj, 'status') else 'N/A'
             )
 
-            return {
-                "event": notification.event,
-                "payment_id": payment.id,
-                "status": payment.status,
-                "amount": float(payment.amount.value),  # Convert to float for JSON serialization
-                "currency": payment.amount.currency,
-                "paid": payment.paid,
-                "metadata": payment.metadata if payment.metadata else {}
-            }
+            # Handle different event types
+            if event_type.startswith('payment.'):
+                # Payment event
+                return {
+                    "event": event_type,
+                    "payment_id": obj.id,
+                    "status": obj.status,
+                    "amount": float(obj.amount.value),
+                    "currency": obj.amount.currency,
+                    "paid": obj.paid if hasattr(obj, 'paid') else False,
+                    "metadata": obj.metadata if hasattr(obj, 'metadata') and obj.metadata else {}
+                }
+            elif event_type.startswith('refund.'):
+                # Refund event - we just acknowledge it, actual processing in api_main
+                return {
+                    "event": event_type,
+                    "refund_id": obj.id,
+                    "payment_id": obj.payment_id if hasattr(obj, 'payment_id') else None,
+                    "status": obj.status,
+                    "amount": float(obj.amount.value),
+                    "currency": obj.amount.currency,
+                    "metadata": {}
+                }
+            else:
+                # Other events (payment_method, etc)
+                logger.warning(
+                    "yookassa_webhook_unsupported_event",
+                    webhook_event=event_type
+                )
+                return {
+                    "event": event_type,
+                    "object_id": obj.id,
+                    "status": obj.status if hasattr(obj, 'status') else 'unknown',
+                    "metadata": {}
+                }
 
         except Exception as e:
             logger.error(
