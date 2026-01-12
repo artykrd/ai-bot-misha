@@ -248,10 +248,9 @@ async def process_dialog_message(
         # Pre-check if user has enough tokens for estimated cost
         async with async_session_maker() as session:
             sub_service = SubscriptionService(session)
-            has_balance = await sub_service.check_token_balance(user.id, estimated_tokens)
+            total_tokens = await sub_service.get_user_total_tokens(user.id)
 
-            if not has_balance:
-                total_tokens = await sub_service.get_user_total_tokens(user.id)
+            if total_tokens < estimated_tokens:
                 await message.answer(
                     f"❌ Недостаточно токенов!\n\n"
                     f"Примерная стоимость запроса: {estimated_tokens:,} токенов\n"
