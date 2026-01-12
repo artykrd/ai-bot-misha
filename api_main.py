@@ -104,17 +104,40 @@ async def yookassa_webhook(request: Request):
             logger.error("yukassa_webhook_invalid", body=body)
             raise HTTPException(status_code=400, detail="Invalid webhook data")
 
+        event_type = webhook_data.get("event", "")
+
+        # Handle refund events - just acknowledge them
+        if event_type.startswith("refund."):
+            logger.info(
+                "yukassa_refund_event_received",
+                refund_id=webhook_data.get("refund_id"),
+                payment_id=webhook_data.get("payment_id"),
+                webhook_event=event_type
+            )
+            return {"status": "ok"}
+
+        # Handle payment events
+        if not event_type.startswith("payment."):
+            logger.warning("yukassa_unsupported_event", webhook_event=event_type)
+            return {"status": "ok"}
+
         # Get payment from database
         async with async_session_maker() as session:
             payment_service = PaymentService(session)
-            payment = await payment_service.get_payment_by_yukassa_id(webhook_data["payment_id"])
+            payment_id = webhook_data.get("payment_id")
+
+            if not payment_id:
+                logger.error("yukassa_no_payment_id", webhook_data=webhook_data)
+                raise HTTPException(status_code=400, detail="No payment_id in webhook")
+
+            payment = await payment_service.get_payment_by_yukassa_id(payment_id)
 
             if not payment:
-                logger.error("yukassa_payment_not_found", payment_id=webhook_data["payment_id"])
+                logger.error("yukassa_payment_not_found", payment_id=payment_id)
                 raise HTTPException(status_code=404, detail="Payment not found")
 
             # Handle successful payment
-            if webhook_data["event"] == "payment.succeeded" and webhook_data["paid"]:
+            if event_type == "payment.succeeded" and webhook_data.get("paid"):
                 logger.info(
                     "yukassa_payment_succeeded",
                     payment_id=payment.payment_id,
@@ -221,7 +244,7 @@ async def yookassa_webhook(request: Request):
                                 money_awarded=money_awarded
                             )
 
-            elif webhook_data["event"] == "payment.canceled":
+            elif event_type == "payment.canceled":
                 # Payment was canceled
                 await payment_service.update_payment_status(
                     payment_id=payment.payment_id,
