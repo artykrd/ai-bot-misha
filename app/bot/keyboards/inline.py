@@ -334,36 +334,36 @@ def audio_tools_keyboard() -> InlineKeyboardMarkup:
 
 
 def subscription_keyboard() -> InlineKeyboardMarkup:
-    """Subscription selection keyboard."""
+    """Subscription selection keyboard with new billing prices."""
     builder = InlineKeyboardBuilder()
 
     builder.row(
         InlineKeyboardButton(
-            text="7 дней — 150,000 токенов — 98 руб.",
+            text="7 дней — 150,000 токенов — 88 руб.",
             callback_data="shop_select_tariff_1"
         )
     )
     builder.row(
         InlineKeyboardButton(
-            text="14 дней — 250,000 токенов — 196 руб.",
+            text="14 дней — 250,000 токенов — 176 руб.",
             callback_data="shop_select_tariff_2"
         )
     )
     builder.row(
         InlineKeyboardButton(
-            text="21 день — 500,000 токенов — 289 руб.",
+            text="21 день — 500,000 токенов — 260 руб.",
             callback_data="shop_select_tariff_3"
         )
     )
     builder.row(
         InlineKeyboardButton(
-            text="30 дней — 1,000,000 токенов — 597 руб.",
+            text="30 дней — 1,000,000 токенов — 537 руб.",
             callback_data="shop_select_tariff_6"
         )
     )
     builder.row(
         InlineKeyboardButton(
-            text="30 дней — 5,000,000 токенов — 2790 руб.",
+            text="30 дней — 5,000,000 токенов — 2,511 руб.",
             callback_data="shop_select_tariff_21"
         )
     )
