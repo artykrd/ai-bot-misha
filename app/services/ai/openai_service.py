@@ -55,6 +55,8 @@ class OpenAIService(BaseAIProvider):
 
             content = response.choices[0].message.content
             tokens_used = response.usage.total_tokens
+            prompt_tokens = response.usage.prompt_tokens
+            completion_tokens = response.usage.completion_tokens
 
             processing_time = time.time() - start_time
 
@@ -62,6 +64,8 @@ class OpenAIService(BaseAIProvider):
                 "openai_text_generated",
                 model=model,
                 tokens=tokens_used,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
                 time=processing_time
             )
 
@@ -69,6 +73,8 @@ class OpenAIService(BaseAIProvider):
                 success=True,
                 content=content,
                 tokens_used=tokens_used,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
                 processing_time=processing_time,
                 metadata={"model": model}
             )

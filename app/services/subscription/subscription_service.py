@@ -13,13 +13,15 @@ from app.core.exceptions import InsufficientTokensError, SubscriptionExpiredErro
 logger = get_logger(__name__)
 
 
-# Subscription tariffs configuration
+# Subscription tariffs configuration (updated with new token billing system)
 TARIFFS = {
-    "7days": {"days": 7, "tokens": 150000, "price": 98},
-    "14days": {"days": 14, "tokens": 250000, "price": 196},
-    "21days": {"days": 21, "tokens": 500000, "price": 289},
-    "30days_1m": {"days": 30, "tokens": 1000000, "price": 597},
-    "30days_5m": {"days": 30, "tokens": 5000000, "price": 2790},
+    # Token packages (as per new billing system)
+    "7days": {"days": 7, "tokens": 150000, "price": 88},
+    "14days": {"days": 14, "tokens": 250000, "price": 176},
+    "21days": {"days": 21, "tokens": 500000, "price": 260},
+    "30days_1m": {"days": 30, "tokens": 1000000, "price": 537},
+    "30days_5m": {"days": 30, "tokens": 5000000, "price": 2511},
+    # Legacy tariffs (kept for backward compatibility)
     "unlimited_1day": {"days": 1, "tokens": -1, "price": 649},  # -1 = unlimited
     "eternal_150k": {"days": None, "tokens": 150000, "price": 149},
     "eternal_250k": {"days": None, "tokens": 250000, "price": 279},
@@ -69,6 +71,31 @@ class SubscriptionService:
     ) -> Optional[Subscription]:
         """Get user's active subscription."""
         return await self.repository.get_active_subscription(user_id)
+
+    async def check_token_balance(
+        self,
+        user_id: int,
+        tokens_required: int
+    ) -> bool:
+        """
+        Check if user has enough tokens without using them.
+
+        Args:
+            user_id: User ID
+            tokens_required: Required token amount
+
+        Returns:
+            True if user has enough tokens
+        """
+        subscription = await self.get_active_subscription(user_id)
+
+        if not subscription:
+            return False
+
+        if subscription.is_expired:
+            return False
+
+        return subscription.can_use_tokens(tokens_required)
 
     async def check_and_use_tokens(
         self,

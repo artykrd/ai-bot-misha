@@ -134,7 +134,7 @@ def resize_image_if_needed(image_path: str, max_size_mb: float = 2.0, max_dimens
 async def start_veo(callback: CallbackQuery, state: FSMContext, user: User):
     # Get user's total tokens
     total_tokens = user.get_total_tokens()
-    videos_available = int(total_tokens / 116000) if total_tokens > 0 else 0
+    videos_available = int(total_tokens / 98000) if total_tokens > 0 else 0
 
     text = (
         "🌊 Veo 3.1 · лучший генератор видео\n\n"
@@ -148,7 +148,7 @@ async def start_veo(callback: CallbackQuery, state: FSMContext, user: User):
         "Модель: Veo 3.1 Fast\n"
         "Формат: 16:9\n"
         "Сид: 0\n\n"
-        f"🔹 Баланса хватит на {videos_available} видео. 1 видео = 116,000.0 токенов."
+        f"🔹 Баланса хватит на {videos_available} видео. Стоимость генерации видео: 98 000 токенов"
     )
 
     await state.set_state(MediaState.waiting_for_video_prompt)
@@ -161,7 +161,7 @@ async def start_veo(callback: CallbackQuery, state: FSMContext, user: User):
 @router.callback_query(F.data == "bot.sora")
 async def start_sora(callback: CallbackQuery, state: FSMContext, user: User):
     total_tokens = user.get_total_tokens()
-    videos_available = int(total_tokens / 250600) if total_tokens > 0 else 0
+    videos_available = int(total_tokens / 43000) if total_tokens > 0 else 0
 
     text = (
         "☁️ Sora 2 · вирусные ролики с озвучкой\n\n"
@@ -174,7 +174,7 @@ async def start_sora(callback: CallbackQuery, state: FSMContext, user: User):
         "Длительность: 10 сек.\n"
         "Качество: стандартное\n"
         "Формат: 16:9\n\n"
-        f"🔹 Баланса хватит на {videos_available} видео. 1 видео = 250,600.0 токенов.\n\n"
+        f"🔹 Баланса хватит на {videos_available} видео. Стоимость генерации видео (10 секунд): 43 000 токенов\n\n"
         "⚠️ Функционал в разработке."
     )
 
@@ -187,7 +187,7 @@ async def start_luma(callback: CallbackQuery, state: FSMContext, user: User):
     text = (
         "🌙 **Luma Dream Machine**\n\n"
         "Luma создаёт качественные видео по вашему описанию.\n\n"
-        "💰 **Стоимость:** ~8,000 токенов за видео\n\n"
+        "💰 **Стоимость:** Стоимость генерации видео: 85 000 токенов\n\n"
         "🎨 **Режимы работы:**\n"
         "• **Text-to-Video:** Просто отправьте описание видео\n"
         "• **Image-to-Video:** Отправьте фото, затем описание\n\n"
@@ -329,7 +329,7 @@ async def start_gpt_image(callback: CallbackQuery, state: FSMContext, user: User
         "• DALL-E 3 (стандарт)\n"
         "• DALL-E 2\n\n"
         "**Размеры:** 1024x1024, 1792x1024, 1024x1792\n\n"
-        "💰 **Стоимость:** 4,000-8,000 токенов\n\n"
+        "💰 **Стоимость генерации: 8 500 токенов за изображение**\n\n"
         "🎨 **Режимы работы:**\n"
         "• **Text-to-Image:** Отправьте описание изображения\n"
         "• **Image Variation (DALL-E 2):** Отправьте фото для создания вариаций\n\n"
