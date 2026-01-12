@@ -230,25 +230,53 @@ async def process_dialog_message(
     message_type: str,
     content: any
 ):
-    """Process message with AI model."""
+    """Process message with AI model using new billing system."""
+    from app.services.billing.billing_service import BillingService
+    from app.core.billing_config import get_text_model_billing, ModelType
 
-    # Get cost
-    tokens_cost = dialog["cost_per_request"]
+    # For text models, estimate minimum cost for balance check
+    # For other types, use fixed cost from dialog
+    model_billing_id = dialog.get("billing_id", dialog["model_id"])
 
-    # Check tokens
-    async with async_session_maker() as session:
-        sub_service = SubscriptionService(session)
+    # Get billing config for text models
+    text_billing = get_text_model_billing(model_billing_id)
 
-        try:
-            await sub_service.check_and_use_tokens(user.id, tokens_cost)
-        except InsufficientTokensError as e:
-            await message.answer(
-                f"❌ Недостаточно токенов!\n\n"
-                f"Требуется: {tokens_cost:,} токенов\n"
-                f"Доступно: {e.details['available']:,} токенов\n\n"
-                f"Купите подписку: /start → 💎 Подписка"
-            )
-            return
+    if text_billing and message_type == "text":
+        # Dynamic billing for text models - estimate cost for pre-check
+        estimated_tokens = text_billing.calculate_cost(500, 1000)  # Estimate avg usage
+
+        # Pre-check if user has enough tokens for estimated cost
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            has_balance = await sub_service.check_token_balance(user.id, estimated_tokens)
+
+            if not has_balance:
+                total_tokens = await sub_service.get_user_total_tokens(user.id)
+                await message.answer(
+                    f"❌ Недостаточно токенов!\n\n"
+                    f"Примерная стоимость запроса: {estimated_tokens:,} токенов\n"
+                    f"Ваш баланс: {total_tokens:,} токенов\n\n"
+                    f"Купите подписку: /start → 💎 Подписка"
+                )
+                return
+    else:
+        # Fixed billing for non-text or non-configured models
+        tokens_cost = dialog.get("cost_per_request", 1000)
+
+        # Pre-charge for fixed cost models
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+
+            try:
+                await sub_service.check_and_use_tokens(user.id, tokens_cost)
+            except InsufficientTokensError as e:
+                await message.answer(
+                    f"❌ Недостаточно токенов!\n\n"
+                    f"Требуется: {tokens_cost:,} токенов\n"
+                    f"Доступно: {e.details['available']:,} токенов\n\n"
+                    f"Купите подписку: /start → 💎 Подписка"
+                )
+                return
 
     # Show processing message
     processing_msg = await message.answer("⏳ Обрабатываю запрос...")
@@ -311,12 +339,45 @@ async def process_dialog_message(
 
         # Send response
         if response["success"]:
+            # Calculate actual cost for text models
+            actual_cost = 0
+            if text_billing and message_type == "text":
+                # Dynamic billing - charge based on actual usage
+                prompt_tokens = response.get("prompt_tokens", 0)
+                completion_tokens = response.get("completion_tokens", 0)
+
+                if prompt_tokens > 0 and completion_tokens > 0:
+                    actual_cost = text_billing.calculate_cost(prompt_tokens, completion_tokens)
+                else:
+                    # Fallback: estimate based on text length (~4 chars per token)
+                    prompt_tokens = max(len(content) // 4, 100)
+                    completion_tokens = max(len(response["content"]) // 4, 100)
+                    actual_cost = text_billing.calculate_cost(prompt_tokens, completion_tokens)
+
+                # Charge user for actual cost
+                async with async_session_maker() as session:
+                    billing_service = BillingService(session)
+                    try:
+                        await billing_service.calculate_and_charge_text(
+                            user_id=user.id,
+                            model_id=model_billing_id,
+                            prompt_tokens=prompt_tokens,
+                            completion_tokens=completion_tokens,
+                            prompt=content if message_type == "text" else None
+                        )
+                    except Exception as e:
+                        logger.error("billing_failed_after_response", error=str(e), user_id=user.id)
+                        # Continue anyway since user got the response
+            else:
+                # Fixed cost already charged before API call
+                actual_cost = tokens_cost
+
             # Escape HTML special characters to prevent parse errors
             response_text = escape_html_text(response["content"])
 
             # Add cost info if enabled
             if dialog["show_costs"]:
-                response_text += f"\n\n💰 <i>Стоимость запроса: {tokens_cost:,} токенов</i>"
+                response_text += f"\n\n💰 <i>Списано: {actual_cost:,} токенов</i>"
 
             # Add mock warning if using mock service
             if response.get("mock"):
@@ -338,7 +399,9 @@ async def process_dialog_message(
                 dialog_id=dialog["dialog_id"],
                 model=dialog["model_name"],
                 message_type=message_type,
-                tokens=tokens_cost,
+                tokens=actual_cost,
+                prompt_tokens=response.get("prompt_tokens", 0),
+                completion_tokens=response.get("completion_tokens", 0),
                 is_mock=response.get("mock", False)
             )
         else:
@@ -396,6 +459,8 @@ async def process_openai_message(
             "success": result.success,
             "content": result.content if result.success else result.error,
             "error": result.error if not result.success else None,
+            "prompt_tokens": result.prompt_tokens,
+            "completion_tokens": result.completion_tokens,
             "mock": result.metadata.get("mock", False)
         }
     except Exception as e:
@@ -430,6 +495,8 @@ async def process_google_message(
             "success": result.success,
             "content": result.content if result.success else result.error,
             "error": result.error if not result.success else None,
+            "prompt_tokens": result.prompt_tokens,
+            "completion_tokens": result.completion_tokens,
             "mock": result.metadata.get("mock", False)
         }
     except Exception as e:
@@ -464,6 +531,8 @@ async def process_anthropic_message(
             "success": result.success,
             "content": result.content if result.success else result.error,
             "error": result.error if not result.success else None,
+            "prompt_tokens": result.prompt_tokens,
+            "completion_tokens": result.completion_tokens,
             "mock": result.metadata.get("mock", False)
         }
     except Exception as e:
@@ -541,6 +610,8 @@ async def process_perplexity_message(
             "success": result.success,
             "content": result.content if result.success else result.error,
             "error": result.error if not result.success else None,
+            "prompt_tokens": result.prompt_tokens,
+            "completion_tokens": result.completion_tokens,
             "mock": result.metadata.get("mock", False)
         }
     except Exception as e:
