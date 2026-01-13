@@ -157,9 +157,9 @@ IMAGE_MODELS: Dict[str, FixedModelBilling] = {
         model_type=ModelType.IMAGE
     ),
     "nano-banana-image": FixedModelBilling(
-        tokens_per_generation=5500,
+        tokens_per_generation=6380,
         display_name="Nano Banana",
-        description_suffix="Стоимость генерации: 5 500 токенов за изображение",
+        description_suffix="Стоимость генерации: 6 380 токенов за изображение",
         model_type=ModelType.IMAGE
     ),
     "banana-pro": FixedModelBilling(
@@ -175,9 +175,9 @@ IMAGE_MODELS: Dict[str, FixedModelBilling] = {
         model_type=ModelType.IMAGE
     ),
     "recraft": FixedModelBilling(
-        tokens_per_generation=6500,
+        tokens_per_generation=20000,
         display_name="Recraft",
-        description_suffix="Стоимость генерации: 6 500 токенов за изображение",
+        description_suffix="Стоимость генерации: 20 000 токенов за изображение",
         model_type=ModelType.IMAGE
     ),
     "kling-image": FixedModelBilling(
@@ -200,15 +200,15 @@ IMAGE_MODELS: Dict[str, FixedModelBilling] = {
 # ==============================================
 VIDEO_MODELS: Dict[str, FixedModelBilling] = {
     "sora2": FixedModelBilling(
-        tokens_per_generation=43000,
+        tokens_per_generation=50600,
         display_name="Sora 2",
-        description_suffix="Стоимость генерации видео (10 секунд): 43 000 токенов",
+        description_suffix="Стоимость генерации видео (10 секунд): 50 600 токенов",
         model_type=ModelType.VIDEO
     ),
     "veo-3.1-fast": FixedModelBilling(
-        tokens_per_generation=98000,
+        tokens_per_generation=116000,
         display_name="Veo 3.1 Fast",
-        description_suffix="Стоимость генерации видео: 98 000 токенов",
+        description_suffix="Стоимость генерации видео: 116 000 токенов",
         model_type=ModelType.VIDEO
     ),
     "midjourney-video-sd": FixedModelBilling(
@@ -224,9 +224,9 @@ VIDEO_MODELS: Dict[str, FixedModelBilling] = {
         model_type=ModelType.VIDEO
     ),
     "kling-video": FixedModelBilling(
-        tokens_per_generation=550000,
+        tokens_per_generation=80000,
         display_name="Kling",
-        description_suffix="Стоимость генерации видео (10 секунд): 550 000 токенов",
+        description_suffix="Стоимость генерации видео (10 секунд): 80 000 токенов",
         model_type=ModelType.VIDEO
     ),
     "kling-effects": FixedModelBilling(
@@ -236,9 +236,9 @@ VIDEO_MODELS: Dict[str, FixedModelBilling] = {
         model_type=ModelType.VIDEO
     ),
     "hailuo": FixedModelBilling(
-        tokens_per_generation=78000,
+        tokens_per_generation=90000,
         display_name="Hailuo",
-        description_suffix="Стоимость генерации видео: 78 000 токенов",
+        description_suffix="Стоимость генерации видео: 90 000 токенов",
         model_type=ModelType.VIDEO
     ),
     "luma": FixedModelBilling(

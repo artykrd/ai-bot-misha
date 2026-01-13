@@ -13,15 +13,15 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🗯 ChatGPT", callback_data="bot.start_chatgpt_dialog_324#home")
     )
     builder.row(
-        InlineKeyboardButton(text="🤖 Выбрать модель", callback_data="bot.llm_models"),
+        InlineKeyboardButton(text="🎬 Создать видео", callback_data="bot.create_video"),
         InlineKeyboardButton(text="💬 Диалоги", callback_data="bot.dialogs_chatgpt")
     )
     builder.row(
-        InlineKeyboardButton(text="🌄 Создать фото", callback_data="bot.create_photo"),
-        InlineKeyboardButton(text="🎞 Создать видео", callback_data="bot.create_video")
+        InlineKeyboardButton(text="🎨 Работа с фото", callback_data="bot.pi"),
+        InlineKeyboardButton(text="🖼 Создать фото", callback_data="bot.create_photo")
     )
     builder.row(
-        InlineKeyboardButton(text="✂️ Работа с фото", callback_data="bot.pi"),
+        InlineKeyboardButton(text="🎭 Выбрать модель", callback_data="bot.llm_models"),
         InlineKeyboardButton(text="🎙 Работа с аудио", callback_data="bot.audio_instruments")
     )
     builder.row(
