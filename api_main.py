@@ -89,7 +89,10 @@ async def yookassa_webhook(request: Request):
     from app.database.database import async_session_maker
     from app.services.payment import PaymentService, YooKassaService
     from app.services.subscription import SubscriptionService
+    from app.bot.bot_instance import bot
+    from app.database.models.user import User
     from datetime import datetime, timedelta
+    from sqlalchemy import select
 
     try:
         body = await request.json()
@@ -138,31 +141,38 @@ async def yookassa_webhook(request: Request):
 
             # Handle successful payment
             if event_type == "payment.succeeded" and webhook_data.get("paid"):
+                if payment.status == "success":
+                    logger.info(
+                        "yukassa_payment_already_processed",
+                        payment_id=payment.payment_id,
+                        yukassa_payment_id=payment_id
+                    )
+                    return {"status": "ok"}
+
                 logger.info(
                     "yukassa_payment_succeeded",
                     payment_id=payment.payment_id,
                     amount=webhook_data["amount"]
                 )
 
-                # Update payment status
-                await payment_service.update_payment_status(
-                    payment_id=payment.payment_id,
-                    status="success",
-                    payment_method=webhook_data.get("metadata", {}).get("payment_method"),
-                    yukassa_response=webhook_data
-                )
-
                 # Process payment - add tokens or activate subscription
-                metadata = webhook_data.get("metadata", {})
+                metadata = webhook_data.get("metadata") or {}
+                if not metadata and payment.yukassa_response:
+                    metadata = payment.yukassa_response.get("metadata") or {}
                 payment_type = metadata.get("type", "eternal_tokens")
+                tokens_added = 0
 
                 subscription_service = SubscriptionService(session)
 
                 if payment_type == "eternal_tokens":
                     # Add eternal tokens to user
-                    tokens = int(metadata.get("tokens", 0))
+                    try:
+                        tokens = int(metadata.get("tokens", 0))
+                    except (TypeError, ValueError):
+                        tokens = 0
                     if tokens > 0:
                         await subscription_service.add_eternal_tokens(payment.user_id, tokens)
+                        tokens_added = tokens
                         logger.info(
                             "eternal_tokens_added",
                             user_id=payment.user_id,
@@ -190,8 +200,16 @@ async def yookassa_webhook(request: Request):
 
                 elif payment_type == "subscription":
                     # Activate subscription
-                    days = int(metadata.get("days", 30))
+                    try:
+                        days = int(metadata.get("days", 30))
+                    except (TypeError, ValueError):
+                        days = 30
                     tokens = metadata.get("tokens")
+                    if tokens is not None:
+                        try:
+                            tokens = int(tokens)
+                        except (TypeError, ValueError):
+                            tokens = 0
 
                     # Create subscription
                     from app.database.models.subscription import Subscription
@@ -212,6 +230,7 @@ async def yookassa_webhook(request: Request):
                     # Add tokens if included
                     if tokens:
                         await subscription_service.add_subscription_tokens(payment.user_id, tokens)
+                        tokens_added = tokens
 
                     # Link payment to subscription
                     payment.subscription_id = subscription.id
@@ -243,6 +262,43 @@ async def yookassa_webhook(request: Request):
                                 tokens_awarded=tokens_awarded,
                                 money_awarded=money_awarded
                             )
+
+                # Update payment status after successful processing
+                await payment_service.update_payment_status(
+                    payment_id=payment.payment_id,
+                    status="success",
+                    payment_method=metadata.get("payment_method"),
+                    yukassa_response=webhook_data
+                )
+
+                # Notify user about credited tokens
+                if tokens_added > 0:
+                    total_tokens = await subscription_service.get_available_tokens(payment.user_id)
+                    user_result = await session.execute(
+                        select(User).where(User.id == payment.user_id)
+                    )
+                    user = user_result.scalar_one_or_none()
+                    if user:
+                        message = (
+                            "✅ Бонусы начислены!\n\n"
+                            f"🎁 Начислено: {tokens_added:,} токенов\n"
+                            f"💎 Всего токенов: {total_tokens:,}"
+                        )
+                        try:
+                            await bot.send_message(user.telegram_id, message)
+                        except Exception as send_error:
+                            logger.error(
+                                "yukassa_bonus_notification_failed",
+                                error=str(send_error),
+                                user_id=payment.user_id,
+                                payment_id=payment.payment_id
+                            )
+                    else:
+                        logger.error(
+                            "yukassa_user_not_found_for_notification",
+                            user_id=payment.user_id,
+                            payment_id=payment.payment_id
+                        )
 
             elif event_type == "payment.canceled":
                 # Payment was canceled
