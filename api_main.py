@@ -141,158 +141,63 @@ async def yookassa_webhook(request: Request):
 
             # Handle successful payment
             if event_type == "payment.succeeded" and webhook_data.get("paid"):
-                if payment.status == "success":
-                    logger.info(
-                        "yukassa_payment_already_processed",
-                        payment_id=payment.payment_id,
-                        yukassa_payment_id=payment_id
-                    )
-                    return {"status": "ok"}
-
                 logger.info(
                     "yukassa_payment_succeeded",
                     payment_id=payment.payment_id,
+                    yukassa_payment_id=payment_id,
                     amount=webhook_data["amount"]
                 )
 
-                # Process payment - add tokens or activate subscription
-                metadata = webhook_data.get("metadata") or {}
-                if not metadata and payment.yukassa_response:
-                    metadata = payment.yukassa_response.get("metadata") or {}
-                payment_type = metadata.get("type", "eternal_tokens")
-                tokens_added = 0
+                # Update yukassa_response before processing
+                payment.yukassa_response = webhook_data
+                await session.commit()
 
-                subscription_service = SubscriptionService(session)
+                # Process payment through PaymentService
+                success = await payment_service.process_successful_payment(payment)
 
-                if payment_type == "eternal_tokens":
-                    # Add eternal tokens to user
-                    try:
-                        tokens = int(metadata.get("tokens", 0))
-                    except (TypeError, ValueError):
-                        tokens = 0
-                    if tokens > 0:
-                        await subscription_service.add_eternal_tokens(payment.user_id, tokens)
-                        tokens_added = tokens
-                        logger.info(
-                            "eternal_tokens_added",
-                            user_id=payment.user_id,
-                            tokens=tokens
-                        )
-
-                        # Award referrer if exists
-                        from app.services.referral import ReferralService
-                        from decimal import Decimal
-
-                        referral_service = ReferralService(session)
-                        tokens_awarded, money_awarded = await referral_service.award_referrer_for_purchase(
-                            referred_user_id=payment.user_id,
-                            tokens_purchased=tokens,
-                            money_paid=Decimal(str(payment.amount))
-                        )
-
-                        if tokens_awarded or money_awarded:
-                            logger.info(
-                                "referral_reward_awarded",
-                                user_id=payment.user_id,
-                                tokens_awarded=tokens_awarded,
-                                money_awarded=money_awarded
-                            )
-
-                elif payment_type == "subscription":
-                    # Activate subscription
-                    try:
-                        days = int(metadata.get("days", 30))
-                    except (TypeError, ValueError):
-                        days = 30
-                    tokens = metadata.get("tokens")
-                    if tokens is not None:
-                        try:
-                            tokens = int(tokens)
-                        except (TypeError, ValueError):
-                            tokens = 0
-
-                    # Create subscription
-                    from app.database.models.subscription import Subscription
-                    subscription = Subscription(
-                        user_id=payment.user_id,
-                        subscription_type="premium",
-                        start_date=datetime.utcnow(),
-                        end_date=datetime.utcnow() + timedelta(days=days),
-                        is_active=True,
-                        auto_renew=False,
-                        payment_status="paid",
-                        tokens_included=tokens if tokens else 0
+                if not success:
+                    logger.error(
+                        "yukassa_payment_processing_failed",
+                        payment_id=payment.payment_id,
+                        yukassa_payment_id=payment_id
                     )
-
-                    session.add(subscription)
-                    await session.commit()
-
-                    # Add tokens if included
-                    if tokens:
-                        await subscription_service.add_subscription_tokens(payment.user_id, tokens)
-                        tokens_added = tokens
-
-                    # Link payment to subscription
-                    payment.subscription_id = subscription.id
-                    await session.commit()
-
-                    logger.info(
-                        "subscription_activated",
-                        user_id=payment.user_id,
-                        days=days,
-                        tokens=tokens
-                    )
-
-                    # Award referrer if exists
-                    if tokens:
-                        from app.services.referral import ReferralService
-                        from decimal import Decimal
-
-                        referral_service = ReferralService(session)
-                        tokens_awarded, money_awarded = await referral_service.award_referrer_for_purchase(
-                            referred_user_id=payment.user_id,
-                            tokens_purchased=tokens,
-                            money_paid=Decimal(str(payment.amount))
-                        )
-
-                        if tokens_awarded or money_awarded:
-                            logger.info(
-                                "referral_reward_awarded_subscription",
-                                user_id=payment.user_id,
-                                tokens_awarded=tokens_awarded,
-                                money_awarded=money_awarded
-                            )
-
-                # Update payment status after successful processing
-                await payment_service.update_payment_status(
-                    payment_id=payment.payment_id,
-                    status="success",
-                    payment_method=metadata.get("payment_method"),
-                    yukassa_response=webhook_data
-                )
+                    raise HTTPException(status_code=500, detail="Payment processing failed")
 
                 # Notify user about credited tokens
-                if tokens_added > 0:
-                    total_tokens = await subscription_service.get_available_tokens(payment.user_id)
+                subscription_service = SubscriptionService(session)
+                total_tokens = await subscription_service.get_available_tokens(payment.user_id)
+
+                if total_tokens > 0:
                     user_result = await session.execute(
                         select(User).where(User.id == payment.user_id)
                     )
                     user = user_result.scalar_one_or_none()
                     if user:
-                        message = (
-                            "✅ Бонусы начислены!\n\n"
-                            f"🎁 Начислено: {tokens_added:,} токенов\n"
-                            f"💎 Всего токенов: {total_tokens:,}"
-                        )
+                        # Get tokens_added from metadata
+                        metadata = webhook_data.get("metadata") or {}
+                        if not metadata and payment.yukassa_response:
+                            metadata = payment.yukassa_response.get("metadata") or {}
+
                         try:
-                            await bot.send_message(user.telegram_id, message)
-                        except Exception as send_error:
-                            logger.error(
-                                "yukassa_bonus_notification_failed",
-                                error=str(send_error),
-                                user_id=payment.user_id,
-                                payment_id=payment.payment_id
+                            tokens_added = int(metadata.get("tokens", 0))
+                        except (TypeError, ValueError):
+                            tokens_added = 0
+
+                        if tokens_added > 0:
+                            message = (
+                                "✅ Бонусы начислены!\n\n"
+                                f"🎁 Начислено: {tokens_added:,} токенов\n"
+                                f"💎 Всего токенов: {total_tokens:,}"
                             )
+                            try:
+                                await bot.send_message(user.telegram_id, message)
+                            except Exception as send_error:
+                                logger.error(
+                                    "yukassa_bonus_notification_failed",
+                                    error=str(send_error),
+                                    user_id=payment.user_id,
+                                    payment_id=payment.payment_id
+                                )
                     else:
                         logger.error(
                             "yukassa_user_not_found_for_notification",

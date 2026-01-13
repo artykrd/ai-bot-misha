@@ -183,31 +183,125 @@ class PaymentService:
             True if processed successfully
         """
         try:
-            # If payment is for subscription
-            if payment.subscription_id:
-                result = await self.session.execute(
-                    select(Subscription).where(Subscription.id == payment.subscription_id)
-                )
-                subscription = result.scalar_one_or_none()
+            from app.services.subscription import SubscriptionService
 
-                if subscription:
-                    subscription.is_active = True
-                    subscription.payment_status = "paid"
+            # Check if payment already processed (idempotency)
+            if payment.status == "success":
+                logger.info(
+                    "payment_already_processed",
+                    payment_id=payment.payment_id,
+                    user_id=payment.user_id
+                )
+                return True
+
+            subscription_service = SubscriptionService(self.session)
+
+            # Get metadata from payment
+            metadata = payment.yukassa_response.get("metadata") or {} if payment.yukassa_response else {}
+            payment_type = metadata.get("type", "eternal_tokens")
+            tokens_added = 0
+
+            if payment_type == "eternal_tokens":
+                # Add eternal tokens to user
+                try:
+                    tokens = int(metadata.get("tokens", 0))
+                except (TypeError, ValueError):
+                    tokens = 0
+
+                if tokens > 0:
+                    await subscription_service.add_eternal_tokens(payment.user_id, tokens)
+                    tokens_added = tokens
+
+                    logger.info(
+                        "tokens_added",
+                        user_id=payment.user_id,
+                        tokens=tokens,
+                        type="eternal"
+                    )
+
+                    # Award referrer if exists
+                    from app.services.referral import ReferralService
+
+                    referral_service = ReferralService(self.session)
+                    tokens_awarded, money_awarded = await referral_service.award_referrer_for_purchase(
+                        referred_user_id=payment.user_id,
+                        tokens_purchased=tokens,
+                        money_paid=payment.amount
+                    )
+
+                    if tokens_awarded or money_awarded:
+                        logger.info(
+                            "referral_reward_awarded",
+                            user_id=payment.user_id,
+                            tokens_awarded=tokens_awarded,
+                            money_awarded=money_awarded
+                        )
+
+            elif payment_type == "subscription":
+                # Add subscription with tokens
+                try:
+                    days = int(metadata.get("days", 30))
+                except (TypeError, ValueError):
+                    days = 30
+
+                tokens = metadata.get("tokens")
+                if tokens is not None:
+                    try:
+                        tokens = int(tokens)
+                    except (TypeError, ValueError):
+                        tokens = 0
+
+                # Add subscription tokens
+                if tokens and tokens > 0:
+                    subscription = await subscription_service.add_subscription_tokens(
+                        user_id=payment.user_id,
+                        tokens=tokens,
+                        days=days,
+                        subscription_type="premium_subscription"
+                    )
+                    tokens_added = tokens
+
+                    # Link payment to subscription
+                    payment.subscription_id = subscription.id
                     await self.session.commit()
 
                     logger.info(
                         "subscription_activated",
+                        user_id=payment.user_id,
                         subscription_id=subscription.id,
-                        payment_id=payment.payment_id
+                        days=days,
+                        tokens=tokens
                     )
+
+                    # Award referrer if exists
+                    from app.services.referral import ReferralService
+
+                    referral_service = ReferralService(self.session)
+                    tokens_awarded, money_awarded = await referral_service.award_referrer_for_purchase(
+                        referred_user_id=payment.user_id,
+                        tokens_purchased=tokens,
+                        money_paid=payment.amount
+                    )
+
+                    if tokens_awarded or money_awarded:
+                        logger.info(
+                            "referral_reward_awarded_subscription",
+                            user_id=payment.user_id,
+                            tokens_awarded=tokens_awarded,
+                            money_awarded=money_awarded
+                        )
 
             # Update payment status
             payment.status = "success"
+            if metadata.get("payment_method"):
+                payment.payment_method = metadata.get("payment_method")
             await self.session.commit()
 
             logger.info(
-                "payment_processed_successfully",
-                payment_id=payment.payment_id
+                "webhook_payment_succeeded_processed",
+                payment_id=payment.payment_id,
+                user_id=payment.user_id,
+                tokens_added=tokens_added
             )
 
             return True
