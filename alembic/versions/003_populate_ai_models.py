@@ -61,7 +61,7 @@ def upgrade() -> None:
             'display_name': 'GPT Image 1 (DALL-E)',
             'model_type': 'image',
             'provider': 'openai',
-            'tokens_per_request': 5300,
+            'tokens_per_request': 8500,
             'is_active': True,
             'settings': {'sizes': ['1024x1024', '1792x1024', '1024x1792']},
         },

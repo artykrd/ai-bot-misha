@@ -294,19 +294,37 @@ __ℹ️ Выберите нейросеть для генерации виде�
 
 # Nano Banana
 @router.callback_query(F.data == "bot.nano")
-async def show_nano_banana(callback: CallbackQuery, state: FSMContext):
+async def show_nano_banana(callback: CallbackQuery, state: FSMContext, user: User):
     """Show Nano Banana interface."""
     from app.bot.handlers.media_handler import MediaState
     from app.core.billing_config import get_image_model_billing, format_token_amount
+    from app.database.database import async_session_maker
+    from app.services.subscription.subscription_service import SubscriptionService
+
+    async def get_available_tokens(user_id: int) -> int:
+        """Get available tokens for user."""
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            return await sub_service.get_available_tokens(user_id)
 
     nano_billing = get_image_model_billing("nano-banana-image")
+    total_tokens = await get_available_tokens(user.id)
+    requests_available = int(total_tokens / nano_billing.tokens_per_generation) if total_tokens > 0 else 0
+
     text = f"""🍌 **Nano Banana · твори и экспериментируй**
 
 📖 **Создавайте:**
 – Создает фотографии по промпту и по вашим изображениям;
-– Она отлично наследует исходное фото и может работать с ним. Попросите её, например, "перенести этот стиль на новое изображение".
+– Она отлично наследует исходное фото и может работать с ним. Попросите её, например, отредактировать ваши фото (добавлять, удалять, менять объекты и всё, что угодно).
 
-**Стоимость:** {format_token_amount(nano_billing.tokens_per_generation)} токенов за запрос
+📷 **Добавляйте до 5 картинок в одном сообщении c промптом:**
+– Добавьте к запросу одно или несколько фото с разными объектами и укажите что с ними сделать: соединить в какой-то объект, заменить что-то, отредактировать и т.д.
+
+⚙️ **Настройки**
+Формат фото: автоматический
+PRO-режим: отключен
+
+🔹 Баланса хватит на {requests_available} запросов. 1 генерация = {format_token_amount(nano_billing.tokens_per_generation)} токенов
 
 ✏️ **Отправьте текстовый запрос для генерации изображения**"""
 
