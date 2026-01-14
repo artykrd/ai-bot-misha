@@ -112,16 +112,7 @@ class SystemMonitor:
             services = await self.health_checker.check_all_services()
 
             # Alert on unhealthy services
-            if services.get("webhook", {}).get("status") != "healthy":
-                await monitoring_notifier.send_alert(
-                    alert_type="Webhook Service",
-                    severity="critical",
-                    message="Webhook service is unavailable",
-                    details={
-                        "error": services.get("webhook", {}).get("error", "Unknown"),
-                        "status_code": services.get("webhook", {}).get("status_code")
-                    }
-                )
+            # Note: Webhook check removed - runs in same process as bot
 
             if services.get("redis", {}).get("status") != "healthy":
                 await monitoring_notifier.send_alert(

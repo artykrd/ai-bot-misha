@@ -186,7 +186,6 @@ class DailyReportGenerator:
                 "disk_free_gb": current_metrics.get("disk", {}).get("free_gb", 0),
                 "error_count": error_count,
                 "uptime_hours": current_metrics.get("uptime", {}).get("uptime_hours", 0),
-                "webhook_status": services_health.get("webhook", {}).get("status", "unknown"),
                 "redis_status": services_health.get("redis", {}).get("status", "unknown"),
                 "postgresql_status": services_health.get("postgresql", {}).get("status", "unknown"),
                 "generated_at": datetime.utcnow().isoformat()
@@ -226,7 +225,6 @@ class DailyReportGenerator:
                 "disk_free_gb": current_metrics.get("disk", {}).get("free_gb", 0),
                 "error_count": error_count,
                 "uptime_hours": current_metrics.get("uptime", {}).get("uptime_hours", 0),
-                "webhook_status": services_health.get("webhook", {}).get("status", "unknown"),
                 "redis_status": services_health.get("redis", {}).get("status", "unknown"),
                 "postgresql_status": services_health.get("postgresql", {}).get("status", "unknown"),
                 "generated_at": datetime.utcnow().isoformat()

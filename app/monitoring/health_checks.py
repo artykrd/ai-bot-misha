@@ -150,23 +150,19 @@ class HealthChecker:
         """
         Check all services in parallel.
 
+        Note: Webhook check removed - FastAPI runs in the same process as bot,
+        so external HTTP health check is no longer valid or necessary.
+
         Returns:
             Dict with results for all services
         """
-        webhook_check, redis_check, postgresql_check = await asyncio.gather(
-            self.check_webhook(),
+        redis_check, postgresql_check = await asyncio.gather(
             self.check_redis(),
             self.check_postgresql(),
             return_exceptions=True
         )
 
         # Handle exceptions
-        if isinstance(webhook_check, Exception):
-            webhook_check = {
-                "status": "unhealthy",
-                "error": str(webhook_check),
-                "timestamp": datetime.utcnow().isoformat()
-            }
         if isinstance(redis_check, Exception):
             redis_check = {
                 "status": "unhealthy",
@@ -180,15 +176,13 @@ class HealthChecker:
                 "timestamp": datetime.utcnow().isoformat()
             }
 
-        # Determine overall status
+        # Determine overall status (webhook excluded)
         all_healthy = all([
-            webhook_check.get("status") == "healthy",
             redis_check.get("status") == "healthy",
             postgresql_check.get("status") == "healthy"
         ])
 
         return {
-            "webhook": webhook_check,
             "redis": redis_check,
             "postgresql": postgresql_check,
             "overall_status": "healthy" if all_healthy else "unhealthy",

@@ -175,7 +175,6 @@ class MonitoringNotifier:
   • Время работы: {report_data.get('uptime_hours', 0):.1f} часов
 
 ✅ *Статус сервисов*
-  • Webhook: {report_data.get('webhook_status', 'unknown')}
   • Redis: {report_data.get('redis_status', 'unknown')}
   • PostgreSQL: {report_data.get('postgresql_status', 'unknown')}
 
