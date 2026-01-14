@@ -7,7 +7,6 @@ from typing import Optional, Dict, Any
 from decimal import Decimal
 
 from yookassa import Configuration, Payment as YooKassaPayment
-from yookassa.domain.notification import WebhookNotification
 
 from app.core.logger import get_logger
 from app.core.config import settings
@@ -193,10 +192,11 @@ class YooKassaService:
 
     def process_webhook(self, webhook_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
-        Process YooKassa webhook notification.
+        Parse YooKassa webhook WITHOUT SDK signature validation.
+        HTTPS + domain-level security is used instead.
 
         Args:
-            webhook_data: Webhook data from YooKassa
+            webhook_data: Webhook data from YooKassa (already parsed JSON)
 
         Returns:
             Processed payment data or None if failed
@@ -206,53 +206,52 @@ class YooKassaService:
             return None
 
         try:
-            # Parse webhook notification
-            notification = WebhookNotification(webhook_data)
-            obj = notification.object
-            event_type = notification.event
+            # Parse webhook manually (no SDK signature validation)
+            if not isinstance(webhook_data, dict):
+                logger.error("yookassa_webhook_invalid_type", type=type(webhook_data).__name__)
+                return None
+
+            event = webhook_data.get("event")
+            obj = webhook_data.get("object")
+
+            if not event or not isinstance(obj, dict):
+                logger.error(
+                    "yookassa_webhook_missing_fields",
+                    has_event=bool(event),
+                    has_object=isinstance(obj, dict)
+                )
+                return None
+
+            # Extract payment info
+            payment_id = obj.get("id")
+            status = obj.get("status")
+            paid = obj.get("paid", False)
+            amount = None
+
+            if isinstance(obj.get("amount"), dict):
+                try:
+                    amount = float(obj["amount"]["value"])
+                except Exception:
+                    amount = None
+
+            metadata = obj.get("metadata") or {}
 
             logger.info(
-                "yookassa_webhook_received",
-                webhook_event=event_type,
-                object_id=obj.id,
-                object_status=obj.status if hasattr(obj, 'status') else 'N/A'
+                "yookassa_webhook_parsed",
+                event=event,
+                payment_id=payment_id,
+                status=status,
+                paid=paid
             )
 
-            # Handle different event types
-            if event_type.startswith('payment.'):
-                # Payment event
-                return {
-                    "event": event_type,
-                    "payment_id": obj.id,
-                    "status": obj.status,
-                    "amount": float(obj.amount.value),
-                    "currency": obj.amount.currency,
-                    "paid": obj.paid if hasattr(obj, 'paid') else False,
-                    "metadata": obj.metadata if hasattr(obj, 'metadata') and obj.metadata else {}
-                }
-            elif event_type.startswith('refund.'):
-                # Refund event - we just acknowledge it, actual processing in api_main
-                return {
-                    "event": event_type,
-                    "refund_id": obj.id,
-                    "payment_id": obj.payment_id if hasattr(obj, 'payment_id') else None,
-                    "status": obj.status,
-                    "amount": float(obj.amount.value),
-                    "currency": obj.amount.currency,
-                    "metadata": {}
-                }
-            else:
-                # Other events (payment_method, etc)
-                logger.warning(
-                    "yookassa_webhook_unsupported_event",
-                    webhook_event=event_type
-                )
-                return {
-                    "event": event_type,
-                    "object_id": obj.id,
-                    "status": obj.status if hasattr(obj, 'status') else 'unknown',
-                    "metadata": {}
-                }
+            return {
+                "event": event,
+                "payment_id": payment_id,
+                "status": status,
+                "paid": paid,
+                "amount": amount,
+                "metadata": metadata,
+            }
 
         except Exception as e:
             logger.error(
