@@ -23,23 +23,6 @@ async def cmd_start(message: Message, user: User):
     from sqlalchemy import select
     from datetime import datetime, timedelta, timezone
 
-    # Check for pending payments (fallback if webhook didn't arrive)
-    async with async_session_maker() as session:
-        from app.services.payment import PaymentService
-
-        payment_service = PaymentService(session)
-        processed_count = await payment_service.check_and_process_pending_payments(user.id)
-
-        if processed_count > 0:
-            from app.core.logger import get_logger
-
-            logger = get_logger(__name__)
-            logger.info(
-                "pending_payments_processed_on_start",
-                user_id=user.id,
-                count=processed_count
-            )
-
     # Check for referral code or unlimited invite in command args
     if message.text and len(message.text.split()) > 1:
         args = message.text.split()[1]  # Get argument after /start
