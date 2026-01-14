@@ -238,7 +238,7 @@ class YooKassaService:
 
             logger.info(
                 "yookassa_webhook_parsed",
-                event=event,
+                webhook_event=event,
                 payment_id=payment_id,
                 status=status,
                 paid=paid
