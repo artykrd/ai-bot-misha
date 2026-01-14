@@ -94,20 +94,40 @@ async def yookassa_webhook(request: Request):
     from datetime import datetime, timedelta
     from sqlalchemy import select
 
+    webhook_start = datetime.utcnow()
+
     try:
         body = await request.json()
 
-        logger.info("yukassa_webhook_received", data=body)
+        logger.info(
+            "yukassa_webhook_received_raw",
+            timestamp=webhook_start.isoformat(),
+            content_type=request.headers.get("content-type"),
+            body_keys=list(body.keys()) if body else [],
+            full_body=body
+        )
 
         # Process webhook
         yookassa_service = YooKassaService()
         webhook_data = yookassa_service.process_webhook(body)
 
         if not webhook_data:
-            logger.error("yukassa_webhook_invalid", body=body)
+            logger.error(
+                "yukassa_webhook_invalid",
+                body=body,
+                reason="process_webhook returned None"
+            )
             raise HTTPException(status_code=400, detail="Invalid webhook data")
 
         event_type = webhook_data.get("event", "")
+        logger.info(
+            "yukassa_webhook_parsed",
+            event_type=event_type,
+            payment_id=webhook_data.get("payment_id"),
+            status=webhook_data.get("status"),
+            paid=webhook_data.get("paid"),
+            amount=webhook_data.get("amount")
+        )
 
         # Handle refund events - just acknowledge them
         if event_type.startswith("refund."):
@@ -133,24 +153,49 @@ async def yookassa_webhook(request: Request):
                 logger.error("yukassa_no_payment_id", webhook_data=webhook_data)
                 raise HTTPException(status_code=400, detail="No payment_id in webhook")
 
+            logger.info(
+                "yukassa_searching_payment",
+                yukassa_payment_id=payment_id
+            )
+
             payment = await payment_service.get_payment_by_yukassa_id(payment_id)
 
             if not payment:
-                logger.error("yukassa_payment_not_found", payment_id=payment_id)
+                logger.error(
+                    "yukassa_payment_not_found_in_db",
+                    yukassa_payment_id=payment_id,
+                    searched_field="yukassa_payment_id"
+                )
                 raise HTTPException(status_code=404, detail="Payment not found")
+
+            logger.info(
+                "yukassa_payment_found",
+                payment_id=payment.payment_id,
+                yukassa_payment_id=payment_id,
+                current_status=payment.status,
+                user_id=payment.user_id
+            )
 
             # Handle successful payment
             if event_type == "payment.succeeded" and webhook_data.get("paid"):
                 logger.info(
-                    "yukassa_payment_succeeded",
+                    "yukassa_payment_succeeded_event",
                     payment_id=payment.payment_id,
                     yukassa_payment_id=payment_id,
-                    amount=webhook_data["amount"]
+                    amount=webhook_data["amount"],
+                    current_payment_status=payment.status,
+                    metadata=webhook_data.get("metadata", {})
                 )
 
                 # Update yukassa_response before processing
                 payment.yukassa_response = webhook_data
                 await session.commit()
+
+                logger.info(
+                    "yukassa_calling_process_successful_payment",
+                    payment_id=payment.payment_id,
+                    user_id=payment.user_id
+                )
 
                 # Process payment through PaymentService
                 success = await payment_service.process_successful_payment(payment)
@@ -163,9 +208,21 @@ async def yookassa_webhook(request: Request):
                     )
                     raise HTTPException(status_code=500, detail="Payment processing failed")
 
+                logger.info(
+                    "yukassa_payment_processed_successfully",
+                    payment_id=payment.payment_id,
+                    user_id=payment.user_id
+                )
+
                 # Notify user about credited tokens
                 subscription_service = SubscriptionService(session)
                 total_tokens = await subscription_service.get_available_tokens(payment.user_id)
+
+                logger.info(
+                    "yukassa_checking_tokens_for_notification",
+                    user_id=payment.user_id,
+                    total_tokens=total_tokens
+                )
 
                 if total_tokens > 0:
                     user_result = await session.execute(
@@ -183,6 +240,14 @@ async def yookassa_webhook(request: Request):
                         except (TypeError, ValueError):
                             tokens_added = 0
 
+                        logger.info(
+                            "yukassa_preparing_notification",
+                            user_id=payment.user_id,
+                            telegram_id=user.telegram_id,
+                            tokens_added=tokens_added,
+                            total_tokens=total_tokens
+                        )
+
                         if tokens_added > 0:
                             message = (
                                 "✅ Бонусы начислены!\n\n"
@@ -191,6 +256,11 @@ async def yookassa_webhook(request: Request):
                             )
                             try:
                                 await bot.send_message(user.telegram_id, message)
+                                logger.info(
+                                    "yukassa_notification_sent",
+                                    user_id=payment.user_id,
+                                    telegram_id=user.telegram_id
+                                )
                             except Exception as send_error:
                                 logger.error(
                                     "yukassa_bonus_notification_failed",
@@ -206,6 +276,12 @@ async def yookassa_webhook(request: Request):
                         )
 
             elif event_type == "payment.canceled":
+                logger.info(
+                    "yukassa_payment_canceled_event",
+                    payment_id=payment.payment_id,
+                    yukassa_payment_id=payment_id
+                )
+
                 # Payment was canceled
                 await payment_service.update_payment_status(
                     payment_id=payment.payment_id,
@@ -214,14 +290,36 @@ async def yookassa_webhook(request: Request):
                 )
 
                 logger.info(
-                    "yukassa_payment_canceled",
+                    "yukassa_payment_canceled_processed",
                     payment_id=payment.payment_id
                 )
 
+            else:
+                logger.info(
+                    "yukassa_payment_event_ignored",
+                    event_type=event_type,
+                    payment_id=payment.payment_id
+                )
+
+        webhook_duration = (datetime.utcnow() - webhook_start).total_seconds()
+        logger.info(
+            "yukassa_webhook_completed",
+            event_type=event_type,
+            duration_seconds=webhook_duration
+        )
+
         return {"status": "ok"}
 
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
     except Exception as e:
-        logger.error("yukassa_webhook_error", error=str(e))
+        logger.error(
+            "yukassa_webhook_error",
+            error=str(e),
+            error_type=type(e).__name__,
+            traceback=str(e.__traceback__) if hasattr(e, '__traceback__') else None
+        )
         raise HTTPException(status_code=500, detail=str(e))
 
 
