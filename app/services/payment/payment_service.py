@@ -185,6 +185,14 @@ class PaymentService:
         try:
             from app.services.subscription import SubscriptionService
 
+            logger.info(
+                "process_successful_payment_started",
+                payment_id=payment.payment_id,
+                user_id=payment.user_id,
+                current_status=payment.status,
+                amount=float(payment.amount)
+            )
+
             # Check if payment already processed (idempotency)
             if payment.status == "success":
                 logger.info(
@@ -201,7 +209,19 @@ class PaymentService:
             payment_type = metadata.get("type", "eternal_tokens")
             tokens_added = 0
 
+            logger.info(
+                "process_payment_metadata_parsed",
+                payment_id=payment.payment_id,
+                payment_type=payment_type,
+                metadata=metadata
+            )
+
             if payment_type == "eternal_tokens":
+                logger.info(
+                    "processing_eternal_tokens",
+                    payment_id=payment.payment_id,
+                    user_id=payment.user_id
+                )
                 # Add eternal tokens to user
                 try:
                     tokens = int(metadata.get("tokens", 0))
@@ -209,14 +229,27 @@ class PaymentService:
                     tokens = 0
 
                 if tokens > 0:
+                    logger.info(
+                        "adding_eternal_tokens",
+                        user_id=payment.user_id,
+                        tokens=tokens
+                    )
+
                     await subscription_service.add_eternal_tokens(payment.user_id, tokens)
                     tokens_added = tokens
 
                     logger.info(
-                        "tokens_added",
+                        "eternal_tokens_added_to_db",
                         user_id=payment.user_id,
                         tokens=tokens,
                         type="eternal"
+                    )
+                else:
+                    logger.warning(
+                        "eternal_tokens_zero_or_invalid",
+                        user_id=payment.user_id,
+                        tokens_value=tokens,
+                        metadata=metadata
                     )
 
                     # Award referrer if exists
@@ -238,6 +271,12 @@ class PaymentService:
                         )
 
             elif payment_type == "subscription":
+                logger.info(
+                    "processing_subscription",
+                    payment_id=payment.payment_id,
+                    user_id=payment.user_id
+                )
+
                 # Add subscription with tokens
                 try:
                     days = int(metadata.get("days", 30))
@@ -251,8 +290,22 @@ class PaymentService:
                     except (TypeError, ValueError):
                         tokens = 0
 
+                logger.info(
+                    "subscription_params_parsed",
+                    user_id=payment.user_id,
+                    days=days,
+                    tokens=tokens
+                )
+
                 # Add subscription tokens
                 if tokens and tokens > 0:
+                    logger.info(
+                        "adding_subscription_tokens",
+                        user_id=payment.user_id,
+                        tokens=tokens,
+                        days=days
+                    )
+
                     subscription = await subscription_service.add_subscription_tokens(
                         user_id=payment.user_id,
                         tokens=tokens,
@@ -266,11 +319,19 @@ class PaymentService:
                     await self.session.commit()
 
                     logger.info(
-                        "subscription_activated",
+                        "subscription_tokens_added_to_db",
                         user_id=payment.user_id,
                         subscription_id=subscription.id,
                         days=days,
                         tokens=tokens
+                    )
+                else:
+                    logger.warning(
+                        "subscription_tokens_zero_or_invalid",
+                        user_id=payment.user_id,
+                        tokens_value=tokens,
+                        days=days,
+                        metadata=metadata
                     )
 
                     # Award referrer if exists
@@ -292,25 +353,45 @@ class PaymentService:
                         )
 
             # Update payment status
+            logger.info(
+                "updating_payment_status_to_success",
+                payment_id=payment.payment_id,
+                user_id=payment.user_id,
+                tokens_added=tokens_added
+            )
+
             payment.status = "success"
             if metadata.get("payment_method"):
                 payment.payment_method = metadata.get("payment_method")
             await self.session.commit()
 
             logger.info(
-                "webhook_payment_succeeded_processed",
+                "payment_status_updated_successfully",
                 payment_id=payment.payment_id,
                 user_id=payment.user_id,
-                tokens_added=tokens_added
+                new_status="success"
+            )
+
+            logger.info(
+                "process_successful_payment_completed",
+                payment_id=payment.payment_id,
+                user_id=payment.user_id,
+                tokens_added=tokens_added,
+                payment_type=payment_type
             )
 
             return True
 
         except Exception as e:
+            import traceback
+
             logger.error(
                 "payment_processing_failed",
                 error=str(e),
-                payment_id=payment.payment_id
+                error_type=type(e).__name__,
+                payment_id=payment.payment_id,
+                user_id=payment.user_id if hasattr(payment, 'user_id') else 'unknown',
+                traceback=traceback.format_exc()
             )
             await self.session.rollback()
             return False
@@ -340,6 +421,144 @@ class PaymentService:
             .offset(offset)
         )
         return list(result.scalars().all())
+
+    async def check_and_process_pending_payments(self, user_id: int) -> int:
+        """
+        Check pending payments for user and process successful ones.
+        This is a fallback mechanism if webhook didn't arrive.
+
+        Args:
+            user_id: User ID
+
+        Returns:
+            Number of payments processed
+        """
+        try:
+            logger.info(
+                "checking_pending_payments",
+                user_id=user_id
+            )
+
+            # Get pending payments from last 24 hours
+            from datetime import timedelta
+
+            cutoff_time = datetime.utcnow() - timedelta(hours=24)
+
+            result = await self.session.execute(
+                select(Payment)
+                .where(
+                    Payment.user_id == user_id,
+                    Payment.status == "pending",
+                    Payment.created_at >= cutoff_time
+                )
+                .order_by(Payment.created_at.desc())
+            )
+            pending_payments = list(result.scalars().all())
+
+            if not pending_payments:
+                logger.info(
+                    "no_pending_payments_found",
+                    user_id=user_id
+                )
+                return 0
+
+            logger.info(
+                "pending_payments_found",
+                user_id=user_id,
+                count=len(pending_payments)
+            )
+
+            yookassa_service = YooKassaService()
+            processed_count = 0
+
+            for payment in pending_payments:
+                if not payment.yukassa_payment_id:
+                    logger.warning(
+                        "pending_payment_no_yukassa_id",
+                        payment_id=payment.payment_id
+                    )
+                    continue
+
+                logger.info(
+                    "checking_yukassa_payment_status",
+                    payment_id=payment.payment_id,
+                    yukassa_payment_id=payment.yukassa_payment_id
+                )
+
+                # Check payment status in YooKassa
+                payment_info = yookassa_service.get_payment_info(payment.yukassa_payment_id)
+
+                if not payment_info:
+                    logger.warning(
+                        "failed_to_get_yukassa_payment_info",
+                        payment_id=payment.payment_id,
+                        yukassa_payment_id=payment.yukassa_payment_id
+                    )
+                    continue
+
+                logger.info(
+                    "yukassa_payment_status_received",
+                    payment_id=payment.payment_id,
+                    yukassa_status=payment_info.get("status"),
+                    paid=payment_info.get("paid")
+                )
+
+                # Process if payment succeeded
+                if payment_info.get("status") == "succeeded" and payment_info.get("paid"):
+                    logger.info(
+                        "processing_pending_payment_as_succeeded",
+                        payment_id=payment.payment_id,
+                        yukassa_payment_id=payment.yukassa_payment_id
+                    )
+
+                    # Update payment with full response
+                    payment.yukassa_response = payment_info
+                    await self.session.commit()
+
+                    # Process payment
+                    success = await self.process_successful_payment(payment)
+
+                    if success:
+                        processed_count += 1
+                        logger.info(
+                            "pending_payment_processed_successfully",
+                            payment_id=payment.payment_id
+                        )
+                    else:
+                        logger.error(
+                            "failed_to_process_pending_payment",
+                            payment_id=payment.payment_id
+                        )
+
+                elif payment_info.get("status") == "canceled":
+                    logger.info(
+                        "pending_payment_was_canceled",
+                        payment_id=payment.payment_id
+                    )
+
+                    await self.update_payment_status(
+                        payment_id=payment.payment_id,
+                        status="failed",
+                        yukassa_response=payment_info
+                    )
+
+            logger.info(
+                "pending_payments_check_completed",
+                user_id=user_id,
+                total_pending=len(pending_payments),
+                processed=processed_count
+            )
+
+            return processed_count
+
+        except Exception as e:
+            logger.error(
+                "check_pending_payments_failed",
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id
+            )
+            return 0
 
     async def cancel_subscription_with_refund(
         self,
