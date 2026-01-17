@@ -809,8 +809,6 @@ async def eternal_token_selected(callback: CallbackQuery, user: User):
 async def show_referral(callback: CallbackQuery, user: User):
     """Show referral program with real statistics."""
     from app.database.database import async_session_maker
-    from sqlalchemy import select, func
-    from app.database.models.referral import Referral
 
     # Get referral statistics using ReferralService
     async with async_session_maker() as session:
@@ -821,7 +819,8 @@ async def show_referral(callback: CallbackQuery, user: User):
 
         referral_count = stats["referral_count"]
         tokens_earned = stats["tokens_earned"]
-        money_earned = stats["money_earned"]
+        tokens_balance = stats["tokens_balance"]
+        money_balance = stats["money_balance"]
 
     # Build referral link for bot
     bot_username = "assistantvirtualsbot"
@@ -831,14 +830,14 @@ async def show_referral(callback: CallbackQuery, user: User):
 
 Приглашайте друзей и получайте награды:
 
-💎 **50% токенов** от каждой покупки приглашенного друга
-💰 **10% деньгами** от покупок (для партнеров)
-🎁 **100 токенов** получит ваш друг при регистрации
+🎁 **+50 токенов** вам и другу при первом запуске
+💰 **10% деньгами** от каждой покупки приглашенного
 
 👥 Приглашено пользователей: **{referral_count}**
 🔶 Заработано токенов: **{tokens_earned:,}**
-💸 Минимальная сумма вывода: **500 руб.**
-💰 Доступно для вывода: **{money_earned:.2f} руб.**
+💎 Баланс токенов: **{tokens_balance:,}**
+💸 Минимальная сумма вывода: **1 500 руб.**
+💰 Доступно для вывода: **{money_balance:.2f} руб.**
 
 🔗 Моя реферальная ссылка:
 `{referral_link}`
@@ -861,32 +860,29 @@ async def show_referral(callback: CallbackQuery, user: User):
 async def referral_withdraw(callback: CallbackQuery, user: User):
     """Withdraw referral earnings."""
     from app.database.database import async_session_maker
-    from sqlalchemy import select, func
-    from app.database.models.referral import Referral
+    from sqlalchemy import select
+    from app.database.models.referral_balance import ReferralBalance
 
     async with async_session_maker() as session:
-        # Sum money earned
-        money_earned_result = await session.execute(
-            select(func.sum(Referral.money_earned)).where(
-                Referral.referrer_id == user.id,
-                Referral.is_active == True
-            )
+        balance_result = await session.execute(
+            select(ReferralBalance).where(ReferralBalance.user_id == user.id)
         )
-        money_earned = float(money_earned_result.scalar() or 0)
+        balance = balance_result.scalar_one_or_none()
+        money_balance = float(balance.money_balance) if balance else 0.0
 
-    min_withdrawal = 500.0
+    min_withdrawal = 1500.0
 
-    if money_earned < min_withdrawal:
+    if money_balance < min_withdrawal:
         await callback.answer(
             f"⚠️ Недостаточно средств для вывода\n\n"
             f"Минимум: {min_withdrawal:.0f} руб.\n"
-            f"Доступно: {money_earned:.2f} руб.",
+            f"Доступно: {money_balance:.2f} руб.",
             show_alert=True
         )
     else:
         text = f"""💰 **Вывод средств**
 
-Доступно для вывода: **{money_earned:.2f} руб.**
+Доступно для вывода: **{money_balance:.2f} руб.**
 
 Для вывода средств обратитесь в поддержку: @gigavidacha
 
@@ -905,6 +901,51 @@ async def referral_withdraw(callback: CallbackQuery, user: User):
             if "message is not modified" not in str(e):
                 raise
         await callback.answer()
+
+
+@router.callback_query(F.data == "bot.refferal_exchange")
+async def referral_exchange(callback: CallbackQuery, user: User):
+    """Exchange referral money balance to tokens."""
+    from app.database.database import async_session_maker
+    from app.services.referral import ReferralService
+    from decimal import Decimal
+
+    tokens_per_ruble = 1700
+
+    async with async_session_maker() as session:
+        referral_service = ReferralService(session)
+        stats = await referral_service.get_referral_stats(user.id)
+        money_balance = Decimal(str(stats["money_balance"]))
+
+        if money_balance <= 0:
+            await callback.answer("⚠️ У вас нет средств для обмена.", show_alert=True)
+            return
+
+        tokens_added = await referral_service.exchange_money_to_tokens(
+            user_id=user.id,
+            money_amount=money_balance,
+            tokens_per_ruble=tokens_per_ruble
+        )
+
+    if not tokens_added:
+        await callback.answer("⚠️ Не удалось выполнить обмен.", show_alert=True)
+        return
+
+    text = f"""🔄 **Обмен выполнен**
+
+Сумма обмена: **{money_balance:.2f} руб.**
+Начислено: **{tokens_added:,} токенов**
+Курс: **1 руб. = {tokens_per_ruble} токенов**"""
+
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=back_to_main_keyboard()
+        )
+    except TelegramBadRequest as e:
+        if "message is not modified" not in str(e):
+            raise
+    await callback.answer()
 
 
 @router.callback_query(F.data == "bot.profile_payments")

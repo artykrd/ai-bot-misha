@@ -9,29 +9,28 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
     """Main menu keyboard matching bot_structure.md."""
     builder = InlineKeyboardBuilder()
 
-    builder.row(
-        InlineKeyboardButton(text="🗯 ChatGPT", callback_data="bot.start_chatgpt_dialog_324#home")
-    )
-    builder.row(
-        InlineKeyboardButton(text="🎬 Создать видео", callback_data="bot.create_video"),
-        InlineKeyboardButton(text="💬 Диалоги", callback_data="bot.dialogs_chatgpt")
-    )
-    builder.row(
-        InlineKeyboardButton(text="🎨 Работа с фото", callback_data="bot.pi"),
-        InlineKeyboardButton(text="🖼 Создать фото", callback_data="bot.create_photo")
-    )
-    builder.row(
-        InlineKeyboardButton(text="🎭 Выбрать модель", callback_data="bot.llm_models"),
-        InlineKeyboardButton(text="🎙 Работа с аудио", callback_data="bot.audio_instruments")
-    )
-    builder.row(
-        InlineKeyboardButton(text="👤 Мой профиль", callback_data="bot.profile"),
-        InlineKeyboardButton(text="💎 Подписка", callback_data="bot#shop")
-    )
-    builder.row(
-        InlineKeyboardButton(text="🤝🏼 Партнерство", callback_data="bot.refferal_program"),
-        InlineKeyboardButton(text="🆘 Поддержка", url="https://t.me/gigavidacha")
-    )
+    builder.row(InlineKeyboardButton(text="Главное меню", callback_data="bot.back"))
+    builder.row(InlineKeyboardButton(text="Мой профиль", callback_data="bot.profile"))
+    builder.row(InlineKeyboardButton(text="Оформить подписку", callback_data="bot#shop"))
+    builder.row(InlineKeyboardButton(text="Пригласи друга", callback_data="bot.refferal_program"))
+    builder.row(InlineKeyboardButton(text="Выбрать модель", callback_data="bot.llm_models"))
+    builder.row(InlineKeyboardButton(text="Nano Banana", callback_data="bot.nano"))
+    builder.row(InlineKeyboardButton(text="Midjourney", callback_data="bot.midjourney"))
+    builder.row(InlineKeyboardButton(text="DALL·E 3", callback_data="bot.gpt_image"))
+    builder.row(InlineKeyboardButton(text="Gpt image 1", callback_data="bot.gpt_image"))
+    builder.row(InlineKeyboardButton(text="VеоЗ", callback_data="bot.veo"))
+    builder.row(InlineKeyboardButton(text="Kling", callback_data="bot.kling_main"))
+    builder.row(InlineKeyboardButton(text="Sora", callback_data="bot.sora"))
+    builder.row(InlineKeyboardButton(text="Hailuo", callback_data="bot.hailuo"))
+    builder.row(InlineKeyboardButton(text="Midjourney Video", callback_data="bot.mjvideo"))
+    builder.row(InlineKeyboardButton(text="Luma", callback_data="bot.luma"))
+    builder.row(InlineKeyboardButton(text="Suno", callback_data="bot.suno"))
+    builder.row(InlineKeyboardButton(text="Расшифровка голоса", callback_data="bot.whisper"))
+    builder.row(InlineKeyboardButton(text="Работа с фото", callback_data="bot.pi"))
+    builder.row(InlineKeyboardButton(text="Recraft", callback_data="bot.recraft"))
+    builder.row(InlineKeyboardButton(text="Замена лица на фото", callback_data="bot.faceswap"))
+    builder.row(InlineKeyboardButton(text="Активировать промокод", callback_data="activate_promocode"))
+    builder.row(InlineKeyboardButton(text="Помощь", callback_data="help"))
 
     return builder.as_markup()
 
@@ -425,6 +424,9 @@ def referral_keyboard(user_telegram_id: int = None) -> InlineKeyboardMarkup:
 
     builder.row(
         InlineKeyboardButton(text="🏦 Вывести средства", callback_data="bot.refferal_withdraw")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🔄 Обменять на токены", callback_data="bot.refferal_exchange")
     )
 
     # Share button with dynamic referral link

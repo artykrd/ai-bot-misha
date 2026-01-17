@@ -252,23 +252,23 @@ class PaymentService:
                         metadata=metadata
                     )
 
-                    # Award referrer if exists
-                    from app.services.referral import ReferralService
+                # Award referrer if exists
+                from app.services.referral import ReferralService
 
-                    referral_service = ReferralService(self.session)
-                    tokens_awarded, money_awarded = await referral_service.award_referrer_for_purchase(
-                        referred_user_id=payment.user_id,
-                        tokens_purchased=tokens,
-                        money_paid=payment.amount
+                referral_service = ReferralService(self.session)
+                tokens_awarded, money_awarded = await referral_service.award_referrer_for_purchase(
+                    referred_user_id=payment.user_id,
+                    tokens_purchased=tokens,
+                    money_paid=payment.amount
+                )
+
+                if tokens_awarded or money_awarded:
+                    logger.info(
+                        "referral_reward_awarded",
+                        user_id=payment.user_id,
+                        tokens_awarded=tokens_awarded,
+                        money_awarded=money_awarded
                     )
-
-                    if tokens_awarded or money_awarded:
-                        logger.info(
-                            "referral_reward_awarded",
-                            user_id=payment.user_id,
-                            tokens_awarded=tokens_awarded,
-                            money_awarded=money_awarded
-                        )
 
             elif payment_type == "subscription":
                 logger.info(
@@ -334,23 +334,23 @@ class PaymentService:
                         metadata=metadata
                     )
 
-                    # Award referrer if exists
-                    from app.services.referral import ReferralService
+                # Award referrer if exists
+                from app.services.referral import ReferralService
 
-                    referral_service = ReferralService(self.session)
-                    tokens_awarded, money_awarded = await referral_service.award_referrer_for_purchase(
-                        referred_user_id=payment.user_id,
-                        tokens_purchased=tokens,
-                        money_paid=payment.amount
+                referral_service = ReferralService(self.session)
+                tokens_awarded, money_awarded = await referral_service.award_referrer_for_purchase(
+                    referred_user_id=payment.user_id,
+                    tokens_purchased=tokens or 0,
+                    money_paid=payment.amount
+                )
+
+                if tokens_awarded or money_awarded:
+                    logger.info(
+                        "referral_reward_awarded_subscription",
+                        user_id=payment.user_id,
+                        tokens_awarded=tokens_awarded,
+                        money_awarded=money_awarded
                     )
-
-                    if tokens_awarded or money_awarded:
-                        logger.info(
-                            "referral_reward_awarded_subscription",
-                            user_id=payment.user_id,
-                            tokens_awarded=tokens_awarded,
-                            money_awarded=money_awarded
-                        )
 
             # Update payment status
             logger.info(
