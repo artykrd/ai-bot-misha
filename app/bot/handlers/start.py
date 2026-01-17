@@ -124,14 +124,15 @@ async def cmd_start(message: Message, user: User):
                         if referral:
                             # Give signup bonus to new user
                             bonus_given = await referral_service.give_signup_bonus(
-                                user_id=user.id,
-                                bonus_tokens=100
+                                referrer_id=referrer.id,
+                                referred_id=user.id,
+                                bonus_tokens=50
                             )
 
                             if bonus_given:
                                 await message.answer(
                                     f"🎉 Вы были приглашены пользователем {referrer.full_name}!\n"
-                                    f"Вам начислено 100 бонусных токенов!"
+                                    f"Вам начислено 50 бонусных токенов!"
                                 )
                             else:
                                 # Referral created but bonus failed
