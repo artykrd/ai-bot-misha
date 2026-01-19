@@ -62,6 +62,9 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 
 async def init_db() -> None:
     """Initialize database (create all tables)."""
+    # Ensure all models are imported so metadata includes every table.
+    from app.database import models  # noqa: F401
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logger.info("database_initialized")

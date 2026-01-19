@@ -12,7 +12,7 @@ def main_menu_reply_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(text="🎨 Работа с фото"), KeyboardButton(text="🖼 Создать фото")],
             [KeyboardButton(text="🤖 Выбрать модель"), KeyboardButton(text="🎧 Работа с аудио")],
             [KeyboardButton(text="👤 Мой профиль"), KeyboardButton(text="💎 Подписка")],
-            [KeyboardButton(text="🤝 Партнерство"), KeyboardButton(text="🆘 Поддержка")],
+            [KeyboardButton(text="🤝 Пригласи друга"), KeyboardButton(text="🆘 Поддержка")],
         ],
         resize_keyboard=True
     )
