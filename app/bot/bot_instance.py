@@ -64,6 +64,9 @@ async def setup_bot() -> Dispatcher:
     from app.bot.commands import setup_bot_commands
     await setup_bot_commands(bot)
 
+    from app.core.error_notifier import setup_error_notifications
+    setup_error_notifications(bot)
+
     logger.info("bot_setup_completed")
 
     return dp

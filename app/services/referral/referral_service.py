@@ -6,7 +6,9 @@ from typing import Optional, Tuple
 from datetime import datetime, timezone
 from decimal import Decimal
 
+from asyncpg.exceptions import UndefinedTableError
 from sqlalchemy import select, func
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models.referral import Referral
@@ -324,10 +326,20 @@ class ReferralService:
             )
             money_earned = float(money_earned_result.scalar() or 0)
 
-            balance_result = await self.session.execute(
-                select(ReferralBalance).where(ReferralBalance.user_id == user_id)
-            )
-            balance = balance_result.scalar_one_or_none()
+            balance = None
+            try:
+                balance_result = await self.session.execute(
+                    select(ReferralBalance).where(ReferralBalance.user_id == user_id)
+                )
+                balance = balance_result.scalar_one_or_none()
+            except ProgrammingError as exc:
+                if isinstance(getattr(exc, "orig", None), UndefinedTableError):
+                    logger.warning(
+                        "referral_balance_table_missing",
+                        user_id=user_id
+                    )
+                else:
+                    raise
 
             return {
                 "referral_count": referral_count,

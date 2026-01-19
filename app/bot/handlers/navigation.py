@@ -8,6 +8,8 @@ from aiogram.types import CallbackQuery, Message
 from aiogram.enums import ParseMode
 from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest
+from asyncpg.exceptions import UndefinedTableError
+from sqlalchemy.exc import ProgrammingError
 
 from app.bot.keyboards.inline import (
     ai_models_keyboard,
@@ -942,12 +944,21 @@ async def referral_withdraw(callback: CallbackQuery, user: User):
     from sqlalchemy import select
     from app.database.models.referral_balance import ReferralBalance
 
-    async with async_session_maker() as session:
-        balance_result = await session.execute(
-            select(ReferralBalance).where(ReferralBalance.user_id == user.id)
-        )
-        balance = balance_result.scalar_one_or_none()
-        money_balance = float(balance.money_balance) if balance else 0.0
+    try:
+        async with async_session_maker() as session:
+            balance_result = await session.execute(
+                select(ReferralBalance).where(ReferralBalance.user_id == user.id)
+            )
+            balance = balance_result.scalar_one_or_none()
+            money_balance = float(balance.money_balance) if balance else 0.0
+    except ProgrammingError as exc:
+        if isinstance(getattr(exc, "orig", None), UndefinedTableError):
+            await callback.answer(
+                "⚠️ Реферальная программа временно недоступна. Попробуйте позже.",
+                show_alert=True
+            )
+            return
+        raise
 
     min_withdrawal = 1500.0
 
