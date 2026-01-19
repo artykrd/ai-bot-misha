@@ -6,7 +6,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 
 def main_menu_keyboard() -> InlineKeyboardMarkup:
-    """Main menu keyboard matching bot_structure.md."""
+    """Full menu keyboard."""
     builder = InlineKeyboardBuilder()
 
     builder.row(InlineKeyboardButton(text="Главное меню", callback_data="bot.back"))
@@ -36,9 +36,9 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
 
 
 def back_to_main_keyboard() -> InlineKeyboardMarkup:
-    """Back to main menu button."""
+    """Menu button."""
     builder = InlineKeyboardBuilder()
-    builder.add(InlineKeyboardButton(text="⬅️ В главное меню", callback_data="bot.back"))
+    builder.add(InlineKeyboardButton(text="Меню", callback_data="bot.menu"))
     return builder.as_markup()
 
 

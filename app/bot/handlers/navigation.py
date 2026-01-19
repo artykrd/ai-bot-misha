@@ -4,13 +4,12 @@
 Navigation handlers for all menu buttons.
 """
 from aiogram import Router, F
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, Message
 from aiogram.enums import ParseMode
 from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest
 
 from app.bot.keyboards.inline import (
-    main_menu_keyboard,
     ai_models_keyboard,
     dialogs_keyboard,
     create_photo_keyboard,
@@ -26,6 +25,7 @@ from app.bot.keyboards.inline import (
     back_to_main_keyboard,
     help_keyboard
 )
+from app.bot.keyboards.reply import main_menu_reply_keyboard
 from app.database.models.user import User
 
 router = Router(name="navigation")
@@ -81,37 +81,33 @@ async def back_to_main(callback: CallbackQuery, user: User, state: FSMContext):
         sub_service = SubscriptionService(session)
         total_tokens = await sub_service.get_available_tokens(user.id)
 
-    text = f"""👋🏻 **Привет!** У тебя на балансе **{total_tokens:,} токенов** ** **– используй их для запросов к нейросетям.
+    text = f"""Привет! У тебя на балансе {total_tokens:,} токенов — используй их для запросов к нейросетям.
 
-💬 **Языковые модели:**
-– **ChatGPT:** работает с текстом, голосом, может принимать до 10 картинок и документы любого формата;
-– **Claude** и **Gemini:** отлично работают с текстом и документами;
-– **DeepSeek:** отличная альтернатива для сложных задач;
-– **Sonar:** модели с доступом к поиску в интернете.
+🧠 Языковые модели:
+– ChatGPT: работает с текстом, голосом, может принимать до 10 картинок и документы любого формата;
+– Claude и Gemini: отлично работают с текстом и документами;
+– DeepSeek: отличная альтернатива для сложных задач;
+– Sonar: модели с доступом к поиску в интернете.
 
-🌄 **Создание изображений:**
-– **Midjourney, DALL·E, Stable Diffusion, Recraft** – генерация изображений по описанию;
-– **Nano Banana** – создаёт фото по промпту и вашим изображениям;
-– **GPT Image** – генерация от OpenAI.
+🎨 Создание изображений:
+– Midjourney, DALL·E, Stable Diffusion, Recraft — генерация изображений по описанию;
+– Nano Banana — создаёт фото по промпту и вашим изображениям;
+– GPT Image — генерация изображений от OpenAI.
 
-🎬 **Создание видео:**
-– **Sora 2, Veo 3.1** – новейшие модели видеогенерации;
-– **Midjourney Video, Hailuo, Luma, Kling** – создание видео по описанию.
+🎬 Создание видео:
+– Sora 2, Veo 3.1 — новейшие модели видеогенерации;
+– Midjourney Video, Hailuo, Luma, Kling — создание видео по описанию.
 
-🎙 **Работа с аудио:**
-– **Suno** – создание музыки и песен;
-– **Whisper** – расшифровка голосовых сообщений;
-– **TTS** – озвучка текста."""
+🎵 Работа с аудио:
+– Suno — создание музыки и песен;
+– Whisper — расшифровка голосовых сообщений;
+– TTS — озвучка текста."""
 
-    try:
-        await callback.message.edit_text(
-            text,
-            reply_markup=main_menu_keyboard()
-        )
-    except TelegramBadRequest as e:
-        # Ignore error if message content hasn't changed
-        if "message is not modified" not in str(e):
-            raise
+    await callback.message.delete()
+    await callback.message.answer(
+        text,
+        reply_markup=main_menu_reply_keyboard()
+    )
     await callback.answer()
 
 
@@ -150,6 +146,23 @@ async def show_models(callback: CallbackQuery):
         if "message is not modified" not in str(e):
             raise
     await callback.answer()
+
+
+@router.message(F.text == "🤖 Выбрать модель")
+async def show_models_message(message: Message):
+    """Show AI models selection from reply keyboard."""
+    from app.core.billing_config import format_text_model_pricing
+
+    text = f"""🤖 **Выбор AI модели**
+
+Выберите модель для диалога:
+
+• {format_text_model_pricing("gpt-4o")}
+• {format_text_model_pricing("gpt-4.1-mini")}
+• {format_text_model_pricing("claude-4")}
+• {format_text_model_pricing("gemini-flash-2.0")}
+• {format_text_model_pricing("deepseek-chat")}"""
+    await message.answer(text, reply_markup=ai_models_keyboard(), parse_mode=ParseMode.MARKDOWN)
 
 
 # Dialog management
@@ -244,6 +257,17 @@ async def show_dialogs(callback: CallbackQuery):
     await callback.answer()
 
 
+@router.message(F.text == "💬 Диалоги")
+async def show_dialogs_message(message: Message):
+    """Show dialogs from reply keyboard."""
+    text = """💬 **Диалоги**
+
+Диалоги нужны для хранения истории и роли (промпта). Каждый новый диалог — это отдельная ветка для общения с заранее заданной ролью с выбранной нейросетью. Вы можете выбрать подготовленные диалоги ниже или создать свой.
+
+**Доступные диалоги:**"""
+    await message.answer(text, reply_markup=dialogs_keyboard())
+
+
 @router.callback_query(F.data == "bot.create_chatgpt_dialog")
 async def create_dialog(callback: CallbackQuery):
     """Create new dialog."""
@@ -273,6 +297,15 @@ async def show_create_photo(callback: CallbackQuery):
     await callback.answer()
 
 
+@router.message(F.text == "🖼 Создать фото")
+async def show_create_photo_message(message: Message):
+    """Show photo creation options from reply keyboard."""
+    text = """🌄 **Создание фото**
+
+ℹ️ __Выберите нейросеть для генерации фото по кнопке ниже. После выбора – можете сразу отправлять запрос.__"""
+    await message.answer(text, reply_markup=create_photo_keyboard())
+
+
 @router.callback_query(F.data == "bot.create_video")
 async def show_create_video(callback: CallbackQuery):
     """Show video creation options."""
@@ -290,6 +323,15 @@ __ℹ️ Выберите нейросеть для генерации виде�
         if "message is not modified" not in str(e):
             raise
     await callback.answer()
+
+
+@router.message(F.text == "🎬 Создать видео")
+async def show_create_video_message(message: Message):
+    """Show video creation options from reply keyboard."""
+    text = """🎞 **Создание видео**
+
+__ℹ️ Выберите нейросеть для генерации видео по кнопке ниже. После выбора – можете сразу отправлять запрос.__"""
+    await message.answer(text, reply_markup=create_video_keyboard())
 
 
 # Nano Banana
@@ -526,6 +568,15 @@ async def show_photo_tools(callback: CallbackQuery):
     await callback.answer()
 
 
+@router.message(F.text == "🎨 Работа с фото")
+async def show_photo_tools_message(message: Message):
+    """Show photo tools from reply keyboard."""
+    text = """✂️  **Инструменты для работы с фото**
+
+ℹ️ __В этот раздел мы добавили инструменты, которые помогут вам эффективно работать с вашими фотографиями. Выберите интересующий вас инструмент по кнопке ниже.__"""
+    await message.answer(text, reply_markup=photo_tools_keyboard())
+
+
 @router.callback_query(F.data.in_(["bot.pi_upscale", "bot.pi_repb", "bot.pi_remb", "bot.pi_vect"]))
 async def photo_tool_selected(callback: CallbackQuery, state: FSMContext):
     """Handle photo tool selection."""
@@ -602,6 +653,15 @@ __ℹ️ Выберите нейросеть для работы с аудио �
     await callback.answer()
 
 
+@router.message(F.text == "🎧 Работа с аудио")
+async def show_audio_tools_message(message: Message):
+    """Show audio tools from reply keyboard."""
+    text = """🎙 **Работа с аудио**
+
+__ℹ️ Выберите нейросеть для работы с аудио по кнопке ниже. После выбора – можете сразу отправлять запрос.__"""
+    await message.answer(text, reply_markup=audio_tools_keyboard())
+
+
 # Media service handlers moved to media_handler.py
 # All video, audio, and image processing handlers are now implemented there
 
@@ -627,6 +687,17 @@ async def show_subscription(callback: CallbackQuery):
         if "message is not modified" not in str(e):
             raise
     await callback.answer()
+
+
+@router.message(F.text == "💎 Подписка")
+async def show_subscription_message(message: Message):
+    """Show subscription options from reply keyboard."""
+    text = """💎 **Оформить подписку**
+
+🤩 **Наш бот предоставляет вам лучший сервис** без каких либо ограничений и продолжает это делать ежедневно 24/7. **Подписка позволит вам получить больше возможностей**, чем если использовать бот бесплатно.
+
+**Выберите подходящий тариф:**"""
+    await message.answer(text, reply_markup=subscription_keyboard(), parse_mode=ParseMode.MARKDOWN)
 
 
 @router.callback_query(F.data == "bot#shop_tokens")
@@ -804,13 +875,10 @@ async def eternal_token_selected(callback: CallbackQuery, user: User):
 # Promocode activation is handled in subscription.py
 
 
-# Profile and Referral
-@router.callback_query(F.data == "bot.refferal_program")
-async def show_referral(callback: CallbackQuery, user: User):
-    """Show referral program with real statistics."""
+async def build_referral_text(user: User) -> str:
+    """Build referral program text with stats."""
     from app.database.database import async_session_maker
 
-    # Get referral statistics using ReferralService
     async with async_session_maker() as session:
         from app.services.referral import ReferralService
 
@@ -822,11 +890,10 @@ async def show_referral(callback: CallbackQuery, user: User):
         tokens_balance = stats["tokens_balance"]
         money_balance = stats["money_balance"]
 
-    # Build referral link for bot
     bot_username = "assistantvirtualsbot"
     referral_link = f"https://t.me/{bot_username}?start=ref{user.telegram_id}"
 
-    text = f"""🔹 **Реферальная программа**
+    return f"""🔹 **Реферальная программа**
 
 Приглашайте друзей и получайте награды:
 
@@ -844,16 +911,28 @@ async def show_referral(callback: CallbackQuery, user: User):
 
 Поделитесь этой ссылкой с друзьями и получайте бонусы!"""
 
+
+# Profile and Referral
+@router.callback_query(F.data == "bot.refferal_program")
+async def show_referral(callback: CallbackQuery, user: User):
+    """Show referral program with real statistics."""
+    text = await build_referral_text(user)
     try:
         await callback.message.edit_text(
             text,
             reply_markup=referral_keyboard(user.telegram_id)
         )
     except TelegramBadRequest as e:
-        # Ignore error if message content hasn't changed
         if "message is not modified" not in str(e):
             raise
     await callback.answer()
+
+
+@router.message(F.text == "🤝 Партнерство")
+async def show_referral_message(message: Message, user: User):
+    """Show referral program from reply keyboard."""
+    text = await build_referral_text(user)
+    await message.answer(text, reply_markup=referral_keyboard(user.telegram_id))
 
 
 @router.callback_query(F.data == "bot.refferal_withdraw")

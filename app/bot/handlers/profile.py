@@ -82,6 +82,7 @@ def calculate_service_availability(total_tokens: int) -> str:
 
 @router.callback_query(F.data == "bot.profile")
 @router.message(Command("profile"))
+@router.message(F.text == "👤 Мой профиль")
 async def show_profile(event, user: User, state: FSMContext):
     """Show user profile with detailed token breakdown."""
 
