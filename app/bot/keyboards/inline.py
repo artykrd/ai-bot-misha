@@ -18,7 +18,7 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
     builder.row(InlineKeyboardButton(text="Midjourney", callback_data="bot.midjourney"))
     builder.row(InlineKeyboardButton(text="DALL·E 3", callback_data="bot.gpt_image"))
     builder.row(InlineKeyboardButton(text="Gpt image 1", callback_data="bot.gpt_image"))
-    builder.row(InlineKeyboardButton(text="Veo 3", callback_data="bot.veo"))
+    builder.row(InlineKeyboardButton(text="VеоЗ", callback_data="bot.veo"))
     builder.row(InlineKeyboardButton(text="Kling", callback_data="bot.kling_main"))
     builder.row(InlineKeyboardButton(text="Sora", callback_data="bot.sora"))
     builder.row(InlineKeyboardButton(text="Hailuo", callback_data="bot.hailuo"))
