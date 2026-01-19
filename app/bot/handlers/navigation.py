@@ -29,6 +29,7 @@ from app.bot.keyboards.inline import (
 )
 from app.bot.keyboards.reply import main_menu_reply_keyboard
 from app.database.models.user import User
+from app.bot.handlers.dialog_context import clear_active_dialog
 
 router = Router(name="navigation")
 
@@ -36,6 +37,12 @@ router = Router(name="navigation")
 # TODO: Move to database - Dialog states storage
 # Format: {user_id: {dialog_id: {"history": bool, "show_costs": bool}}}
 DIALOG_STATES = {}
+
+
+async def reset_menu_context(state: FSMContext, user: User) -> None:
+    """Clear FSM state and active dialog when entering menu navigation."""
+    await state.clear()
+    clear_active_dialog(user.telegram_id)
 
 
 
@@ -113,6 +120,15 @@ async def back_to_main(callback: CallbackQuery, user: User, state: FSMContext):
     await callback.answer()
 
 
+@router.message(F.text.in_(["👤 Мой профиль", "Мой профиль"]))
+async def show_profile_message(message: Message, user: User, state: FSMContext):
+    """Show profile from reply keyboard without entering generation handlers."""
+    await reset_menu_context(state, user)
+    from app.bot.handlers.profile import show_profile
+
+    await show_profile(message, user, state)
+
+
 @router.callback_query(F.data == "bot.llm_models")
 async def show_models(callback: CallbackQuery):
     """Show AI models selection."""
@@ -150,9 +166,10 @@ async def show_models(callback: CallbackQuery):
     await callback.answer()
 
 
-@router.message(F.text == "🤖 Выбрать модель")
-async def show_models_message(message: Message):
+@router.message(F.text.in_(["🤖 Выбрать модель", "Выбрать модель"]))
+async def show_models_message(message: Message, user: User, state: FSMContext):
     """Show AI models selection from reply keyboard."""
+    await reset_menu_context(state, user)
     from app.core.billing_config import format_text_model_pricing
 
     text = f"""🤖 **Выбор AI модели**
@@ -259,9 +276,10 @@ async def show_dialogs(callback: CallbackQuery):
     await callback.answer()
 
 
-@router.message(F.text == "💬 Диалоги")
-async def show_dialogs_message(message: Message):
+@router.message(F.text.in_(["💬 Диалоги", "Диалоги"]))
+async def show_dialogs_message(message: Message, user: User, state: FSMContext):
     """Show dialogs from reply keyboard."""
+    await reset_menu_context(state, user)
     text = """💬 **Диалоги**
 
 Диалоги нужны для хранения истории и роли (промпта). Каждый новый диалог — это отдельная ветка для общения с заранее заданной ролью с выбранной нейросетью. Вы можете выбрать подготовленные диалоги ниже или создать свой.
@@ -299,9 +317,10 @@ async def show_create_photo(callback: CallbackQuery):
     await callback.answer()
 
 
-@router.message(F.text == "🖼 Создать фото")
-async def show_create_photo_message(message: Message):
+@router.message(F.text.in_(["🖼 Создать фото", "Создать фото"]))
+async def show_create_photo_message(message: Message, user: User, state: FSMContext):
     """Show photo creation options from reply keyboard."""
+    await reset_menu_context(state, user)
     text = """🌄 **Создание фото**
 
 ℹ️ __Выберите нейросеть для генерации фото по кнопке ниже. После выбора – можете сразу отправлять запрос.__"""
@@ -327,9 +346,16 @@ __ℹ️ Выберите нейросеть для генерации виде�
     await callback.answer()
 
 
-@router.message(F.text == "🎬 Создать видео")
-async def show_create_video_message(message: Message):
+@router.callback_query(F.data == "bot.mjvideo")
+async def show_midjourney_video(callback: CallbackQuery):
+    """Route Midjourney Video menu button to video creation options."""
+    await show_create_video(callback)
+
+
+@router.message(F.text.in_(["🎬 Создать видео", "Создать видео"]))
+async def show_create_video_message(message: Message, user: User, state: FSMContext):
     """Show video creation options from reply keyboard."""
+    await reset_menu_context(state, user)
     text = """🎞 **Создание видео**
 
 __ℹ️ Выберите нейросеть для генерации видео по кнопке ниже. После выбора – можете сразу отправлять запрос.__"""
@@ -570,9 +596,16 @@ async def show_photo_tools(callback: CallbackQuery):
     await callback.answer()
 
 
-@router.message(F.text == "🎨 Работа с фото")
-async def show_photo_tools_message(message: Message):
+@router.callback_query(F.data == "bot.faceswap")
+async def show_faceswap(callback: CallbackQuery):
+    """Route face swap menu button to photo tools."""
+    await show_photo_tools(callback)
+
+
+@router.message(F.text.in_(["🎨 Работа с фото", "Работа с фото"]))
+async def show_photo_tools_message(message: Message, user: User, state: FSMContext):
     """Show photo tools from reply keyboard."""
+    await reset_menu_context(state, user)
     text = """✂️  **Инструменты для работы с фото**
 
 ℹ️ __В этот раздел мы добавили инструменты, которые помогут вам эффективно работать с вашими фотографиями. Выберите интересующий вас инструмент по кнопке ниже.__"""
@@ -655,9 +688,10 @@ __ℹ️ Выберите нейросеть для работы с аудио �
     await callback.answer()
 
 
-@router.message(F.text == "🎧 Работа с аудио")
-async def show_audio_tools_message(message: Message):
+@router.message(F.text.in_(["🎧 Работа с аудио", "Работа с аудио"]))
+async def show_audio_tools_message(message: Message, user: User, state: FSMContext):
     """Show audio tools from reply keyboard."""
+    await reset_menu_context(state, user)
     text = """🎙 **Работа с аудио**
 
 __ℹ️ Выберите нейросеть для работы с аудио по кнопке ниже. После выбора – можете сразу отправлять запрос.__"""
@@ -691,9 +725,10 @@ async def show_subscription(callback: CallbackQuery):
     await callback.answer()
 
 
-@router.message(F.text == "💎 Подписка")
-async def show_subscription_message(message: Message):
+@router.message(F.text.in_(["💎 Подписка", "Оформить подписку"]))
+async def show_subscription_message(message: Message, user: User, state: FSMContext):
     """Show subscription options from reply keyboard."""
+    await reset_menu_context(state, user)
     text = """💎 **Оформить подписку**
 
 🤩 **Наш бот предоставляет вам лучший сервис** без каких либо ограничений и продолжает это делать ежедневно 24/7. **Подписка позволит вам получить больше возможностей**, чем если использовать бот бесплатно.
@@ -930,9 +965,10 @@ async def show_referral(callback: CallbackQuery, user: User):
     await callback.answer()
 
 
-@router.message(F.text == "🤝 Партнерство")
-async def show_referral_message(message: Message, user: User):
+@router.message(F.text.in_(["🤝 Партнерство", "🤝 Пригласи друга", "Пригласи друга"]))
+async def show_referral_message(message: Message, user: User, state: FSMContext):
     """Show referral program from reply keyboard."""
+    await reset_menu_context(state, user)
     text = await build_referral_text(user)
     await message.answer(text, reply_markup=referral_keyboard(user.telegram_id))
 

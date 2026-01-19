@@ -7,6 +7,7 @@ from aiogram import Router, F
 from aiogram.filters import CommandStart
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import Message, CallbackQuery
+from aiogram.fsm.context import FSMContext
 
 from app.bot.keyboards.inline import main_menu_keyboard
 from app.bot.keyboards.reply import main_menu_reply_keyboard
@@ -16,14 +17,18 @@ router = Router(name="start")
 
 
 @router.message(CommandStart())
-async def cmd_start(message: Message, user: User):
+async def cmd_start(message: Message, user: User, state: FSMContext):
     """Handle /start command with optional referral code or unlimited invite."""
+    from app.bot.handlers.dialog_context import clear_active_dialog
     from app.database.database import async_session_maker
     from app.database.models.referral import Referral
     from app.database.models.unlimited_invite import UnlimitedInviteLink, UnlimitedInviteUse
     from app.database.models.subscription import Subscription
     from sqlalchemy import select
     from datetime import datetime, timedelta, timezone
+
+    await state.clear()
+    clear_active_dialog(user.telegram_id)
 
     # Check for referral code or unlimited invite in command args
     if message.text and len(message.text.split()) > 1:
@@ -181,11 +186,14 @@ async def cmd_start(message: Message, user: User):
 
 
 @router.callback_query(F.data.in_(["main_menu", "bot.back"]))
-async def show_main_menu(callback: CallbackQuery, user: User):
+async def show_main_menu(callback: CallbackQuery, user: User, state: FSMContext):
     """Show main menu. Handles both legacy 'main_menu' and new 'bot.back' callbacks."""
     from app.database.database import async_session_maker
     from app.services.subscription.subscription_service import SubscriptionService
+    from app.bot.handlers.dialog_context import clear_active_dialog
 
+    await state.clear()
+    clear_active_dialog(user.telegram_id)
     async with async_session_maker() as session:
         sub_service = SubscriptionService(session)
         total_tokens = await sub_service.get_available_tokens(user.id)
@@ -221,8 +229,12 @@ async def show_main_menu(callback: CallbackQuery, user: User):
 
 
 @router.callback_query(F.data == "bot.menu")
-async def show_full_menu(callback: CallbackQuery):
+async def show_full_menu(callback: CallbackQuery, user: User, state: FSMContext):
     """Show full menu."""
+    from app.bot.handlers.dialog_context import clear_active_dialog
+
+    await state.clear()
+    clear_active_dialog(user.telegram_id)
     text = "Меню"
     if callback.message.photo:
         await callback.message.delete()
@@ -238,6 +250,10 @@ async def show_full_menu(callback: CallbackQuery):
 
 
 @router.message(F.text == "Меню")
-async def show_full_menu_message(message: Message):
+async def show_full_menu_message(message: Message, user: User, state: FSMContext):
     """Show full menu by reply button."""
+    from app.bot.handlers.dialog_context import clear_active_dialog
+
+    await state.clear()
+    clear_active_dialog(user.telegram_id)
     await message.answer("Меню", reply_markup=main_menu_keyboard())

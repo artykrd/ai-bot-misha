@@ -9,10 +9,33 @@ from aiogram.filters import Command
 from aiogram.enums import ParseMode
 from aiogram.fsm.context import FSMContext
 
-from app.bot.keyboards.inline import back_to_main_keyboard, subscription_keyboard
+from app.bot.keyboards.inline import back_to_main_keyboard, subscription_keyboard, referral_keyboard
 from app.bot.keyboards.reply import main_menu_reply_keyboard
+from app.bot.handlers.dialog_context import clear_active_dialog
+from app.database.models.user import User
 
 router = Router(name="common")
+
+
+async def start_promocode_activation(message: Message, state: FSMContext, user: User) -> None:
+    """Start promocode activation from menu or command."""
+    from app.bot.states import PromocodeStates
+
+    await state.clear()
+    clear_active_dialog(user.telegram_id)
+    await state.set_state(PromocodeStates.waiting_for_code)
+
+    text = """🔢 Активация промокода
+
+Отправьте промокод в следующем сообщении.
+
+Промокод может дать вам:
+– Дополнительные токены
+– Скидку на подписку
+– Бесплатную подписку
+
+Пример: PROMO2025"""
+    await message.answer(text, reply_markup=back_to_main_keyboard())
 
 
 # Command handlers for menu commands
@@ -79,9 +102,11 @@ async def cmd_faq(event):
         await event.answer(text, reply_markup=main_menu_reply_keyboard(), parse_mode=ParseMode.HTML)
 
 
-@router.message(F.text == "🆘 Поддержка")
-async def help_from_reply(message: Message):
+@router.message(F.text.in_(["🆘 Поддержка", "Помощь"]))
+async def help_from_reply(message: Message, user: User, state: FSMContext):
     """Help from reply keyboard."""
+    await state.clear()
+    clear_active_dialog(user.telegram_id)
     text = """🆘 <b>Помощь</b>
 
 <b>Как пользоваться ботом:</b>
@@ -100,28 +125,26 @@ async def help_from_reply(message: Message):
 
 
 @router.message(Command("ref"))
-async def cmd_ref(message: Message):
+async def cmd_ref(message: Message, user: User, state: FSMContext):
     """Referral command."""
-    text = """🤝🏼 <b>Пригласи друга</b>
+    await state.clear()
+    clear_active_dialog(user.telegram_id)
+    from app.bot.handlers.navigation import build_referral_text
 
-⚠️ Функционал в разработке
-
-Скоро вы сможете:
-• Получать бонусы за приглашенных друзей
-• Зарабатывать на рефералах
-• Получать процент от покупок друзей"""
-    await message.answer(text, reply_markup=main_menu_reply_keyboard(), parse_mode=ParseMode.HTML)
+    text = await build_referral_text(user)
+    await message.answer(text, reply_markup=referral_keyboard(user.telegram_id), parse_mode=ParseMode.MARKDOWN)
 
 
 @router.message(Command("promocode"))
-async def cmd_promocode(message: Message):
+async def cmd_promocode(message: Message, state: FSMContext, user: User):
     """Promocode command."""
-    text = """🔢 <b>Активировать промокод</b>
+    await start_promocode_activation(message, state, user)
 
-⚠️ Функционал в разработке
 
-Отправьте промокод для активации."""
-    await message.answer(text, reply_markup=main_menu_reply_keyboard(), parse_mode=ParseMode.HTML)
+@router.message(F.text == "Активировать промокод")
+async def promocode_from_menu(message: Message, state: FSMContext, user: User):
+    """Promocode activation from menu text."""
+    await start_promocode_activation(message, state, user)
 
 
 # Media generation commands
@@ -502,10 +525,16 @@ async def audio_tools(callback: CallbackQuery):
 
 
 @router.callback_query(F.data == "referral")
-async def referral(callback: CallbackQuery):
-    """Referral program (not implemented)."""
+async def referral(callback: CallbackQuery, user: User, state: FSMContext):
+    """Referral program."""
+    await state.clear()
+    clear_active_dialog(user.telegram_id)
+    from app.bot.handlers.navigation import build_referral_text
+
+    text = await build_referral_text(user)
     await callback.message.edit_text(
-        "🤝�� **Партнерство**\n\n⚠️ Функционал в разработке",
-        reply_markup=back_to_main_keyboard()
+        text,
+        reply_markup=referral_keyboard(user.telegram_id),
+        parse_mode=ParseMode.MARKDOWN
     )
     await callback.answer()
