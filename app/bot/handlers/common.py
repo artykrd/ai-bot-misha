@@ -9,7 +9,8 @@ from aiogram.filters import Command
 from aiogram.enums import ParseMode
 from aiogram.fsm.context import FSMContext
 
-from app.bot.keyboards.inline import back_to_main_keyboard, main_menu_keyboard, subscription_keyboard
+from app.bot.keyboards.inline import back_to_main_keyboard, subscription_keyboard
+from app.bot.keyboards.reply import main_menu_reply_keyboard
 
 router = Router(name="common")
 
@@ -75,7 +76,27 @@ async def cmd_faq(event):
         await event.message.edit_text(text, reply_markup=back_to_main_keyboard(), parse_mode=ParseMode.HTML)
         await event.answer()
     else:
-        await event.answer(text, reply_markup=main_menu_keyboard(), parse_mode=ParseMode.HTML)
+        await event.answer(text, reply_markup=main_menu_reply_keyboard(), parse_mode=ParseMode.HTML)
+
+
+@router.message(F.text == "🆘 Поддержка")
+async def help_from_reply(message: Message):
+    """Help from reply keyboard."""
+    text = """🆘 <b>Помощь</b>
+
+<b>Как пользоваться ботом:</b>
+1️⃣ Выберите AI модель через /models
+2️⃣ Отправьте текстовый запрос
+3️⃣ Получите ответ от AI
+
+<b>Токены:</b>
+• Каждый запрос стоит определенное количество токенов
+• Пополнить баланс: /shop
+• Посмотреть баланс: /profile
+
+<b>Поддержка:</b>
+Если возникли вопросы, напишите @support"""
+    await message.answer(text, reply_markup=main_menu_reply_keyboard(), parse_mode=ParseMode.HTML)
 
 
 @router.message(Command("ref"))
@@ -89,7 +110,7 @@ async def cmd_ref(message: Message):
 • Получать бонусы за приглашенных друзей
 • Зарабатывать на рефералах
 • Получать процент от покупок друзей"""
-    await message.answer(text, reply_markup=main_menu_keyboard(), parse_mode=ParseMode.HTML)
+    await message.answer(text, reply_markup=main_menu_reply_keyboard(), parse_mode=ParseMode.HTML)
 
 
 @router.message(Command("promocode"))
@@ -100,7 +121,7 @@ async def cmd_promocode(message: Message):
 ⚠️ Функционал в разработке
 
 Отправьте промокод для активации."""
-    await message.answer(text, reply_markup=main_menu_keyboard(), parse_mode=ParseMode.HTML)
+    await message.answer(text, reply_markup=main_menu_reply_keyboard(), parse_mode=ParseMode.HTML)
 
 
 # Media generation commands
@@ -230,7 +251,7 @@ async def cmd_mj(message: Message):
     """Midjourney command."""
     await message.answer(
         "🎨 <b>Midjourney</b>\n\n⚠️ Функционал в разработке\n\nСтоимость: 20,000 токенов за запрос",
-        reply_markup=main_menu_keyboard(),
+        reply_markup=main_menu_reply_keyboard(),
         parse_mode=ParseMode.HTML
     )
 
@@ -265,7 +286,7 @@ async def cmd_recraft(message: Message):
             "🎨 <b>Recraft</b>\n\n⚠️ Функционал в разработке\n\n"
             f"Стоимость: {format_token_amount(recraft_billing.tokens_per_generation)} токенов за запрос"
         ),
-        reply_markup=main_menu_keyboard(),
+        reply_markup=main_menu_reply_keyboard(),
         parse_mode=ParseMode.HTML
     )
 
@@ -280,7 +301,7 @@ async def cmd_faceswap(message: Message):
             "👤 <b>Замена лица на фото</b>\n\n⚠️ Функционал в разработке\n\n"
             f"Стоимость: {format_token_amount(face_billing.tokens_per_generation)} токенов за запрос"
         ),
-        reply_markup=main_menu_keyboard(),
+        reply_markup=main_menu_reply_keyboard(),
         parse_mode=ParseMode.HTML
     )
 
@@ -339,7 +360,7 @@ async def cmd_mvideo(message: Message):
             f"Стоимость: {format_token_amount(mj_sd.tokens_per_generation)} токенов (SD) / "
             f"{format_token_amount(mj_hd.tokens_per_generation)} токенов (HD)"
         ),
-        reply_markup=main_menu_keyboard(),
+        reply_markup=main_menu_reply_keyboard(),
         parse_mode=ParseMode.HTML
     )
 

@@ -10,6 +10,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models.referral import Referral
+from app.database.models.referral_balance import ReferralBalance
 from app.database.models.user import User
 from app.database.models.subscription import Subscription
 from app.core.logger import get_logger
@@ -22,6 +23,65 @@ class ReferralService:
 
     def __init__(self, session: AsyncSession):
         self.session = session
+
+    async def _get_or_create_balance(self, user_id: int) -> ReferralBalance:
+        result = await self.session.execute(
+            select(ReferralBalance).where(ReferralBalance.user_id == user_id)
+        )
+        balance = result.scalar_one_or_none()
+        if balance:
+            return balance
+        balance = ReferralBalance(
+            user_id=user_id,
+            tokens_balance=0,
+            money_balance=Decimal("0.00")
+        )
+        self.session.add(balance)
+        await self.session.flush()
+        return balance
+
+    async def exchange_money_to_tokens(
+        self,
+        user_id: int,
+        money_amount: Decimal,
+        tokens_per_ruble: int
+    ) -> Optional[int]:
+        """Exchange referral money balance to tokens."""
+        try:
+            balance = await self._get_or_create_balance(user_id)
+            if money_amount <= 0 or balance.money_balance < money_amount:
+                return None
+
+            tokens_to_add = int(money_amount * Decimal(tokens_per_ruble))
+            if tokens_to_add <= 0:
+                return None
+
+            balance.money_balance -= money_amount
+            balance.tokens_balance += tokens_to_add
+
+            reward_subscription = Subscription(
+                user_id=user_id,
+                subscription_type="referral_money_exchange",
+                tokens_amount=tokens_to_add,
+                tokens_used=0,
+                price=Decimal("0.00"),
+                is_active=True,
+                started_at=datetime.now(timezone.utc),
+                expires_at=None
+            )
+            self.session.add(reward_subscription)
+            await self.session.commit()
+
+            return tokens_to_add
+        except Exception as e:
+            logger.error(
+                "referral_exchange_failed",
+                error=str(e),
+                user_id=user_id,
+                exc_info=True
+            )
+            await self.session.rollback()
+            return None
 
     async def create_referral(
         self,
@@ -117,46 +177,18 @@ class ReferralService:
             tokens_awarded = None
             money_awarded = None
 
-            if referral.referral_type == "user":
-                # Award 50% tokens for user referrals
-                tokens_awarded = int(tokens_purchased * 0.5)
+            # Award 10% money for any referral purchase
+            money_awarded = money_paid * Decimal("0.1")
+            referral.money_earned += money_awarded
+            balance = await self._get_or_create_balance(referral.referrer_id)
+            balance.money_balance += money_awarded
 
-                # Create subscription for referrer with reward tokens
-                reward_subscription = Subscription(
-                    user_id=referral.referrer_id,
-                    subscription_type="referral_reward",
-                    tokens_amount=tokens_awarded,
-                    tokens_used=0,
-                    price=Decimal('0.00'),
-                    is_active=True,
-                    started_at=datetime.now(timezone.utc),
-                    expires_at=None  # Eternal tokens
-                )
-                self.session.add(reward_subscription)
-
-                # Update referral stats
-                referral.tokens_earned += tokens_awarded
-
-                logger.info(
-                    "referral_tokens_awarded",
-                    referrer_id=referral.referrer_id,
-                    referred_id=referred_user_id,
-                    tokens=tokens_awarded
-                )
-
-            elif referral.referral_type == "partner":
-                # Award 10% money for partner referrals
-                money_awarded = money_paid * Decimal('0.1')
-
-                # Update referral stats
-                referral.money_earned += money_awarded
-
-                logger.info(
-                    "referral_money_awarded",
-                    referrer_id=referral.referrer_id,
-                    referred_id=referred_user_id,
-                    money=float(money_awarded)
-                )
+            logger.info(
+                "referral_money_awarded",
+                referrer_id=referral.referrer_id,
+                referred_id=referred_user_id,
+                money=float(money_awarded)
+            )
 
             await self.session.commit()
 
@@ -172,35 +204,72 @@ class ReferralService:
             await self.session.rollback()
             return None, None
 
-    async def give_signup_bonus(self, user_id: int, bonus_tokens: int = 100) -> bool:
+    async def give_signup_bonus(
+        self,
+        referrer_id: int,
+        referred_id: int,
+        bonus_tokens: int = 50
+    ) -> bool:
         """
-        Give signup bonus tokens to new referred user.
+        Give signup bonus tokens to referrer and referred user (once).
 
         Args:
-            user_id: ID of user to give bonus to
-            bonus_tokens: Number of bonus tokens (default: 100)
+            referrer_id: ID of user who invited
+            referred_id: ID of user who was invited
+            bonus_tokens: Number of bonus tokens (default: 50)
 
         Returns:
             True if successful, False otherwise
         """
         try:
-            # Create subscription with bonus tokens
-            bonus_subscription = Subscription(
-                user_id=user_id,
+            referral_result = await self.session.execute(
+                select(Referral).where(
+                    Referral.referred_id == referred_id,
+                    Referral.referrer_id == referrer_id,
+                    Referral.is_active == True
+                )
+            )
+            referral = referral_result.scalar_one_or_none()
+            if not referral:
+                return False
+
+            if referral.tokens_earned >= bonus_tokens:
+                return False
+
+            # Create subscriptions with bonus tokens
+            referred_subscription = Subscription(
+                user_id=referred_id,
                 subscription_type="referral_signup_bonus",
                 tokens_amount=bonus_tokens,
                 tokens_used=0,
-                price=Decimal('0.00'),
+                price=Decimal("0.00"),
                 is_active=True,
                 started_at=datetime.now(timezone.utc),
                 expires_at=None  # Eternal tokens
             )
-            self.session.add(bonus_subscription)
+            referrer_subscription = Subscription(
+                user_id=referrer_id,
+                subscription_type="referral_signup_bonus_referrer",
+                tokens_amount=bonus_tokens,
+                tokens_used=0,
+                price=Decimal("0.00"),
+                is_active=True,
+                started_at=datetime.now(timezone.utc),
+                expires_at=None  # Eternal tokens
+            )
+            self.session.add(referred_subscription)
+            self.session.add(referrer_subscription)
+
+            referral.tokens_earned += bonus_tokens
+            balance = await self._get_or_create_balance(referrer_id)
+            balance.tokens_balance += bonus_tokens
+
             await self.session.commit()
 
             logger.info(
                 "referral_signup_bonus_given",
-                user_id=user_id,
+                referrer_id=referrer_id,
+                referred_id=referred_id,
                 bonus_tokens=bonus_tokens
             )
 
@@ -210,7 +279,8 @@ class ReferralService:
             logger.error(
                 "referral_signup_bonus_failed",
                 error=str(e),
-                user_id=user_id,
+                referrer_id=referrer_id,
+                referred_id=referred_id,
                 exc_info=True
             )
             await self.session.rollback()
@@ -254,10 +324,17 @@ class ReferralService:
             )
             money_earned = float(money_earned_result.scalar() or 0)
 
+            balance_result = await self.session.execute(
+                select(ReferralBalance).where(ReferralBalance.user_id == user_id)
+            )
+            balance = balance_result.scalar_one_or_none()
+
             return {
                 "referral_count": referral_count,
                 "tokens_earned": tokens_earned,
-                "money_earned": money_earned
+                "money_earned": money_earned,
+                "tokens_balance": int(balance.tokens_balance) if balance else 0,
+                "money_balance": float(balance.money_balance) if balance else 0.0
             }
 
         except Exception as e:
@@ -270,7 +347,9 @@ class ReferralService:
             return {
                 "referral_count": 0,
                 "tokens_earned": 0,
-                "money_earned": 0.0
+                "money_earned": 0.0,
+                "tokens_balance": 0,
+                "money_balance": 0.0
             }
 
     async def get_referrer(self, user_id: int) -> Optional[User]:
