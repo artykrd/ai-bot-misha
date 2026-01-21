@@ -5,32 +5,38 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 
+MENU_BUTTONS = [
+    ("Главное меню", "bot.back"),
+    ("Мой профиль", "bot.profile"),
+    ("Оформить подписку", "bot#shop"),
+    ("Пригласи друга", "bot.refferal_program"),
+    ("Выбрать модель", "bot.llm_models"),
+    ("Nano Banana", "bot.nano"),
+    ("Midjourney", "bot.midjourney"),
+    ("DALL·E 3", "bot.gpt_image"),
+    ("Gpt image 1", "bot.gpt_image"),
+    ("Veo 3.1", "bot.veo"),
+    ("Kling", "bot.kling_main"),
+    ("Sora", "bot.sora"),
+    ("Hailuo", "bot.hailuo"),
+    ("Midjourney Video", "bot.mjvideo"),
+    ("Luma", "bot.luma"),
+    ("Suno", "bot.suno"),
+    ("Расшифровка голоса", "bot.whisper"),
+    ("Работа с фото", "bot.pi"),
+    ("Recraft", "bot.recraft"),
+    ("Замена лица на фото", "bot.faceswap"),
+    ("Активировать промокод", "activate_promocode"),
+    ("Помощь", "help"),
+]
+
+
 def main_menu_keyboard() -> InlineKeyboardMarkup:
     """Full menu keyboard."""
     builder = InlineKeyboardBuilder()
 
-    builder.row(InlineKeyboardButton(text="Главное меню", callback_data="bot.back"))
-    builder.row(InlineKeyboardButton(text="Мой профиль", callback_data="bot.profile"))
-    builder.row(InlineKeyboardButton(text="Оформить подписку", callback_data="bot#shop"))
-    builder.row(InlineKeyboardButton(text="Пригласи друга", callback_data="bot.refferal_program"))
-    builder.row(InlineKeyboardButton(text="Выбрать модель", callback_data="bot.llm_models"))
-    builder.row(InlineKeyboardButton(text="Nano Banana", callback_data="bot.nano"))
-    builder.row(InlineKeyboardButton(text="Midjourney", callback_data="bot.midjourney"))
-    builder.row(InlineKeyboardButton(text="DALL·E 3", callback_data="bot.gpt_image"))
-    builder.row(InlineKeyboardButton(text="Gpt image 1", callback_data="bot.gpt_image"))
-    builder.row(InlineKeyboardButton(text="VеоЗ", callback_data="bot.veo"))
-    builder.row(InlineKeyboardButton(text="Kling", callback_data="bot.kling_main"))
-    builder.row(InlineKeyboardButton(text="Sora", callback_data="bot.sora"))
-    builder.row(InlineKeyboardButton(text="Hailuo", callback_data="bot.hailuo"))
-    builder.row(InlineKeyboardButton(text="Midjourney Video", callback_data="bot.mjvideo"))
-    builder.row(InlineKeyboardButton(text="Luma", callback_data="bot.luma"))
-    builder.row(InlineKeyboardButton(text="Suno", callback_data="bot.suno"))
-    builder.row(InlineKeyboardButton(text="Расшифровка голоса", callback_data="bot.whisper"))
-    builder.row(InlineKeyboardButton(text="Работа с фото", callback_data="bot.pi"))
-    builder.row(InlineKeyboardButton(text="Recraft", callback_data="bot.recraft"))
-    builder.row(InlineKeyboardButton(text="Замена лица на фото", callback_data="bot.faceswap"))
-    builder.row(InlineKeyboardButton(text="Активировать промокод", callback_data="activate_promocode"))
-    builder.row(InlineKeyboardButton(text="Помощь", callback_data="help"))
+    for text, callback in MENU_BUTTONS:
+        builder.row(InlineKeyboardButton(text=text, callback_data=callback))
 
     return builder.as_markup()
 

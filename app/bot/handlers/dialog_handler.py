@@ -13,6 +13,7 @@ from app.bot.handlers.dialog_context import (
     clear_active_dialog,
     has_active_dialog
 )
+from app.bot.utils.menu import is_menu_text
 from app.database.models.user import User
 from app.database.database import async_session_maker
 from app.services.subscription.subscription_service import SubscriptionService
@@ -124,6 +125,9 @@ async def cmd_clear_history(message: Message, user: User):
 @router.message(F.text)
 async def handle_text_message(message: Message, user: User):
     """Handle text messages in active dialog."""
+    if is_menu_text(message.text):
+        return
+
     # Check if user has active dialog
     dialog = get_active_dialog(user.telegram_id)
     if not dialog:

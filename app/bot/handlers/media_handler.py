@@ -62,93 +62,6 @@ async def cleanup_temp_images(state: FSMContext):
             cleanup_temp_file(file_path)
 
 
-async def handle_menu_shortcuts(message: Message, user: User, state: FSMContext) -> bool:
-    """Handle main menu shortcuts while in FSM states."""
-    if not message.text:
-        return False
-
-    text = message.text.strip()
-
-    if text == "👤 Мой профиль":
-        from app.bot.handlers.profile import show_profile
-
-        await state.clear()
-        await show_profile(message, user, state)
-        return True
-
-    if text == "Меню":
-        from app.bot.handlers.start import show_full_menu_message
-
-        await state.clear()
-        await show_full_menu_message(message)
-        return True
-
-    if text == "🤝 Партнерство":
-        from app.bot.handlers.navigation import show_referral_message
-
-        await state.clear()
-        await show_referral_message(message, user)
-        return True
-
-    if text == "💎 Подписка":
-        from app.bot.handlers.navigation import show_subscription_message
-
-        await state.clear()
-        await show_subscription_message(message)
-        return True
-
-    if text == "🤖 Выбрать модель":
-        from app.bot.handlers.navigation import show_models_message
-
-        await state.clear()
-        await show_models_message(message)
-        return True
-
-    if text == "💬 Диалоги":
-        from app.bot.handlers.navigation import show_dialogs_message
-
-        await state.clear()
-        await show_dialogs_message(message)
-        return True
-
-    if text == "🖼 Создать фото":
-        from app.bot.handlers.navigation import show_create_photo_message
-
-        await state.clear()
-        await show_create_photo_message(message)
-        return True
-
-    if text == "🎬 Создать видео":
-        from app.bot.handlers.navigation import show_create_video_message
-
-        await state.clear()
-        await show_create_video_message(message)
-        return True
-
-    if text == "🎨 Работа с фото":
-        from app.bot.handlers.navigation import show_photo_tools_message
-
-        await state.clear()
-        await show_photo_tools_message(message)
-        return True
-
-    if text == "🎧 Работа с аудио":
-        from app.bot.handlers.navigation import show_audio_tools_message
-
-        await state.clear()
-        await show_audio_tools_message(message)
-        return True
-
-    if text == "🆘 Поддержка":
-        from app.bot.handlers.common import help_from_reply
-
-        await state.clear()
-        await help_from_reply(message)
-        return True
-
-    return False
-
-
 async def get_available_tokens(user_id: int) -> int:
     """Fetch available tokens for user from subscriptions."""
     async with async_session_maker() as session:
@@ -794,9 +707,6 @@ async def process_video_photo(message: Message, state: FSMContext, user: User):
 
 @router.message(MediaState.waiting_for_video_prompt, F.text)
 async def process_video_prompt(message: Message, state: FSMContext, user: User):
-    if await handle_menu_shortcuts(message, user, state):
-        return
-
     # CRITICAL FIX: Ignore commands (text starting with /)
     # Commands should NOT be processed as prompts
     if message.text and message.text.startswith('/'):
@@ -1519,9 +1429,6 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
 
 @router.message(MediaState.waiting_for_image_prompt, F.text)
 async def process_image_prompt(message: Message, state: FSMContext, user: User):
-    if await handle_menu_shortcuts(message, user, state):
-        return
-
     # CRITICAL FIX: Ignore commands (text starting with /)
     if message.text and message.text.startswith('/'):
         await state.clear()
