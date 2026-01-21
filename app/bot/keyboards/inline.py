@@ -15,7 +15,7 @@ MENU_BUTTONS = [
     ("Midjourney", "bot.midjourney"),
     ("DALL·E 3", "bot.gpt_image"),
     ("Gpt image 1", "bot.gpt_image"),
-    ("Veo3", "bot.veo"),
+    ("Veo 3.1", "bot.veo"),
     ("Kling", "bot.kling_main"),
     ("Sora", "bot.sora"),
     ("Hailuo", "bot.hailuo"),
