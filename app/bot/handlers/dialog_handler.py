@@ -426,9 +426,14 @@ async def process_dialog_message(
                 is_mock=response.get("mock", False)
             )
         else:
-            await processing_msg.edit_text(
-                f"❌ Ошибка при обработке:\n{response['error']}"
+            from app.core.error_handlers import format_user_error
+            user_message = format_user_error(
+                response["error"],
+                provider=dialog.get("model_name", "AI"),
+                model=dialog.get("model_id"),
+                user_id=user.id
             )
+            await processing_msg.edit_text(f"❌ {user_message}")
 
             logger.error(
                 "dialog_message_failed",
@@ -438,9 +443,14 @@ async def process_dialog_message(
             )
 
     except Exception as e:
-        await processing_msg.edit_text(
-            f"❌ Произошла ошибка: {str(e)}"
+        from app.core.error_handlers import format_user_error
+        user_message = format_user_error(
+            e,
+            provider=dialog.get("model_name", "AI"),
+            model=dialog.get("model_id"),
+            user_id=user.id
         )
+        await processing_msg.edit_text(f"❌ {user_message}")
         logger.error("dialog_message_exception", user_id=user.id, error=str(e), exc_info=True)
 
 
@@ -485,8 +495,10 @@ async def process_openai_message(
             "mock": result.metadata.get("mock", False)
         }
     except Exception as e:
+        from app.core.error_handlers import format_user_error
         logger.error(f"OpenAI processing error: {e}", exc_info=True)
-        return {"success": False, "error": str(e)}
+        user_error = format_user_error(e, provider="OpenAI", model=model_id)
+        return {"success": False, "error": user_error}
 
 
 async def process_google_message(
@@ -521,8 +533,10 @@ async def process_google_message(
             "mock": result.metadata.get("mock", False)
         }
     except Exception as e:
+        from app.core.error_handlers import format_user_error
         logger.error(f"Google processing error: {e}", exc_info=True)
-        return {"success": False, "error": str(e)}
+        user_error = format_user_error(e, provider="Google", model=model_id)
+        return {"success": False, "error": user_error}
 
 
 async def process_anthropic_message(
@@ -557,8 +571,10 @@ async def process_anthropic_message(
             "mock": result.metadata.get("mock", False)
         }
     except Exception as e:
+        from app.core.error_handlers import format_user_error
         logger.error(f"Anthropic processing error: {e}", exc_info=True)
-        return {"success": False, "error": str(e)}
+        user_error = format_user_error(e, provider="Anthropic", model=model_id)
+        return {"success": False, "error": user_error}
 
 
 async def process_deepseek_message(
@@ -600,8 +616,10 @@ async def process_deepseek_message(
             "model": api_model
         }
     except Exception as e:
+        from app.core.error_handlers import format_user_error
         logger.error(f"DeepSeek processing error: {e}", exc_info=True)
-        return {"success": False, "error": str(e)}
+        user_error = format_user_error(e, provider="DeepSeek", model=model_id)
+        return {"success": False, "error": user_error}
 
 
 async def process_perplexity_message(
@@ -636,5 +654,7 @@ async def process_perplexity_message(
             "mock": result.metadata.get("mock", False)
         }
     except Exception as e:
+        from app.core.error_handlers import format_user_error
         logger.error(f"Perplexity processing error: {e}", exc_info=True)
-        return {"success": False, "error": str(e)}
+        user_error = format_user_error(e, provider="Perplexity", model=model_id)
+        return {"success": False, "error": user_error}

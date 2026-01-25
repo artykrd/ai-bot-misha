@@ -522,11 +522,13 @@ async def suno_lyrics_by_title(callback: CallbackQuery, state: FSMContext, user:
         await progress_msg.edit_text(text, reply_markup=suno_style_keyboard(selected_styles), parse_mode=None)
 
     except Exception as e:
+        from app.core.error_handlers import format_user_error
         logger.error("suno_lyrics_generation_failed", error=str(e))
+        user_message = format_user_error(e, provider="Suno")
         await progress_msg.edit_text(
-            f"❌ Ошибка генерации текста: {str(e)}\n\nПопробуйте ввести текст вручную.",
+            f"❌ {user_message}\n\nПопробуйте ввести текст вручную.",
             reply_markup=suno_lyrics_choice_keyboard(song_title),
-            parse_mode=None  # Fix: Disable Markdown parsing for error messages
+            parse_mode=None
         )
 
 
@@ -608,10 +610,12 @@ async def process_lyrics_description(message: Message, state: FSMContext, user: 
         await progress_msg.edit_text(text, reply_markup=suno_style_keyboard(selected_styles), parse_mode=None)
 
     except Exception as e:
+        from app.core.error_handlers import format_user_error
         logger.error("suno_lyrics_generation_failed", error=str(e))
+        user_message = format_user_error(e, provider="Suno")
         await progress_msg.edit_text(
-            f"❌ Ошибка генерации текста: {str(e)}\n\nПопробуйте ввести текст вручную.",
-            parse_mode=None  # Fix: Disable Markdown parsing for error messages
+            f"❌ {user_message}\n\nПопробуйте ввести текст вручную.",
+            parse_mode=None
         )
 
 
@@ -820,9 +824,11 @@ async def generate_suno_song(callback: CallbackQuery, state: FSMContext, user: U
             )
 
     except Exception as e:
+        from app.core.error_handlers import format_user_error
         logger.error("suno_generation_exception", user_id=user.id, error=str(e))
+        user_message = format_user_error(e, provider="Suno", user_id=user.id)
         await progress_msg.edit_text(
-            f"❌ Произошла ошибка при генерации: {str(e)}\n\n"
+            f"❌ {user_message}\n\n"
             f"Токены возвращены на ваш счет.",
             parse_mode=None
         )

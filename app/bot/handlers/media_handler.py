@@ -3167,9 +3167,9 @@ async def process_photo_upscale(message: Message, state: FSMContext, user: User)
         logger.error("photo_quality_improvement_failed", error=str(e))
 
         try:
-            await progress_msg.edit_text(
-                f"❌ Ошибка улучшения изображения:\n{str(e)}"
-            )
+            from app.core.error_handlers import format_user_error
+            user_message = format_user_error(e, provider="Image Enhancement", user_id=user.id)
+            await progress_msg.edit_text(f"❌ {user_message}")
         except Exception:
             pass
 
