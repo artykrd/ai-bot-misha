@@ -181,50 +181,51 @@ async def process_promocode(message: Message, state: FSMContext, user: User):
     from app.services.subscription.subscription_service import SubscriptionService
     from sqlalchemy import select
     from app.bot.states import PromocodeStates
+    from app.core.error_handlers import format_user_error
 
     code = message.text.strip().upper()
 
     try:
         async with async_session_maker() as session:
-        # Find promocode
-        result = await session.execute(
-            select(Promocode).where(Promocode.code == code)
-        )
-        promo = result.scalar_one_or_none()
-
-        if not promo:
-            await message.answer(
-                "❌ Промокод не найден.\n\n"
-                "Проверьте правильность ввода и попробуйте снова."
+            # Find promocode
+            result = await session.execute(
+                select(Promocode).where(Promocode.code == code)
             )
-            await state.clear()
-            return
+            promo = result.scalar_one_or_none()
 
-        # Check if promocode is valid
-        if not promo.is_valid:
-            await message.answer(
-                "❌ Промокод недействителен или истек.",
-                reply_markup=back_to_main_keyboard()
-            )
-            await state.clear()
-            return
+            if not promo:
+                await message.answer(
+                    "❌ Промокод не найден.\n\n"
+                    "Проверьте правильность ввода и попробуйте снова."
+                )
+                await state.clear()
+                return
 
-        # Check if user already used this promocode
-        result = await session.execute(
-            select(PromocodeUse).where(
-                PromocodeUse.promocode_id == promo.id,
-                PromocodeUse.user_id == user.id
-            )
-        )
-        existing_use = result.scalar_one_or_none()
+            # Check if promocode is valid
+            if not promo.is_valid:
+                await message.answer(
+                    "❌ Промокод недействителен или истек.",
+                    reply_markup=back_to_main_keyboard()
+                )
+                await state.clear()
+                return
 
-        if existing_use:
-            await message.answer(
-                "❌ Вы уже использовали этот промокод.",
-                reply_markup=back_to_main_keyboard()
+            # Check if user already used this promocode
+            result = await session.execute(
+                select(PromocodeUse).where(
+                    PromocodeUse.promocode_id == promo.id,
+                    PromocodeUse.user_id == user.id
+                )
             )
-            await state.clear()
-            return
+            existing_use = result.scalar_one_or_none()
+
+            if existing_use:
+                await message.answer(
+                    "❌ Вы уже использовали этот промокод.",
+                    reply_markup=back_to_main_keyboard()
+                )
+                await state.clear()
+                return
 
             # Apply promocode
             if promo.bonus_type == "tokens":
@@ -275,6 +276,7 @@ async def process_promocode(message: Message, state: FSMContext, user: User):
         await message.answer("❌ Неверный формат промокода.")
     except Exception as e:
         logger.error("promocode_activation_error", error=str(e), user_id=user.id)
-        await message.answer(f"❌ Ошибка активации промокода: {str(e)}")
+        user_message = format_user_error(e, provider="Promocode", user_id=user.id)
+        await message.answer(f"❌ {user_message}")
 
     await state.clear()
