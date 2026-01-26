@@ -36,6 +36,16 @@ logger = get_logger(__name__)
 
 router = Router(name="suno")
 
+
+def escape_markdown(text: str) -> str:
+    """Escape markdown special characters in user input."""
+    if not text:
+        return text
+    special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+    for char in special_chars:
+        text = text.replace(char, f'\\{char}')
+    return text
+
 # Default Suno settings
 DEFAULT_SUNO_SETTINGS = {
     "model_version": "V5",
@@ -77,6 +87,10 @@ async def show_suno_final_summary(callback_or_message, state: FSMContext):
     melody_prompt = data.get("suno_melody_prompt", None)
     vocal_gender = data.get("suno_vocal_gender", "m")
 
+    # Escape user input to prevent markdown parsing errors
+    safe_song_title = escape_markdown(song_title)
+    safe_style = escape_markdown(style)
+
     # Determine type and voice
     if is_instrumental:
         song_type = "инструментал"
@@ -87,16 +101,18 @@ async def show_suno_final_summary(callback_or_message, state: FSMContext):
 
     # Build summary text
     text = f"⚡ **Мы готовы к созданию, давайте всё проверим:**\n\n"
-    text += f"**Название:** {song_title}\n"
+    text += f"**Название:** {safe_song_title}\n"
     text += f"**Тип:** {song_type}\n"
     text += f"**Голос:** {voice}\n"
-    text += f"**Стили:** {style}\n\n"
+    text += f"**Стили:** {safe_style}\n\n"
 
     # Add lyrics or melody prompt
     if is_instrumental and melody_prompt:
-        text += f"🎹 **Описание мелодии:**\n{melody_prompt[:300]}{'...' if len(melody_prompt) > 300 else ''}\n\n"
+        safe_melody = escape_markdown(melody_prompt[:300])
+        text += f"🎹 **Описание мелодии:**\n{safe_melody}{'\\.\\.\\.' if len(melody_prompt) > 300 else ''}\n\n"
     elif lyrics:
-        text += f"📜 **Текст:**\n{lyrics[:500]}{'...' if len(lyrics) > 500 else ''}\n\n"
+        safe_lyrics = escape_markdown(lyrics[:500])
+        text += f"📜 **Текст:**\n{safe_lyrics}{'\\.\\.\\.' if len(lyrics) > 500 else ''}\n\n"
 
     # Show version info
     text += f"📀 Версия модели: {model_version}"
@@ -132,6 +148,9 @@ async def start_suno(callback: CallbackQuery, state: FSMContext, user: User):
 
     type_text = "инструментал (без слов)" if settings["is_instrumental"] else "с текстом песни"
 
+    # Escape user input to prevent markdown parsing errors
+    safe_style = escape_markdown(settings['style'])
+
     text = (
         f"🎧 **Suno · создание музыки**\n\n"
         f"Вы можете отрегулировать параметры ниже и отправить мне текст песни или создать песню пошагово "
@@ -140,7 +159,7 @@ async def start_suno(callback: CallbackQuery, state: FSMContext, user: User):
         f"⚙️ **Параметры**\n"
         f"Версия: {settings['model_version']}\n"
         f"Тип: {type_text}\n"
-        f"Стиль: {settings['style']}\n\n"
+        f"Стиль: {safe_style}\n\n"
         f"🔹 **Баланса хватит на {balance_songs} песен.** 1 генерация = {settings['tokens_per_song']:,} токенов"
     )
 
@@ -173,11 +192,14 @@ async def suno_settings(callback: CallbackQuery, state: FSMContext, user: User):
     settings = await get_suno_settings(state)
     type_text = "инструментал (без слов)" if settings["is_instrumental"] else "с текстом песни"
 
+    # Escape user input to prevent markdown parsing errors
+    safe_style = escape_markdown(settings['style'])
+
     text = (
         f"⚙️ **Параметры Suno**\n\n"
         f"📀 Версия: **{settings['model_version']}**\n"
         f"🎵 Тип: **{type_text}**\n"
-        f"🎨 Стиль: **{settings['style']}**"
+        f"🎨 Стиль: **{safe_style}**"
     )
 
     try:
@@ -532,11 +554,14 @@ async def process_song_title(message: Message, state: FSMContext):
     song_title = message.text.strip()
     await state.update_data(suno_song_title=song_title)
 
+    # Escape user input to prevent markdown parsing errors
+    safe_song_title = escape_markdown(song_title)
+
     text = (
         f"2️⃣ **Введите текст песни**\n\n"
         f"⚡️ При написании текста самостоятельно можно использовать все доступные теги для Suno.\n\n"
         f"🤖 **Помощь с написанием текста:**\n"
-        f"– **По названию**: ИИ напишет текст песни по названию «{song_title}»;\n"
+        f"– **По названию**: ИИ напишет текст песни по названию «{safe_song_title}»;\n"
         f"– **По описанию**: ИИ напишет текст песни по вашему короткому рассказу.\n\n"
         f"⚙️ **Дополнительно:**\n"
         f"– **Создать без слов**: вы сможете управлять мелодией с помощью промпта или сразу перейти к выбору стиля."
