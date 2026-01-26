@@ -10,6 +10,7 @@ from aiogram.types import CallbackQuery, Message, FSInputFile
 from aiogram.fsm.context import FSMContext
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
+import html
 import os
 
 from app.bot.keyboards.inline import (
@@ -36,15 +37,6 @@ logger = get_logger(__name__)
 
 router = Router(name="suno")
 
-
-def escape_markdown(text: str) -> str:
-    """Escape markdown special characters in user input."""
-    if not text:
-        return text
-    special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
-    for char in special_chars:
-        text = text.replace(char, f'\\{char}')
-    return text
 
 # Default Suno settings
 DEFAULT_SUNO_SETTINGS = {
@@ -87,9 +79,9 @@ async def show_suno_final_summary(callback_or_message, state: FSMContext):
     melody_prompt = data.get("suno_melody_prompt", None)
     vocal_gender = data.get("suno_vocal_gender", "m")
 
-    # Escape user input to prevent markdown parsing errors
-    safe_song_title = escape_markdown(song_title)
-    safe_style = escape_markdown(style)
+    # Escape user input with html.escape for safe HTML rendering
+    safe_song_title = html.escape(song_title)
+    safe_style = html.escape(style)
 
     # Determine type and voice
     if is_instrumental:
@@ -100,24 +92,24 @@ async def show_suno_final_summary(callback_or_message, state: FSMContext):
         voice = "мужской" if vocal_gender == "m" else "женский"
 
     # Build summary text
-    text = f"⚡ **Мы готовы к созданию, давайте всё проверим:**\n\n"
-    text += f"**Название:** {safe_song_title}\n"
-    text += f"**Тип:** {song_type}\n"
-    text += f"**Голос:** {voice}\n"
-    text += f"**Стили:** {safe_style}\n\n"
+    text = f"⚡ <b>Мы готовы к созданию, давайте всё проверим:</b>\n\n"
+    text += f"<b>Название:</b> {safe_song_title}\n"
+    text += f"<b>Тип:</b> {song_type}\n"
+    text += f"<b>Голос:</b> {voice}\n"
+    text += f"<b>Стили:</b> {safe_style}\n\n"
 
     # Add lyrics or melody prompt
     if is_instrumental and melody_prompt:
-        safe_melody = escape_markdown(melody_prompt[:300])
+        safe_melody = html.escape(melody_prompt[:300])
         ellipsis = '...' if len(melody_prompt) > 300 else ''
-        text += f"🎹 **Описание мелодии:**\n{safe_melody}{ellipsis}\n\n"
+        text += f"🎹 <b>Описание мелодии:</b>\n{safe_melody}{ellipsis}\n\n"
     elif lyrics:
-        safe_lyrics = escape_markdown(lyrics[:500])
+        safe_lyrics = html.escape(lyrics[:500])
         ellipsis = '...' if len(lyrics) > 500 else ''
-        text += f"📜 **Текст:**\n{safe_lyrics}{ellipsis}\n\n"
+        text += f"📜 <b>Текст:</b>\n{safe_lyrics}{ellipsis}\n\n"
 
     # Show version info
-    text += f"📀 Версия модели: {model_version}"
+    text += f"📀 Версия модели: {html.escape(model_version)}"
 
     # Send or edit message
     if isinstance(callback_or_message, CallbackQuery):
@@ -125,7 +117,7 @@ async def show_suno_final_summary(callback_or_message, state: FSMContext):
             await callback_or_message.message.edit_text(
                 text,
                 reply_markup=suno_final_keyboard(),
-                parse_mode=ParseMode.MARKDOWN
+                parse_mode=ParseMode.HTML
             )
         except TelegramBadRequest as e:
             # Ignore error if message content hasn't changed
@@ -136,7 +128,7 @@ async def show_suno_final_summary(callback_or_message, state: FSMContext):
         await callback_or_message.answer(
             text,
             reply_markup=suno_final_keyboard(),
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
 
 
@@ -150,19 +142,19 @@ async def start_suno(callback: CallbackQuery, state: FSMContext, user: User):
 
     type_text = "инструментал (без слов)" if settings["is_instrumental"] else "с текстом песни"
 
-    # Escape user input to prevent markdown parsing errors
-    safe_style = escape_markdown(settings['style'])
+    # Escape user input with html.escape for safe HTML rendering
+    safe_style = html.escape(settings['style'])
 
     text = (
-        f"🎧 **Suno · создание музыки**\n\n"
+        f"🎧 <b>Suno · создание музыки</b>\n\n"
         f"Вы можете отрегулировать параметры ниже и отправить мне текст песни или создать песню пошагово "
         f"(в этом режиме можно сгенерировать текст через ИИ).\n\n"
         f"В ответ я отправлю вам две песни и обложки к ним.\n\n"
-        f"⚙️ **Параметры**\n"
-        f"Версия: {settings['model_version']}\n"
-        f"Тип: {type_text}\n"
+        f"⚙️ <b>Параметры</b>\n"
+        f"Версия: {html.escape(settings['model_version'])}\n"
+        f"Тип: {html.escape(type_text)}\n"
         f"Стиль: {safe_style}\n\n"
-        f"🔹 **Баланса хватит на {balance_songs} песен.** 1 генерация = {settings['tokens_per_song']:,} токенов"
+        f"🔹 <b>Баланса хватит на {balance_songs} песен.</b> 1 генерация = {settings['tokens_per_song']:,} токенов"
     )
 
     try:
@@ -175,7 +167,7 @@ async def start_suno(callback: CallbackQuery, state: FSMContext, user: User):
                 balance_songs=balance_songs,
                 tokens_per_song=settings["tokens_per_song"]
             ),
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
     except TelegramBadRequest as e:
         # Ignore error if message content hasn't changed
@@ -194,14 +186,14 @@ async def suno_settings(callback: CallbackQuery, state: FSMContext, user: User):
     settings = await get_suno_settings(state)
     type_text = "инструментал (без слов)" if settings["is_instrumental"] else "с текстом песни"
 
-    # Escape user input to prevent markdown parsing errors
-    safe_style = escape_markdown(settings['style'])
+    # Escape user input with html.escape for safe HTML rendering
+    safe_style = html.escape(settings['style'])
 
     text = (
-        f"⚙️ **Параметры Suno**\n\n"
-        f"📀 Версия: **{settings['model_version']}**\n"
-        f"🎵 Тип: **{type_text}**\n"
-        f"🎨 Стиль: **{safe_style}**"
+        f"⚙️ <b>Параметры Suno</b>\n\n"
+        f"📀 Версия: <b>{html.escape(settings['model_version'])}</b>\n"
+        f"🎵 Тип: <b>{html.escape(type_text)}</b>\n"
+        f"🎨 Стиль: <b>{safe_style}</b>"
     )
 
     try:
@@ -212,7 +204,7 @@ async def suno_settings(callback: CallbackQuery, state: FSMContext, user: User):
                 is_instrumental=settings["is_instrumental"],
                 style=settings["style"]
             ),
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
     except TelegramBadRequest as e:
         # Ignore error if message content hasn't changed
@@ -556,20 +548,20 @@ async def process_song_title(message: Message, state: FSMContext):
     song_title = message.text.strip()
     await state.update_data(suno_song_title=song_title)
 
-    # Escape user input to prevent markdown parsing errors
-    safe_song_title = escape_markdown(song_title)
+    # Escape user input with html.escape for safe HTML rendering
+    safe_song_title = html.escape(song_title)
 
     text = (
-        f"2️⃣ **Введите текст песни**\n\n"
+        f"2️⃣ <b>Введите текст песни</b>\n\n"
         f"⚡️ При написании текста самостоятельно можно использовать все доступные теги для Suno.\n\n"
-        f"🤖 **Помощь с написанием текста:**\n"
-        f"– **По названию**: ИИ напишет текст песни по названию «{safe_song_title}»;\n"
-        f"– **По описанию**: ИИ напишет текст песни по вашему короткому рассказу.\n\n"
-        f"⚙️ **Дополнительно:**\n"
-        f"– **Создать без слов**: вы сможете управлять мелодией с помощью промпта или сразу перейти к выбору стиля."
+        f"🤖 <b>Помощь с написанием текста:</b>\n"
+        f"– <b>По названию</b>: ИИ напишет текст песни по названию «{safe_song_title}»;\n"
+        f"– <b>По описанию</b>: ИИ напишет текст песни по вашему короткому рассказу.\n\n"
+        f"⚙️ <b>Дополнительно:</b>\n"
+        f"– <b>Создать без слов</b>: вы сможете управлять мелодией с помощью промпта или сразу перейти к выбору стиля."
     )
 
-    await message.answer(text, reply_markup=suno_lyrics_choice_keyboard(song_title), parse_mode=ParseMode.MARKDOWN)
+    await message.answer(text, reply_markup=suno_lyrics_choice_keyboard(song_title), parse_mode=ParseMode.HTML)
 
 
 @router.callback_query(F.data == "suno.lyrics_by_title")
