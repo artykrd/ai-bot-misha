@@ -109,10 +109,12 @@ async def show_suno_final_summary(callback_or_message, state: FSMContext):
     # Add lyrics or melody prompt
     if is_instrumental and melody_prompt:
         safe_melody = escape_markdown(melody_prompt[:300])
-        text += f"🎹 **Описание мелодии:**\n{safe_melody}{'\\.\\.\\.' if len(melody_prompt) > 300 else ''}\n\n"
+        ellipsis = '...' if len(melody_prompt) > 300 else ''
+        text += f"🎹 **Описание мелодии:**\n{safe_melody}{ellipsis}\n\n"
     elif lyrics:
         safe_lyrics = escape_markdown(lyrics[:500])
-        text += f"📜 **Текст:**\n{safe_lyrics}{'\\.\\.\\.' if len(lyrics) > 500 else ''}\n\n"
+        ellipsis = '...' if len(lyrics) > 500 else ''
+        text += f"📜 **Текст:**\n{safe_lyrics}{ellipsis}\n\n"
 
     # Show version info
     text += f"📀 Версия модели: {model_version}"
