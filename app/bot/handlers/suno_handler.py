@@ -9,6 +9,7 @@ from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message, FSInputFile
 from aiogram.fsm.context import FSMContext
 from aiogram.enums import ParseMode
+from aiogram.exceptions import TelegramBadRequest
 import os
 
 from app.bot.keyboards.inline import (
@@ -102,11 +103,16 @@ async def show_suno_final_summary(callback_or_message, state: FSMContext):
 
     # Send or edit message
     if isinstance(callback_or_message, CallbackQuery):
-        await callback_or_message.message.edit_text(
-            text,
-            reply_markup=suno_final_keyboard(),
-            parse_mode=ParseMode.MARKDOWN
-        )
+        try:
+            await callback_or_message.message.edit_text(
+                text,
+                reply_markup=suno_final_keyboard(),
+                parse_mode=ParseMode.MARKDOWN
+            )
+        except TelegramBadRequest as e:
+            # Ignore error if message content hasn't changed
+            if "message is not modified" not in str(e):
+                raise
         await callback_or_message.answer()
     else:
         await callback_or_message.answer(
@@ -138,17 +144,22 @@ async def start_suno(callback: CallbackQuery, state: FSMContext, user: User):
         f"🔹 **Баланса хватит на {balance_songs} песен.** 1 генерация = {settings['tokens_per_song']:,} токенов"
     )
 
-    await callback.message.edit_text(
-        text,
-        reply_markup=suno_main_keyboard(
-            model_version=settings["model_version"],
-            is_instrumental=settings["is_instrumental"],
-            style=settings["style"],
-            balance_songs=balance_songs,
-            tokens_per_song=settings["tokens_per_song"]
-        ),
-        parse_mode=ParseMode.MARKDOWN
-    )
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=suno_main_keyboard(
+                model_version=settings["model_version"],
+                is_instrumental=settings["is_instrumental"],
+                style=settings["style"],
+                balance_songs=balance_songs,
+                tokens_per_song=settings["tokens_per_song"]
+            ),
+            parse_mode=ParseMode.MARKDOWN
+        )
+    except TelegramBadRequest as e:
+        # Ignore error if message content hasn't changed
+        if "message is not modified" not in str(e):
+            raise
     await callback.answer()
 
 
@@ -169,15 +180,20 @@ async def suno_settings(callback: CallbackQuery, state: FSMContext, user: User):
         f"🎨 Стиль: **{settings['style']}**"
     )
 
-    await callback.message.edit_text(
-        text,
-        reply_markup=suno_settings_keyboard(
-            model_version=settings["model_version"],
-            is_instrumental=settings["is_instrumental"],
-            style=settings["style"]
-        ),
-        parse_mode=ParseMode.MARKDOWN
-    )
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=suno_settings_keyboard(
+                model_version=settings["model_version"],
+                is_instrumental=settings["is_instrumental"],
+                style=settings["style"]
+            ),
+            parse_mode=ParseMode.MARKDOWN
+        )
+    except TelegramBadRequest as e:
+        # Ignore error if message content hasn't changed
+        if "message is not modified" not in str(e):
+            raise
     await callback.answer()
 
 
@@ -193,7 +209,12 @@ async def suno_change_version(callback: CallbackQuery, state: FSMContext):
         "• **V4** - улучшенное качество вокала, до 4 минут"
     )
 
-    await callback.message.edit_text(text, reply_markup=suno_version_keyboard(), parse_mode=ParseMode.MARKDOWN)
+    try:
+        await callback.message.edit_text(text, reply_markup=suno_version_keyboard(), parse_mode=ParseMode.MARKDOWN)
+    except TelegramBadRequest as e:
+        # Ignore error if message content hasn't changed
+        if "message is not modified" not in str(e):
+            raise
     await callback.answer()
 
 
@@ -216,7 +237,12 @@ async def suno_change_type(callback: CallbackQuery, state: FSMContext):
         "• **Инструментал (без слов)** - только музыка без вокала"
     )
 
-    await callback.message.edit_text(text, reply_markup=suno_type_keyboard(), parse_mode=ParseMode.MARKDOWN)
+    try:
+        await callback.message.edit_text(text, reply_markup=suno_type_keyboard(), parse_mode=ParseMode.MARKDOWN)
+    except TelegramBadRequest as e:
+        # Ignore error if message content hasn't changed
+        if "message is not modified" not in str(e):
+            raise
     await callback.answer()
 
 
@@ -248,11 +274,16 @@ async def suno_change_style(callback: CallbackQuery, state: FSMContext):
         "После выбора нажмите \"👍 Я выбрал(а) стили\"."
     )
 
-    await callback.message.edit_text(
-        text,
-        reply_markup=suno_style_keyboard(selected_styles),
-        parse_mode=ParseMode.MARKDOWN
-    )
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=suno_style_keyboard(selected_styles),
+            parse_mode=ParseMode.MARKDOWN
+        )
+    except TelegramBadRequest as e:
+        # Ignore error if message content hasn't changed
+        if "message is not modified" not in str(e):
+            raise
     await callback.answer()
 
 
@@ -283,11 +314,16 @@ async def suno_toggle_style(callback: CallbackQuery, state: FSMContext):
         "После выбора нажмите \"👍 Я выбрал(а) стили\"."
     )
 
-    await callback.message.edit_text(
-        text,
-        reply_markup=suno_style_keyboard(selected_styles),
-        parse_mode=ParseMode.MARKDOWN
-    )
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=suno_style_keyboard(selected_styles),
+            parse_mode=ParseMode.MARKDOWN
+        )
+    except TelegramBadRequest as e:
+        # Ignore error if message content hasn't changed
+        if "message is not modified" not in str(e):
+            raise
     await callback.answer()
 
 
@@ -318,11 +354,16 @@ async def suno_confirm_styles(callback: CallbackQuery, state: FSMContext):
             "3️⃣ **Выберите тип вокала**\n\n"
             "Выберите, каким голосом будет исполнена песня:"
         )
-        await callback.message.edit_text(
-            text,
-            reply_markup=suno_vocal_keyboard(),
-            parse_mode=ParseMode.MARKDOWN
-        )
+        try:
+            await callback.message.edit_text(
+                text,
+                reply_markup=suno_vocal_keyboard(),
+                parse_mode=ParseMode.MARKDOWN
+            )
+        except TelegramBadRequest as e:
+            # Ignore error if message content hasn't changed
+            if "message is not modified" not in str(e):
+                raise
         await callback.answer()
 
 
@@ -343,11 +384,16 @@ async def suno_set_vocal(callback: CallbackQuery, state: FSMContext):
         "3️⃣ **Выберите тип вокала**\n\n"
         "Выберите, каким голосом будет исполнена песня:"
     )
-    await callback.message.edit_text(
-        text,
-        reply_markup=suno_vocal_keyboard(selected_vocal=vocal_type),
-        parse_mode=ParseMode.MARKDOWN
-    )
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=suno_vocal_keyboard(selected_vocal=vocal_type),
+            parse_mode=ParseMode.MARKDOWN
+        )
+    except TelegramBadRequest as e:
+        # Ignore error if message content hasn't changed
+        if "message is not modified" not in str(e):
+            raise
     await callback.answer()
 
 
@@ -389,11 +435,16 @@ async def suno_set_style(callback: CallbackQuery, state: FSMContext, user: User)
             "3️⃣ **Выберите тип вокала**\n\n"
             "Выберите, каким голосом будет исполнена песня:"
         )
-        await callback.message.edit_text(
-            text,
-            reply_markup=suno_vocal_keyboard(),
-            parse_mode=ParseMode.MARKDOWN
-        )
+        try:
+            await callback.message.edit_text(
+                text,
+                reply_markup=suno_vocal_keyboard(),
+                parse_mode=ParseMode.MARKDOWN
+            )
+        except TelegramBadRequest as e:
+            # Ignore error if message content hasn't changed
+            if "message is not modified" not in str(e):
+                raise
         await callback.answer()
 
 
@@ -410,7 +461,12 @@ async def suno_custom_style(callback: CallbackQuery, state: FSMContext):
     )
 
     await state.set_state(SunoState.waiting_for_style)
-    await callback.message.edit_text(text, reply_markup=suno_back_keyboard(), parse_mode=ParseMode.MARKDOWN)
+    try:
+        await callback.message.edit_text(text, reply_markup=suno_back_keyboard(), parse_mode=ParseMode.MARKDOWN)
+    except TelegramBadRequest as e:
+        # Ignore error if message content hasn't changed
+        if "message is not modified" not in str(e):
+            raise
     await callback.answer()
 
 
@@ -457,7 +513,12 @@ async def suno_step_by_step(callback: CallbackQuery, state: FSMContext):
     )
 
     await state.set_state(SunoState.waiting_for_song_title)
-    await callback.message.edit_text(text, reply_markup=suno_back_keyboard(), parse_mode=ParseMode.MARKDOWN)
+    try:
+        await callback.message.edit_text(text, reply_markup=suno_back_keyboard(), parse_mode=ParseMode.MARKDOWN)
+    except TelegramBadRequest as e:
+        # Ignore error if message content hasn't changed
+        if "message is not modified" not in str(e):
+            raise
     await callback.answer()
 
 
@@ -546,7 +607,12 @@ async def suno_lyrics_by_description(callback: CallbackQuery, state: FSMContext)
     )
 
     await state.set_state(SunoState.waiting_for_lyrics_description)
-    await callback.message.edit_text(text, reply_markup=suno_back_keyboard(), parse_mode=ParseMode.MARKDOWN)
+    try:
+        await callback.message.edit_text(text, reply_markup=suno_back_keyboard(), parse_mode=ParseMode.MARKDOWN)
+    except TelegramBadRequest as e:
+        # Ignore error if message content hasn't changed
+        if "message is not modified" not in str(e):
+            raise
     await callback.answer()
 
 
@@ -634,7 +700,12 @@ async def suno_lyrics_custom(callback: CallbackQuery, state: FSMContext):
     )
 
     await state.set_state(SunoState.waiting_for_lyrics_text)
-    await callback.message.edit_text(text, reply_markup=suno_back_keyboard(), parse_mode=ParseMode.MARKDOWN)
+    try:
+        await callback.message.edit_text(text, reply_markup=suno_back_keyboard(), parse_mode=ParseMode.MARKDOWN)
+    except TelegramBadRequest as e:
+        # Ignore error if message content hasn't changed
+        if "message is not modified" not in str(e):
+            raise
     await callback.answer()
 
 
@@ -672,7 +743,12 @@ async def suno_lyrics_instrumental(callback: CallbackQuery, state: FSMContext):
 
     await state.update_data(suno_is_instrumental=True, suno_lyrics=None)
     await state.set_state(SunoState.waiting_for_melody_prompt)
-    await callback.message.edit_text(text, reply_markup=suno_style_keyboard(), parse_mode=ParseMode.MARKDOWN)
+    try:
+        await callback.message.edit_text(text, reply_markup=suno_style_keyboard(), parse_mode=ParseMode.MARKDOWN)
+    except TelegramBadRequest as e:
+        # Ignore error if message content hasn't changed
+        if "message is not modified" not in str(e):
+            raise
     await callback.answer()
 
 
