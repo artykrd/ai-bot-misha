@@ -46,6 +46,20 @@ DEFAULT_SUNO_SETTINGS = {
     "tokens_per_song": 17600,
 }
 
+# Model version display names (API value -> Display name)
+MODEL_VERSION_DISPLAY = {
+    "V5": "V5",
+    "V4_5PLUS": "V4.5 Plus",
+    "V4_5ALL": "V4.5 All",
+    "V4_5": "V4.5",
+    "V4": "V4",
+}
+
+
+def get_version_display_name(version: str) -> str:
+    """Get human-readable display name for model version."""
+    return MODEL_VERSION_DISPLAY.get(version, version)
+
 
 async def get_suno_settings(state: FSMContext) -> dict:
     """Get Suno settings from state or return defaults."""
@@ -109,7 +123,7 @@ async def show_suno_final_summary(callback_or_message, state: FSMContext):
         text += f"📜 <b>Текст:</b>\n{safe_lyrics}{ellipsis}\n\n"
 
     # Show version info
-    text += f"📀 Версия модели: {html.escape(model_version)}"
+    text += f"📀 Версия модели: {html.escape(get_version_display_name(model_version))}"
 
     # Send or edit message
     if isinstance(callback_or_message, CallbackQuery):
@@ -135,7 +149,21 @@ async def show_suno_final_summary(callback_or_message, state: FSMContext):
 @router.callback_query(F.data == "bot.suno")
 async def start_suno(callback: CallbackQuery, state: FSMContext, user: User):
     """Start Suno music generation."""
-    await state.clear()  # Clear any previous state
+    # Preserve user settings before clearing state
+    data = await state.get_data()
+    saved_settings = {
+        "suno_model_version": data.get("suno_model_version"),
+        "suno_is_instrumental": data.get("suno_is_instrumental"),
+        "suno_style": data.get("suno_style"),
+        "suno_selected_styles": data.get("suno_selected_styles"),
+    }
+
+    await state.clear()  # Clear song creation state (title, lyrics, etc.)
+
+    # Restore user settings if they were set
+    settings_to_restore = {k: v for k, v in saved_settings.items() if v is not None}
+    if settings_to_restore:
+        await state.update_data(**settings_to_restore)
 
     settings = await get_suno_settings(state)
     balance_songs = await calculate_balance_songs(user.id, settings["tokens_per_song"])
@@ -151,7 +179,7 @@ async def start_suno(callback: CallbackQuery, state: FSMContext, user: User):
         f"(в этом режиме можно сгенерировать текст через ИИ).\n\n"
         f"В ответ я отправлю вам две песни и обложки к ним.\n\n"
         f"⚙️ <b>Параметры</b>\n"
-        f"Версия: {html.escape(settings['model_version'])}\n"
+        f"Версия: {html.escape(get_version_display_name(settings['model_version']))}\n"
         f"Тип: {html.escape(type_text)}\n"
         f"Стиль: {safe_style}\n\n"
         f"🔹 <b>Баланса хватит на {balance_songs} песен.</b> 1 генерация = {settings['tokens_per_song']:,} токенов"
@@ -191,7 +219,7 @@ async def suno_settings(callback: CallbackQuery, state: FSMContext, user: User):
 
     text = (
         f"⚙️ <b>Параметры Suno</b>\n\n"
-        f"📀 Версия: <b>{html.escape(settings['model_version'])}</b>\n"
+        f"📀 Версия: <b>{html.escape(get_version_display_name(settings['model_version']))}</b>\n"
         f"🎵 Тип: <b>{html.escape(type_text)}</b>\n"
         f"🎨 Стиль: <b>{safe_style}</b>"
     )
@@ -217,16 +245,16 @@ async def suno_settings(callback: CallbackQuery, state: FSMContext, user: User):
 async def suno_change_version(callback: CallbackQuery, state: FSMContext):
     """Show version selection menu."""
     text = (
-        "📀 **Выберите версию модели**\n\n"
-        "• **V5** - лучшее музыкальное выражение, быстрая генерация\n"
-        "• **V4.5 Plus** - более богатый звук, новые способы создания, до 8 минут\n"
-        "• **V4.5 All** - лучшая структура песни, до 8 минут\n"
-        "• **V4.5** - умные промпты, быстрая генерация, до 8 минут\n"
-        "• **V4** - улучшенное качество вокала, до 4 минут"
+        "📀 <b>Выберите версию модели</b>\n\n"
+        "• <b>V5</b> - лучшее музыкальное выражение, быстрая генерация\n"
+        "• <b>V4.5 Plus</b> - более богатый звук, новые способы создания, до 8 минут\n"
+        "• <b>V4.5 All</b> - лучшая структура песни, до 8 минут\n"
+        "• <b>V4.5</b> - умные промпты, быстрая генерация, до 8 минут\n"
+        "• <b>V4</b> - улучшенное качество вокала, до 4 минут"
     )
 
     try:
-        await callback.message.edit_text(text, reply_markup=suno_version_keyboard(), parse_mode=ParseMode.MARKDOWN)
+        await callback.message.edit_text(text, reply_markup=suno_version_keyboard(), parse_mode=ParseMode.HTML)
     except TelegramBadRequest as e:
         # Ignore error if message content hasn't changed
         if "message is not modified" not in str(e):
@@ -240,7 +268,7 @@ async def suno_set_version(callback: CallbackQuery, state: FSMContext, user: Use
     version = callback.data.replace("suno.set_version_", "")
     await state.update_data(suno_model_version=version)
 
-    await callback.answer(f"✅ Версия изменена на {version}")
+    await callback.answer(f"✅ Версия изменена на {get_version_display_name(version)}")
     await suno_settings(callback, state, user)
 
 
@@ -248,13 +276,13 @@ async def suno_set_version(callback: CallbackQuery, state: FSMContext, user: Use
 async def suno_change_type(callback: CallbackQuery, state: FSMContext):
     """Show type selection menu."""
     text = (
-        "🎵 **Выберите тип песни**\n\n"
-        "• **С текстом песни** - будет использоваться вокал и текст\n"
-        "• **Инструментал (без слов)** - только музыка без вокала"
+        "🎵 <b>Выберите тип песни</b>\n\n"
+        "• <b>С текстом песни</b> - будет использоваться вокал и текст\n"
+        "• <b>Инструментал (без слов)</b> - только музыка без вокала"
     )
 
     try:
-        await callback.message.edit_text(text, reply_markup=suno_type_keyboard(), parse_mode=ParseMode.MARKDOWN)
+        await callback.message.edit_text(text, reply_markup=suno_type_keyboard(), parse_mode=ParseMode.HTML)
     except TelegramBadRequest as e:
         # Ignore error if message content hasn't changed
         if "message is not modified" not in str(e):
@@ -285,7 +313,7 @@ async def suno_change_style(callback: CallbackQuery, state: FSMContext):
     selected_styles = data.get("suno_selected_styles", [])
 
     text = (
-        "🎨 **Выберите стили музыки**\n\n"
+        "🎨 <b>Выберите стили музыки</b>\n\n"
         "Вы можете выбрать до 3 стилей одновременно.\n"
         "После выбора нажмите \"👍 Я выбрал(а) стили\"."
     )
@@ -294,7 +322,7 @@ async def suno_change_style(callback: CallbackQuery, state: FSMContext):
         await callback.message.edit_text(
             text,
             reply_markup=suno_style_keyboard(selected_styles),
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
     except TelegramBadRequest as e:
         # Ignore error if message content hasn't changed
@@ -325,7 +353,7 @@ async def suno_toggle_style(callback: CallbackQuery, state: FSMContext):
 
     # Update keyboard
     text = (
-        "🎨 **Выберите стили музыки**\n\n"
+        "🎨 <b>Выберите стили музыки</b>\n\n"
         "Вы можете выбрать до 3 стилей одновременно.\n"
         "После выбора нажмите \"👍 Я выбрал(а) стили\"."
     )
@@ -334,7 +362,7 @@ async def suno_toggle_style(callback: CallbackQuery, state: FSMContext):
         await callback.message.edit_text(
             text,
             reply_markup=suno_style_keyboard(selected_styles),
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
     except TelegramBadRequest as e:
         # Ignore error if message content hasn't changed
@@ -367,14 +395,14 @@ async def suno_confirm_styles(callback: CallbackQuery, state: FSMContext):
     else:
         # Show vocal selection screen for songs with lyrics
         text = (
-            "3️⃣ **Выберите тип вокала**\n\n"
+            "3️⃣ <b>Выберите тип вокала</b>\n\n"
             "Выберите, каким голосом будет исполнена песня:"
         )
         try:
             await callback.message.edit_text(
                 text,
                 reply_markup=suno_vocal_keyboard(),
-                parse_mode=ParseMode.MARKDOWN
+                parse_mode=ParseMode.HTML
             )
         except TelegramBadRequest as e:
             # Ignore error if message content hasn't changed
@@ -397,14 +425,14 @@ async def suno_set_vocal(callback: CallbackQuery, state: FSMContext):
 
     # Update keyboard to show new selection
     text = (
-        "3️⃣ **Выберите тип вокала**\n\n"
+        "3️⃣ <b>Выберите тип вокала</b>\n\n"
         "Выберите, каким голосом будет исполнена песня:"
     )
     try:
         await callback.message.edit_text(
             text,
             reply_markup=suno_vocal_keyboard(selected_vocal=vocal_type),
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
     except TelegramBadRequest as e:
         # Ignore error if message content hasn't changed
@@ -448,14 +476,14 @@ async def suno_set_style(callback: CallbackQuery, state: FSMContext, user: User)
     else:
         # Show vocal selection screen for songs with lyrics
         text = (
-            "3️⃣ **Выберите тип вокала**\n\n"
+            "3️⃣ <b>Выберите тип вокала</b>\n\n"
             "Выберите, каким голосом будет исполнена песня:"
         )
         try:
             await callback.message.edit_text(
                 text,
                 reply_markup=suno_vocal_keyboard(),
-                parse_mode=ParseMode.MARKDOWN
+                parse_mode=ParseMode.HTML
             )
         except TelegramBadRequest as e:
             # Ignore error if message content hasn't changed
@@ -468,7 +496,7 @@ async def suno_set_style(callback: CallbackQuery, state: FSMContext, user: User)
 async def suno_custom_style(callback: CallbackQuery, state: FSMContext):
     """Ask user to input custom style."""
     text = (
-        "✏️ **Введите свой стиль музыки**\n\n"
+        "✏️ <b>Введите свой стиль музыки</b>\n\n"
         "Напишите стиль в свободной форме, например:\n"
         "• электронная музыка с элементами ambient\n"
         "• акустическая баллада\n"
@@ -478,7 +506,7 @@ async def suno_custom_style(callback: CallbackQuery, state: FSMContext):
 
     await state.set_state(SunoState.waiting_for_style)
     try:
-        await callback.message.edit_text(text, reply_markup=suno_back_keyboard(), parse_mode=ParseMode.MARKDOWN)
+        await callback.message.edit_text(text, reply_markup=suno_back_keyboard(), parse_mode=ParseMode.HTML)
     except TelegramBadRequest as e:
         # Ignore error if message content hasn't changed
         if "message is not modified" not in str(e):
@@ -506,13 +534,13 @@ async def process_custom_style(message: Message, state: FSMContext, user: User):
     else:
         # Show vocal selection screen for songs with lyrics
         text = (
-            "3️⃣ **Выберите тип вокала**\n\n"
+            "3️⃣ <b>Выберите тип вокала</b>\n\n"
             "Выберите, каким голосом будет исполнена песня:"
         )
         await message.answer(
             text,
             reply_markup=suno_vocal_keyboard(),
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
 
 
@@ -524,13 +552,13 @@ async def process_custom_style(message: Message, state: FSMContext, user: User):
 async def suno_step_by_step(callback: CallbackQuery, state: FSMContext):
     """Start step-by-step song creation."""
     text = (
-        "1️⃣ **Введите название новой песни**\n\n"
+        "1️⃣ <b>Введите название новой песни</b>\n\n"
         "Например: я люблю тебя, жизнь"
     )
 
     await state.set_state(SunoState.waiting_for_song_title)
     try:
-        await callback.message.edit_text(text, reply_markup=suno_back_keyboard(), parse_mode=ParseMode.MARKDOWN)
+        await callback.message.edit_text(text, reply_markup=suno_back_keyboard(), parse_mode=ParseMode.HTML)
     except TelegramBadRequest as e:
         # Ignore error if message content hasn't changed
         if "message is not modified" not in str(e):
@@ -616,18 +644,18 @@ async def suno_lyrics_by_title(callback: CallbackQuery, state: FSMContext, user:
 async def suno_lyrics_by_description(callback: CallbackQuery, state: FSMContext):
     """Ask for song description to generate lyrics."""
     text = (
-        "💬 **Расскажите мне о песне**\n\n"
+        "💬 <b>Расскажите мне о песне</b>\n\n"
         "Возможно, вы хотите сделать подарок близкому человеку или удивить коллег. "
         "Напишите сюжет своей песни, а я помогу составить для неё текст.\n\n"
-        "📌 **Примеры запросов:**\n"
+        "📌 <b>Примеры запросов:</b>\n"
         "- Напиши песню для моей любимой мамы, ... (расскажи небольшую историю о ней и подчеркни моменты, которые хотите услышать в песне);\n"
         "- Танцевальный трек про лето, с легким припевом и незамысловатым текстом.\n\n"
-        "🔹 **Создание текста стоит 1,000 токенов**"
+        "🔹 <b>Создание текста стоит 1,000 токенов</b>"
     )
 
     await state.set_state(SunoState.waiting_for_lyrics_description)
     try:
-        await callback.message.edit_text(text, reply_markup=suno_back_keyboard(), parse_mode=ParseMode.MARKDOWN)
+        await callback.message.edit_text(text, reply_markup=suno_back_keyboard(), parse_mode=ParseMode.HTML)
     except TelegramBadRequest as e:
         # Ignore error if message content hasn't changed
         if "message is not modified" not in str(e):
@@ -708,7 +736,7 @@ async def process_lyrics_description(message: Message, state: FSMContext, user: 
 async def suno_lyrics_custom(callback: CallbackQuery, state: FSMContext):
     """Ask user to input custom lyrics."""
     text = (
-        "✏️ **Введите текст песни**\n\n"
+        "✏️ <b>Введите текст песни</b>\n\n"
         "Вы можете использовать специальные теги Suno для структуры песни:\n"
         "• [Intro] - вступление\n"
         "• [Verse] - куплет\n"
@@ -720,7 +748,7 @@ async def suno_lyrics_custom(callback: CallbackQuery, state: FSMContext):
 
     await state.set_state(SunoState.waiting_for_lyrics_text)
     try:
-        await callback.message.edit_text(text, reply_markup=suno_back_keyboard(), parse_mode=ParseMode.MARKDOWN)
+        await callback.message.edit_text(text, reply_markup=suno_back_keyboard(), parse_mode=ParseMode.HTML)
     except TelegramBadRequest as e:
         # Ignore error if message content hasn't changed
         if "message is not modified" not in str(e):
@@ -751,9 +779,9 @@ async def process_custom_lyrics(message: Message, state: FSMContext):
 async def suno_lyrics_instrumental(callback: CallbackQuery, state: FSMContext):
     """Create instrumental song - ask for melody prompt."""
     text = (
-        "🎶 **Мы генерируем песню без слов: желаете как-нибудь поуправлять мелодией?**\n\n"
+        "🎶 <b>Мы генерируем песню без слов: желаете как-нибудь поуправлять мелодией?</b>\n\n"
         "Достаточного простого описания или полного с указанием основных тегов.\n\n"
-        "📌 **Примеры управления мелодией:**\n"
+        "📌 <b>Примеры управления мелодией:</b>\n"
         "- EDM-поп инструментал, 100 BPM, синт-пиано и саб-бас, чистый звук, структура: 0–20 вступление, 20–40 развёртка, 40–60 финал;\n"
         "- Альтернатива-рок трек, гитара riffs, электрогитары, барабаны, динамика нарастает к концу, 90 BPM;\n"
         "- Ambient/роко-инструментал, медленный темп 70 BPM, просторный синт, плавные переходы, без резких качков;\n\n"
@@ -763,7 +791,7 @@ async def suno_lyrics_instrumental(callback: CallbackQuery, state: FSMContext):
     await state.update_data(suno_is_instrumental=True, suno_lyrics=None)
     await state.set_state(SunoState.waiting_for_melody_prompt)
     try:
-        await callback.message.edit_text(text, reply_markup=suno_style_keyboard(), parse_mode=ParseMode.MARKDOWN)
+        await callback.message.edit_text(text, reply_markup=suno_style_keyboard(), parse_mode=ParseMode.HTML)
     except TelegramBadRequest as e:
         # Ignore error if message content hasn't changed
         if "message is not modified" not in str(e):
@@ -868,7 +896,7 @@ async def generate_suno_song(callback: CallbackQuery, state: FSMContext, user: U
                 f"✅ **Песня создана!**\n\n"
                 f"🎵 Название: {song_title}\n"
                 f"🎨 Стиль: {style}\n"
-                f"📀 Версия: {model_version}\n\n"
+                f"📀 Версия: {get_version_display_name(model_version)}\n\n"
                 f"Отправляю файлы...",
                 parse_mode=None
             )
