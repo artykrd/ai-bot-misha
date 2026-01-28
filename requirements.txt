@@ -29,6 +29,7 @@ aiohttp==3.9.1
 openai==1.10.0
 anthropic==0.40.0
 google-generativeai>=1.0.0  # New SDK with google.genai.Client()
+PyJWT==2.8.0  # JWT for Kling API authentication
 
 # Payment
 yookassa==3.0.0
