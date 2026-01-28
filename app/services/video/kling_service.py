@@ -1,15 +1,24 @@
 """
 Kling AI video generation service.
+
+Supports official Kling API with text-to-video, image-to-video, and multi-image-to-video.
 """
 import time
 import asyncio
-from typing import Optional, Callable, Awaitable
+import base64
+import jwt
+from typing import Optional, Callable, Awaitable, List
+from pathlib import Path
 
 import aiohttp
 
 from app.core.config import settings
 from app.core.logger import get_logger
-from app.core.billing_config import get_video_model_billing
+from app.core.billing_config import (
+    get_kling_tokens_cost,
+    get_kling_api_model,
+    KLING_VERSION_TO_API,
+)
 from app.services.video.base import BaseVideoProvider, VideoResponse
 
 logger = get_logger(__name__)
@@ -19,27 +28,114 @@ class KlingService(BaseVideoProvider):
     """
     Kling AI API integration for video generation.
 
-    Supports text-to-video, image-to-video, and video effects.
-    Can use official Kling API or third-party providers like AI/ML API.
+    Supports text-to-video, image-to-video, and multi-image-to-video.
+    Uses official Kling API with JWT authentication.
     """
 
-    # Using AI/ML API as default provider
-    BASE_URL = "https://api.aimlapi.com"
+    # Official Kling API
+    OFFICIAL_API_URL = "https://api-singapore.klingai.com"
+    # AI/ML API (alternative provider)
+    AIML_API_URL = "https://api.aimlapi.com"
 
-    def __init__(self, api_key: Optional[str] = None, use_official: bool = False):
-        # Kling can use a dedicated API key or fall back to AIMLAPI
-        super().__init__(api_key or getattr(settings, 'kling_api_key', None) or getattr(settings, 'aimlapi_key', None))
+    def __init__(
+        self,
+        access_key: Optional[str] = None,
+        secret_key: Optional[str] = None,
+        use_official: bool = True
+    ):
+        """
+        Initialize Kling service.
 
-        if use_official:
-            self.BASE_URL = "https://api.klingai.com/v1"
+        Args:
+            access_key: Kling API access key (for official API)
+            secret_key: Kling API secret key (for official API)
+            use_official: Whether to use official Kling API (True) or AI/ML API (False)
+        """
+        # For official API, we need access_key and secret_key
+        self.access_key = access_key or getattr(settings, 'kling_access_key', None)
+        self.secret_key = secret_key or getattr(settings, 'kling_secret_key', None)
 
-        if not self.api_key:
-            logger.warning("kling_api_key_missing")
+        # For AI/ML API fallback
+        self.aiml_api_key = getattr(settings, 'aimlapi_key', None)
+
+        self.use_official = use_official and self.access_key and self.secret_key
+
+        if self.use_official:
+            self.base_url = self.OFFICIAL_API_URL
+            logger.info("kling_using_official_api")
+        else:
+            self.base_url = self.AIML_API_URL
+            logger.info("kling_using_aiml_api")
+
+        # Initialize base class with a dummy key (we handle auth ourselves)
+        super().__init__(self.access_key or self.aiml_api_key or "")
+
+        self._jwt_token = None
+        self._jwt_expires_at = 0
+
+    def _generate_jwt_token(self) -> str:
+        """
+        Generate JWT token for official Kling API authentication.
+
+        Token is valid for 30 minutes (1800 seconds).
+        """
+        if not self.access_key or not self.secret_key:
+            raise ValueError("Kling access_key and secret_key are required for official API")
+
+        current_time = int(time.time())
+
+        # Check if existing token is still valid (with 5 minute buffer)
+        if self._jwt_token and current_time < (self._jwt_expires_at - 300):
+            return self._jwt_token
+
+        headers = {
+            "alg": "HS256",
+            "typ": "JWT"
+        }
+        payload = {
+            "iss": self.access_key,
+            "exp": current_time + 1800,  # 30 minutes
+            "nbf": current_time - 5  # Start effective 5 seconds ago
+        }
+
+        token = jwt.encode(payload, self.secret_key, algorithm="HS256", headers=headers)
+
+        self._jwt_token = token
+        self._jwt_expires_at = current_time + 1800
+
+        return token
+
+    def _get_auth_headers(self) -> dict:
+        """Get authentication headers for API requests."""
+        headers = {
+            "Content-Type": "application/json"
+        }
+
+        if self.use_official:
+            token = self._generate_jwt_token()
+            headers["Authorization"] = f"Bearer {token}"
+        else:
+            # AI/ML API uses simple Bearer token
+            headers["Authorization"] = f"Bearer {self.aiml_api_key}"
+
+        return headers
+
+    async def _image_to_base64(self, image_path: str) -> str:
+        """Convert local image file to base64 string."""
+        path = Path(image_path)
+        if not path.exists():
+            raise FileNotFoundError(f"Image not found: {image_path}")
+
+        with open(path, "rb") as f:
+            image_data = f.read()
+
+        # Return just the base64 string without data: prefix
+        return base64.b64encode(image_data).decode("utf-8")
 
     async def generate_video(
         self,
         prompt: str,
-        model: str = "kling-v1.6-pro",
+        model: str = "kling-v2-5-turbo",
         progress_callback: Optional[Callable[[str], Awaitable[None]]] = None,
         **kwargs
     ) -> VideoResponse:
@@ -48,42 +144,98 @@ class KlingService(BaseVideoProvider):
 
         Args:
             prompt: Video generation prompt
-            model: Model version (kling-v1, kling-v1.5, kling-v1.6-pro, kling-v2, etc.)
+            model: API model name (e.g., kling-v2-5-turbo, kling-v2-1-master, kling-v2-master)
             progress_callback: Optional async callback for progress updates
-            **kwargs: Additional parameters (image_url, duration, aspect_ratio, etc.)
+            **kwargs: Additional parameters:
+                - images: List of image paths (0-2 images)
+                - duration: Video duration (5 or 10 seconds)
+                - aspect_ratio: Aspect ratio (1:1, 16:9, 9:16)
+                - version: UI version string for billing calculation
 
         Returns:
             VideoResponse with video path or error
         """
         start_time = time.time()
 
-        if not self.api_key:
+        # Extract parameters
+        images = kwargs.get("images", [])
+        duration = kwargs.get("duration", 5)
+        aspect_ratio = kwargs.get("aspect_ratio", "1:1")
+        version = kwargs.get("version", "2.5")  # UI version for billing
+
+        # Calculate tokens for billing
+        tokens_cost = get_kling_tokens_cost(version, duration)
+
+        if not self.access_key and not self.aiml_api_key:
             return VideoResponse(
                 success=False,
-                error="Kling API key not configured",
+                error="Kling API credentials not configured",
                 processing_time=time.time() - start_time
             )
 
         try:
-            # Notify user that generation is starting
             if progress_callback:
                 await progress_callback("🎬 Начинаю генерацию видео с Kling AI...")
 
-            # Step 1: Create generation request
-            generation_id = await self._create_generation(prompt, model, **kwargs)
+            # Determine which endpoint to use based on number of images
+            if len(images) == 0:
+                # Text-to-video
+                task_id = await self._create_text2video(
+                    prompt=prompt,
+                    model=model,
+                    duration=duration,
+                    aspect_ratio=aspect_ratio
+                )
+                endpoint_type = "text2video"
+            elif len(images) == 1:
+                # Image-to-video (single image)
+                task_id = await self._create_image2video(
+                    prompt=prompt,
+                    model=model,
+                    image_path=images[0],
+                    duration=duration,
+                    aspect_ratio=aspect_ratio
+                )
+                endpoint_type = "image2video"
+            elif len(images) == 2:
+                # Multi-image-to-video (start + end frame) - only for 2.5
+                if "2.5" not in version:
+                    return VideoResponse(
+                        success=False,
+                        error="Два изображения поддерживаются только в версии 2.5",
+                        processing_time=time.time() - start_time
+                    )
+                task_id = await self._create_multi_image2video(
+                    prompt=prompt,
+                    model=model,
+                    image_paths=images,
+                    duration=duration,
+                    aspect_ratio=aspect_ratio
+                )
+                endpoint_type = "image2video"  # Uses same polling endpoint
+            else:
+                return VideoResponse(
+                    success=False,
+                    error="Максимум 2 изображения поддерживаются",
+                    processing_time=time.time() - start_time
+                )
+
             logger.info(
                 "kling_generation_created",
-                generation_id=generation_id,
-                model=model
+                task_id=task_id,
+                model=model,
+                endpoint=endpoint_type,
+                images_count=len(images)
             )
 
-            # Step 2: Poll for completion
+            # Poll for completion
             video_url = await self._poll_generation_status(
-                generation_id,
-                progress_callback
+                task_id=task_id,
+                endpoint_type=endpoint_type,
+                progress_callback=progress_callback
             )
 
-            # Step 3: Download video
+            # Download video
             if progress_callback:
                 await progress_callback("📥 Скачиваю видео...")
 
@@ -99,21 +251,23 @@ class KlingService(BaseVideoProvider):
                 "kling_video_generated",
                 model=model,
                 path=video_path,
-                time=processing_time
+                time=processing_time,
+                tokens=tokens_cost
             )
-
-            kling_billing = get_video_model_billing("kling-video")
-            tokens_used = kling_billing.tokens_per_generation
 
             return VideoResponse(
                 success=True,
                 video_path=video_path,
                 processing_time=processing_time,
-                tokens_used=tokens_used,
+                tokens_used=tokens_cost,
                 metadata={
                     "provider": "kling",
                     "model": model,
-                    "generation_id": generation_id
+                    "task_id": task_id,
+                    "version": version,
+                    "duration": duration,
+                    "aspect_ratio": aspect_ratio,
+                    "images_count": len(images)
                 }
             )
 
@@ -130,52 +284,139 @@ class KlingService(BaseVideoProvider):
                 processing_time=time.time() - start_time
             )
 
-    async def _create_generation(self, prompt: str, model: str, **kwargs) -> str:
-        """Create video generation request and return task ID."""
-        url = f"{self.BASE_URL}/generate/video/kling-ai/v1/generations"
-
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
+    async def _create_text2video(
+        self,
+        prompt: str,
+        model: str,
+        duration: int,
+        aspect_ratio: str
+    ) -> str:
+        """Create text-to-video generation task."""
+        if self.use_official:
+            url = f"{self.base_url}/v1/videos/text2video"
+        else:
+            url = f"{self.base_url}/generate/video/kling-ai/v1/generations"
 
         payload = {
-            "model": model,
-            "prompt": prompt
+            "model_name": model,
+            "prompt": prompt,
+            "duration": str(duration),
+            "aspect_ratio": aspect_ratio,
         }
 
-        # Optional parameters
-        if "image_url" in kwargs:
-            payload["image"] = kwargs["image_url"]
-
-        if "duration" in kwargs:
-            payload["duration"] = kwargs["duration"]  # 5 or 10 seconds
-
-        if "aspect_ratio" in kwargs:
-            payload["aspect_ratio"] = kwargs["aspect_ratio"]  # 16:9, 9:16, 1:1, etc.
-
-        if "negative_prompt" in kwargs:
-            payload["negative_prompt"] = kwargs["negative_prompt"]
-
         async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=headers, json=payload) as response:
-                if response.status not in [200, 201]:
-                    error_text = await response.text()
-                    raise Exception(f"Kling API error: {response.status} - {error_text}")
-
+            async with session.post(
+                url,
+                headers=self._get_auth_headers(),
+                json=payload
+            ) as response:
+                await self._handle_response_errors(response)
                 data = await response.json()
 
-                # Extract task/generation ID
-                if "id" in data:
-                    return data["id"]
-                elif "task_id" in data:
-                    return data["task_id"]
+                if self.use_official:
+                    return data.get("data", {}).get("task_id")
                 else:
-                    raise Exception("No task ID in response")
+                    return data.get("id") or data.get("task_id")
+
+    async def _create_image2video(
+        self,
+        prompt: str,
+        model: str,
+        image_path: str,
+        duration: int,
+        aspect_ratio: str
+    ) -> str:
+        """Create image-to-video generation task."""
+        if self.use_official:
+            url = f"{self.base_url}/v1/videos/image2video"
+        else:
+            url = f"{self.base_url}/generate/video/kling-ai/v1/generations"
+
+        # Convert image to base64
+        image_base64 = await self._image_to_base64(image_path)
+
+        payload = {
+            "model_name": model,
+            "prompt": prompt,
+            "image": image_base64,
+            "duration": str(duration),
+            "aspect_ratio": aspect_ratio,
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                url,
+                headers=self._get_auth_headers(),
+                json=payload
+            ) as response:
+                await self._handle_response_errors(response)
+                data = await response.json()
+
+                if self.use_official:
+                    return data.get("data", {}).get("task_id")
+                else:
+                    return data.get("id") or data.get("task_id")
+
+    async def _create_multi_image2video(
+        self,
+        prompt: str,
+        model: str,
+        image_paths: List[str],
+        duration: int,
+        aspect_ratio: str
+    ) -> str:
+        """Create multi-image-to-video generation task (start + end frame)."""
+        if not self.use_official:
+            raise ValueError("Multi-image-to-video requires official Kling API")
+
+        url = f"{self.base_url}/v1/videos/image2video"
+
+        # Convert images to base64
+        image_base64 = await self._image_to_base64(image_paths[0])
+        image_tail_base64 = await self._image_to_base64(image_paths[1]) if len(image_paths) > 1 else None
+
+        payload = {
+            "model_name": model,
+            "prompt": prompt,
+            "image": image_base64,
+            "duration": str(duration),
+            "aspect_ratio": aspect_ratio,
+        }
+
+        if image_tail_base64:
+            payload["image_tail"] = image_tail_base64
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                url,
+                headers=self._get_auth_headers(),
+                json=payload
+            ) as response:
+                await self._handle_response_errors(response)
+                data = await response.json()
+                return data.get("data", {}).get("task_id")
+
+    async def _handle_response_errors(self, response: aiohttp.ClientResponse):
+        """Handle API response errors with proper messages."""
+        if response.status == 401:
+            # Invalidate cached JWT token
+            self._jwt_token = None
+            self._jwt_expires_at = 0
+            error_text = await response.text()
+            raise Exception(f"Ошибка аутентификации. Проверьте ключи API. ({error_text})")
+
+        if response.status == 429:
+            error_text = await response.text()
+            raise Exception(f"Превышен лимит запросов или недостаточно средств на аккаунте. ({error_text})")
+
+        if response.status not in [200, 201]:
+            error_text = await response.text()
+            raise Exception(f"Kling API error: {response.status} - {error_text}")
 
     async def _poll_generation_status(
         self,
         task_id: str,
+        endpoint_type: str,
         progress_callback: Optional[Callable[[str], Awaitable[None]]] = None,
         max_wait_time: int = 600,  # 10 minutes
         poll_interval: int = 5  # 5 seconds
@@ -183,58 +424,107 @@ class KlingService(BaseVideoProvider):
         """
         Poll generation status until complete.
 
+        Args:
+            task_id: Task ID to poll
+            endpoint_type: Type of endpoint (text2video or image2video)
+            progress_callback: Optional callback for status updates
+            max_wait_time: Maximum wait time in seconds
+            poll_interval: Poll interval in seconds
+
         Returns:
             URL of the generated video
         """
-        url = f"{self.BASE_URL}/generate/video/kling-ai/v1/generations/{task_id}"
-        headers = {
-            "Authorization": f"Bearer {self.api_key}"
-        }
+        if self.use_official:
+            url = f"{self.base_url}/v1/videos/{endpoint_type}/{task_id}"
+        else:
+            url = f"{self.base_url}/generate/video/kling-ai/v1/generations/{task_id}"
 
         start_time = time.time()
         last_status = None
+        retry_count = 0
+        max_retries = 4
 
         async with aiohttp.ClientSession() as session:
             while True:
                 # Check timeout
                 if time.time() - start_time > max_wait_time:
-                    raise Exception("Video generation timeout")
+                    raise Exception("Таймаут генерации видео (10 минут)")
 
-                # Poll status
-                async with session.get(url, headers=headers) as response:
-                    if response.status != 200:
-                        error_text = await response.text()
-                        raise Exception(f"Status check failed: {response.status} - {error_text}")
+                try:
+                    async with session.get(
+                        url,
+                        headers=self._get_auth_headers()
+                    ) as response:
+                        if response.status == 401:
+                            # Token expired, regenerate
+                            self._jwt_token = None
+                            self._jwt_expires_at = 0
+                            await asyncio.sleep(poll_interval)
+                            continue
 
-                    data = await response.json()
-                    status = data.get("status", "unknown")
+                        if response.status != 200:
+                            error_text = await response.text()
+                            raise Exception(f"Status check failed: {response.status} - {error_text}")
 
-                    # Update user if status changed
-                    if status != last_status and progress_callback:
-                        if status == "pending" or status == "queued":
-                            await progress_callback("⏳ Видео в очереди...")
-                        elif status == "processing" or status == "running":
-                            await progress_callback("⚙️ Генерирую видео...")
+                        data = await response.json()
 
-                    last_status = status
+                        # Extract status based on API type
+                        if self.use_official:
+                            task_data = data.get("data", {})
+                            status = task_data.get("task_status", "unknown")
+                            status_msg = task_data.get("task_status_msg", "")
+                        else:
+                            status = data.get("status", "unknown")
+                            status_msg = data.get("error", {}).get("message", "")
 
-                    # Check if complete
-                    if status == "completed" or status == "success" or status == "succeeded":
-                        # Get video URL from various possible response formats
-                        video_url = (
-                            data.get("video_url") or
-                            data.get("url") or
-                            data.get("output", {}).get("video_url") or
-                            data.get("result", {}).get("video_url")
-                        )
-                        if not video_url:
-                            raise Exception("Video URL not found in response")
-                        return video_url
+                        # Update user if status changed
+                        if status != last_status and progress_callback:
+                            if status in ["submitted", "pending", "queued"]:
+                                await progress_callback("⏳ Видео в очереди...")
+                            elif status in ["processing", "running"]:
+                                await progress_callback("⚙️ Генерирую видео...")
 
-                    # Check if failed
-                    if status == "failed" or status == "error":
-                        error = data.get("error", {}).get("message", "Unknown error")
-                        raise Exception(f"Generation failed: {error}")
+                        last_status = status
+                        retry_count = 0  # Reset retry count on successful response
 
-                    # Wait before next poll
-                    await asyncio.sleep(poll_interval)
+                        # Check if complete
+                        if status in ["succeed", "completed", "success", "succeeded"]:
+                            # Get video URL
+                            if self.use_official:
+                                videos = task_data.get("task_result", {}).get("videos", [])
+                                if videos:
+                                    return videos[0].get("url")
+                            else:
+                                video_url = (
+                                    data.get("video_url") or
+                                    data.get("url") or
+                                    data.get("output", {}).get("video_url") or
+                                    data.get("result", {}).get("video_url")
+                                )
+                                if video_url:
+                                    return video_url
+
+                            raise Exception("URL видео не найден в ответе")
+
+                        # Check if failed
+                        if status in ["failed", "error"]:
+                            error_msg = status_msg or "Неизвестная ошибка"
+                            raise Exception(f"Генерация не удалась: {error_msg}")
+
+                except aiohttp.ClientError as e:
+                    retry_count += 1
+                    if retry_count >= max_retries:
+                        raise Exception(f"Сетевая ошибка после {max_retries} попыток: {e}")
+                    # Exponential backoff: 2s, 4s, 8s, 16s
+                    backoff_time = 2 ** retry_count
+                    logger.warning(
+                        "kling_poll_retry",
+                        retry=retry_count,
+                        backoff=backoff_time,
+                        error=str(e)
+                    )
+                    await asyncio.sleep(backoff_time)
+                    continue
+
+                # Wait before next poll
+                await asyncio.sleep(poll_interval)

@@ -223,10 +223,53 @@ VIDEO_MODELS: Dict[str, FixedModelBilling] = {
         description_suffix="Стоимость генерации видео: 225 000 токенов",
         model_type=ModelType.VIDEO
     ),
+    # Legacy Kling billing (kept for backward compatibility)
     "kling-video": FixedModelBilling(
-        tokens_per_generation=635000,
-        display_name="Kling",
-        description_suffix="Стоимость генерации видео (10 секунд): 635 000 токенов",
+        tokens_per_generation=58000,
+        display_name="Kling 2.5",
+        description_suffix="Стоимость генерации видео (5 секунд): 58 000 токенов",
+        model_type=ModelType.VIDEO
+    ),
+    # Kling 2.1 / 2.1 Pro - 5 seconds
+    "kling-2.1-5s": FixedModelBilling(
+        tokens_per_generation=58000,
+        display_name="Kling 2.1",
+        description_suffix="Стоимость генерации видео (5 секунд): 58 000 токенов",
+        model_type=ModelType.VIDEO
+    ),
+    # Kling 2.1 / 2.1 Pro - 10 seconds
+    "kling-2.1-10s": FixedModelBilling(
+        tokens_per_generation=115000,
+        display_name="Kling 2.1",
+        description_suffix="Стоимость генерации видео (10 секунд): 115 000 токенов",
+        model_type=ModelType.VIDEO
+    ),
+    # Kling 2.5 - 5 seconds
+    "kling-2.5-5s": FixedModelBilling(
+        tokens_per_generation=58000,
+        display_name="Kling 2.5",
+        description_suffix="Стоимость генерации видео (5 секунд): 58 000 токенов",
+        model_type=ModelType.VIDEO
+    ),
+    # Kling 2.5 - 10 seconds
+    "kling-2.5-10s": FixedModelBilling(
+        tokens_per_generation=115000,
+        display_name="Kling 2.5",
+        description_suffix="Стоимость генерации видео (10 секунд): 115 000 токенов",
+        model_type=ModelType.VIDEO
+    ),
+    # Kling 2.6 - 5 seconds
+    "kling-2.6-5s": FixedModelBilling(
+        tokens_per_generation=238000,
+        display_name="Kling 2.6",
+        description_suffix="Стоимость генерации видео (5 секунд): 238 000 токенов",
+        model_type=ModelType.VIDEO
+    ),
+    # Kling 2.6 - 10 seconds
+    "kling-2.6-10s": FixedModelBilling(
+        tokens_per_generation=475000,
+        display_name="Kling 2.6",
+        description_suffix="Стоимость генерации видео (10 секунд): 475 000 токенов",
         model_type=ModelType.VIDEO
     ),
     "kling-effects": FixedModelBilling(
@@ -255,6 +298,73 @@ LEGACY_VIDEO_MODEL_MAP = {
     "veo": "veo-3.1-fast",
     "sora": "sora2",
 }
+
+
+# ==============================================
+# KLING MODEL MAPPING
+# ==============================================
+# UI version -> API model_name mapping
+KLING_VERSION_TO_API = {
+    "2.1": "kling-v2-1-master",
+    "2.1 Pro": "kling-v2-1-master",
+    "2.5": "kling-v2-5-turbo",
+    "2.6": "kling-v2-master",
+}
+
+
+def get_kling_billing_key(version: str, duration: int) -> str:
+    """
+    Get billing key for Kling based on version and duration.
+
+    Args:
+        version: UI version string (e.g., "2.1", "2.5", "2.6")
+        duration: Duration in seconds (5 or 10)
+
+    Returns:
+        Billing key for VIDEO_MODELS dict
+    """
+    # Normalize version (remove "Pro" suffix for billing calculation since same price)
+    version_normalized = version.replace(" Pro", "")
+    duration_suffix = f"{duration}s"
+    return f"kling-{version_normalized}-{duration_suffix}"
+
+
+def get_kling_api_model(version: str) -> str:
+    """
+    Get API model_name from UI version.
+
+    Args:
+        version: UI version string (e.g., "2.1", "2.5", "2.6")
+
+    Returns:
+        API model_name string
+    """
+    return KLING_VERSION_TO_API.get(version, "kling-v2-5-turbo")
+
+
+def get_kling_tokens_cost(version: str, duration: int) -> int:
+    """
+    Get token cost for Kling video generation.
+
+    Args:
+        version: UI version string (e.g., "2.1", "2.5", "2.6")
+        duration: Duration in seconds (5 or 10)
+
+    Returns:
+        Token cost for this generation
+    """
+    billing_key = get_kling_billing_key(version, duration)
+    billing = VIDEO_MODELS.get(billing_key)
+    if billing:
+        return billing.tokens_per_generation
+
+    # Fallback to default kling-video
+    return VIDEO_MODELS.get("kling-video", FixedModelBilling(
+        tokens_per_generation=58000,
+        display_name="Kling",
+        description_suffix="",
+        model_type=ModelType.VIDEO
+    )).tokens_per_generation
 
 
 # ==============================================
