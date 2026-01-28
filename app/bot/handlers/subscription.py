@@ -13,6 +13,7 @@ from app.bot.keyboards.inline import (
     eternal_tokens_keyboard,
     back_to_main_keyboard
 )
+from app.bot.states import PromocodeStates
 from app.database.models.user import User
 from app.core.logger import get_logger
 
