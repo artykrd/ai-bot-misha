@@ -1,16 +1,26 @@
 """
 DeepSeek service (OpenAI-compatible API).
 """
+import asyncio
 import time
 from typing import Optional, List, Dict
 
 from openai import AsyncOpenAI
+import httpx
 
 from app.core.config import settings
 from app.core.logger import get_logger
 from app.services.ai.base import BaseAIProvider, AIResponse
 
 logger = get_logger(__name__)
+
+# Timeout settings for DeepSeek requests
+DEEPSEEK_TIMEOUT = httpx.Timeout(
+    connect=10.0,
+    read=180.0,  # DeepSeek reasoning models can be slow
+    write=30.0,
+    pool=10.0
+)
 
 
 class DeepSeekService(BaseAIProvider):
@@ -22,7 +32,9 @@ class DeepSeekService(BaseAIProvider):
         # DeepSeek uses OpenAI-compatible API
         self.client = AsyncOpenAI(
             api_key=self.api_key,
-            base_url="https://api.deepseek.com/v1"
+            base_url="https://api.deepseek.com/v1",
+            timeout=DEEPSEEK_TIMEOUT,
+            max_retries=2
         ) if self.api_key else None
 
     async def generate_text(

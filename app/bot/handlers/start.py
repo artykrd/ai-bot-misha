@@ -28,7 +28,7 @@ async def cmd_start(message: Message, user: User, state: FSMContext):
     from datetime import datetime, timedelta, timezone
 
     await state.clear()
-    clear_active_dialog(user.telegram_id)
+    await clear_active_dialog(user.telegram_id)
 
     # Check for referral code or unlimited invite in command args
     if message.text and len(message.text.split()) > 1:
@@ -193,7 +193,7 @@ async def show_main_menu(callback: CallbackQuery, user: User, state: FSMContext)
     from app.bot.handlers.dialog_context import clear_active_dialog
 
     await state.clear()
-    clear_active_dialog(user.telegram_id)
+    await clear_active_dialog(user.telegram_id)
     async with async_session_maker() as session:
         sub_service = SubscriptionService(session)
         total_tokens = await sub_service.get_available_tokens(user.id)
@@ -234,7 +234,7 @@ async def show_full_menu(callback: CallbackQuery, user: User, state: FSMContext)
     from app.bot.handlers.dialog_context import clear_active_dialog
 
     await state.clear()
-    clear_active_dialog(user.telegram_id)
+    await clear_active_dialog(user.telegram_id)
     text = "Меню"
     if callback.message.photo:
         await callback.message.delete()
@@ -255,5 +255,5 @@ async def show_full_menu_message(message: Message, user: User, state: FSMContext
     from app.bot.handlers.dialog_context import clear_active_dialog
 
     await state.clear()
-    clear_active_dialog(user.telegram_id)
+    await clear_active_dialog(user.telegram_id)
     await message.answer("Меню", reply_markup=main_menu_keyboard())

@@ -23,13 +23,21 @@ class Base(DeclarativeBase):
     pass
 
 
-# Global async engine
+# Global async engine with optimized pool settings for high load
 engine: AsyncEngine = create_async_engine(
     settings.database_url,
     echo=False,  # Disable SQL query logging for cleaner logs
     pool_size=settings.db_pool_size,
     max_overflow=settings.db_max_overflow,
     pool_pre_ping=True,  # Verify connections before using
+    pool_timeout=30,  # Timeout for getting connection from pool
+    pool_recycle=1800,  # Recycle connections after 30 minutes
+    connect_args={
+        "command_timeout": 60,  # Query timeout in seconds
+        "server_settings": {
+            "statement_timeout": "60000",  # 60 seconds statement timeout
+        }
+    }
 )
 
 # Session factory

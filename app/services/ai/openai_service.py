@@ -1,10 +1,12 @@
 """
 OpenAI service for GPT, DALL-E, Whisper, TTS.
 """
+import asyncio
 import time
 from typing import Optional, List, Dict
 
 from openai import AsyncOpenAI
+import httpx
 
 from app.core.config import settings
 from app.core.logger import get_logger
@@ -12,13 +14,25 @@ from app.services.ai.base import BaseAIProvider, AIResponse
 
 logger = get_logger(__name__)
 
+# Timeout settings for OpenAI requests
+OPENAI_TIMEOUT = httpx.Timeout(
+    connect=10.0,      # Connection timeout
+    read=120.0,        # Read timeout (AI responses can be slow)
+    write=30.0,        # Write timeout
+    pool=10.0          # Pool timeout
+)
+
 
 class OpenAIService(BaseAIProvider):
     """OpenAI API integration."""
 
     def __init__(self, api_key: Optional[str] = None):
         super().__init__(api_key or settings.openai_api_key)
-        self.client = AsyncOpenAI(api_key=self.api_key)
+        self.client = AsyncOpenAI(
+            api_key=self.api_key,
+            timeout=OPENAI_TIMEOUT,
+            max_retries=2  # Retry on transient errors
+        )
 
     async def generate_text(
         self,

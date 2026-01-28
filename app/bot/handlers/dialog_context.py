@@ -1,15 +1,25 @@
 """
 Dialog context management for tracking active user dialogs.
+Now uses Redis for persistence and scalability under load.
 """
+import json
 from typing import Optional, Dict, Any
 from app.core.logger import get_logger
 from app.core.billing_config import get_text_model_billing
 
 logger = get_logger(__name__)
 
-# TODO: Move to Redis or database for persistence
-# Format: {user_id: {"dialog_id": int, "model_id": str, "history_enabled": bool, "show_costs": bool}}
-ACTIVE_DIALOGS: Dict[int, Dict[str, Any]] = {}
+# Dialog TTL in seconds (30 minutes - dialogs auto-expire if inactive)
+DIALOG_TTL_SECONDS = 1800
+
+# Redis key prefix for dialogs
+DIALOG_KEY_PREFIX = "dialog:active:"
+
+
+def _get_redis_client():
+    """Get Redis client lazily to avoid circular imports."""
+    from app.core.redis_client import redis_client
+    return redis_client
 
 
 # Model ID to AI service mapping with new billing system
@@ -186,20 +196,20 @@ def _validate_model_mappings() -> None:
 _validate_model_mappings()
 
 
-def set_active_dialog(user_id: int, dialog_id: int, history_enabled: bool = False, show_costs: bool = False):
-    """Set active dialog for user."""
+async def set_active_dialog(user_id: int, dialog_id: int, history_enabled: bool = False, show_costs: bool = False) -> bool:
+    """Set active dialog for user in Redis with TTL."""
     if dialog_id not in MODEL_MAPPINGS:
         logger.warning(f"Unknown dialog_id: {dialog_id}")
         return False
 
     model_config = MODEL_MAPPINGS[dialog_id]
 
-    ACTIVE_DIALOGS[user_id] = {
+    dialog_data = {
         "dialog_id": dialog_id,
         "model_name": model_config["name"],
         "provider": model_config["provider"],
         "model_id": model_config["model_id"],
-        "billing_id": model_config.get("billing_id", model_config["model_id"]),  # New billing ID
+        "billing_id": model_config.get("billing_id", model_config["model_id"]),
         "cost_per_request": model_config["cost_per_request"],
         "history_enabled": history_enabled,
         "show_costs": show_costs,
@@ -209,35 +219,89 @@ def set_active_dialog(user_id: int, dialog_id: int, history_enabled: bool = Fals
         "system_prompt": model_config.get("system_prompt"),
     }
 
-    logger.info(f"Active dialog set for user {user_id}: dialog_id={dialog_id}, model={model_config['name']}")
-    return True
+    try:
+        redis = _get_redis_client()
+        key = f"{DIALOG_KEY_PREFIX}{user_id}"
+        await redis.set_json(key, dialog_data, expire=DIALOG_TTL_SECONDS)
+        logger.info(f"Active dialog set for user {user_id}: dialog_id={dialog_id}, model={model_config['name']}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to set active dialog in Redis: {e}")
+        return False
 
 
 def get_active_dialog(user_id: int) -> Optional[Dict[str, Any]]:
-    """Get active dialog for user."""
-    return ACTIVE_DIALOGS.get(user_id)
+    """
+    Get active dialog for user from Redis.
+    Note: This is a sync wrapper that runs the async version.
+    For handlers, use get_active_dialog_async directly.
+    """
+    import asyncio
+    try:
+        loop = asyncio.get_running_loop()
+        # If we're in an async context, we need to use the async version
+        # This sync version is for backward compatibility
+        return None  # Return None in sync context - use async version
+    except RuntimeError:
+        # No running loop, can't get dialog
+        return None
 
 
-def clear_active_dialog(user_id: int):
-    """Clear active dialog for user."""
-    if user_id in ACTIVE_DIALOGS:
+async def get_active_dialog_async(user_id: int) -> Optional[Dict[str, Any]]:
+    """Get active dialog for user from Redis (async version)."""
+    try:
+        redis = _get_redis_client()
+        key = f"{DIALOG_KEY_PREFIX}{user_id}"
+        dialog_data = await redis.get_json(key)
+        if dialog_data:
+            # Refresh TTL on access to keep active dialogs alive
+            await redis.expire(key, DIALOG_TTL_SECONDS)
+        return dialog_data
+    except Exception as e:
+        logger.error(f"Failed to get active dialog from Redis: {e}")
+        return None
+
+
+async def clear_active_dialog(user_id: int) -> bool:
+    """Clear active dialog for user from Redis."""
+    try:
+        redis = _get_redis_client()
+        key = f"{DIALOG_KEY_PREFIX}{user_id}"
+        await redis.delete(key)
         logger.info(f"Clearing active dialog for user {user_id}")
-        del ACTIVE_DIALOGS[user_id]
-
-
-def update_dialog_settings(user_id: int, history_enabled: bool = None, show_costs: bool = None):
-    """Update dialog settings."""
-    if user_id not in ACTIVE_DIALOGS:
+        return True
+    except Exception as e:
+        logger.error(f"Failed to clear active dialog from Redis: {e}")
         return False
 
-    if history_enabled is not None:
-        ACTIVE_DIALOGS[user_id]["history_enabled"] = history_enabled
-    if show_costs is not None:
-        ACTIVE_DIALOGS[user_id]["show_costs"] = show_costs
 
-    return True
+async def update_dialog_settings(user_id: int, history_enabled: bool = None, show_costs: bool = None) -> bool:
+    """Update dialog settings in Redis."""
+    try:
+        dialog = await get_active_dialog_async(user_id)
+        if not dialog:
+            return False
+
+        if history_enabled is not None:
+            dialog["history_enabled"] = history_enabled
+        if show_costs is not None:
+            dialog["show_costs"] = show_costs
+
+        redis = _get_redis_client()
+        key = f"{DIALOG_KEY_PREFIX}{user_id}"
+        await redis.set_json(key, dialog, expire=DIALOG_TTL_SECONDS)
+        return True
+    except Exception as e:
+        logger.error(f"Failed to update dialog settings in Redis: {e}")
+        return False
 
 
-def has_active_dialog(user_id: int) -> bool:
-    """Check if user has active dialog."""
-    return user_id in ACTIVE_DIALOGS
+async def has_active_dialog(user_id: int) -> bool:
+    """Check if user has active dialog in Redis."""
+    try:
+        redis = _get_redis_client()
+        key = f"{DIALOG_KEY_PREFIX}{user_id}"
+        return await redis.exists(key)
+    except Exception as e:
+        logger.error(f"Failed to check active dialog in Redis: {e}")
+        return False

@@ -37,8 +37,8 @@ class Settings(BaseSettings):
     # DATABASE CONFIGURATION
     # =====================================
     database_url: str = Field(..., description="PostgreSQL async database URL")
-    db_pool_size: int = Field(20, description="Database connection pool size")
-    db_max_overflow: int = Field(10, description="Max overflow connections")
+    db_pool_size: int = Field(50, description="Database connection pool size")
+    db_max_overflow: int = Field(20, description="Max overflow connections")
 
     # =====================================
     # REDIS CONFIGURATION

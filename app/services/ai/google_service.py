@@ -1,6 +1,7 @@
 """
 Google Gemini service.
 """
+import asyncio
 import time
 from typing import Optional, List, Dict, TYPE_CHECKING
 
@@ -9,6 +10,9 @@ from app.core.logger import get_logger
 from app.services.ai.base import BaseAIProvider, AIResponse
 
 logger = get_logger(__name__)
+
+# Timeout for Google API requests (seconds)
+GOOGLE_REQUEST_TIMEOUT = 120.0
 
 # Lazy import - only import when actually used
 _genai = None
@@ -96,8 +100,19 @@ class GoogleService(BaseAIProvider):
             if system_prompt:
                 full_prompt = f"{system_prompt}\n\n{prompt}"
 
-            # Generate content
-            response = model_instance.generate_content(full_prompt)
+            # Generate content with timeout (use thread pool to avoid blocking event loop)
+            # google.generativeai uses sync API, so we run it in thread pool
+            try:
+                response = await asyncio.wait_for(
+                    asyncio.to_thread(model_instance.generate_content, full_prompt),
+                    timeout=GOOGLE_REQUEST_TIMEOUT
+                )
+            except asyncio.TimeoutError:
+                return AIResponse(
+                    success=False,
+                    error=f"Google API request timed out after {GOOGLE_REQUEST_TIMEOUT}s",
+                    processing_time=time.time() - start_time
+                )
 
             content = response.text
 

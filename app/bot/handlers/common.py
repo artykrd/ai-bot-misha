@@ -22,7 +22,7 @@ async def start_promocode_activation(message: Message, state: FSMContext, user: 
     from app.bot.states import PromocodeStates
 
     await state.clear()
-    clear_active_dialog(user.telegram_id)
+    await clear_active_dialog(user.telegram_id)
     await state.set_state(PromocodeStates.waiting_for_code)
 
     text = """🔢 Активация промокода
@@ -106,7 +106,7 @@ async def cmd_faq(event):
 async def help_from_reply(message: Message, user: User, state: FSMContext):
     """Help from reply keyboard."""
     await state.clear()
-    clear_active_dialog(user.telegram_id)
+    await clear_active_dialog(user.telegram_id)
     text = """🆘 <b>Помощь</b>
 
 <b>Как пользоваться ботом:</b>
@@ -128,7 +128,7 @@ async def help_from_reply(message: Message, user: User, state: FSMContext):
 async def cmd_ref(message: Message, user: User, state: FSMContext):
     """Referral command."""
     await state.clear()
-    clear_active_dialog(user.telegram_id)
+    await clear_active_dialog(user.telegram_id)
     from app.bot.handlers.navigation import build_referral_text
 
     text = await build_referral_text(user)
@@ -528,7 +528,7 @@ async def audio_tools(callback: CallbackQuery):
 async def referral(callback: CallbackQuery, user: User, state: FSMContext):
     """Referral program."""
     await state.clear()
-    clear_active_dialog(user.telegram_id)
+    await clear_active_dialog(user.telegram_id)
     from app.bot.handlers.navigation import build_referral_text
 
     text = await build_referral_text(user)

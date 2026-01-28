@@ -1,14 +1,25 @@
 """
 Anthropic Claude service.
 """
+import asyncio
 import time
 from typing import Optional, List, Dict
+
+import httpx
 
 from app.core.config import settings
 from app.core.logger import get_logger
 from app.services.ai.base import BaseAIProvider, AIResponse
 
 logger = get_logger(__name__)
+
+# Timeout settings for Anthropic requests
+ANTHROPIC_TIMEOUT = httpx.Timeout(
+    connect=10.0,      # Connection timeout
+    read=120.0,        # Read timeout
+    write=30.0,        # Write timeout
+    pool=10.0          # Pool timeout
+)
 
 # Lazy import
 _AsyncAnthropic = None
@@ -43,7 +54,11 @@ class AnthropicService(BaseAIProvider):
         if self.api_key:
             AsyncAnthropic = _get_anthropic()
             if AsyncAnthropic:
-                self.client = AsyncAnthropic(api_key=self.api_key)
+                self.client = AsyncAnthropic(
+                    api_key=self.api_key,
+                    timeout=ANTHROPIC_TIMEOUT,
+                    max_retries=2
+                )
 
     async def generate_text(
         self,
