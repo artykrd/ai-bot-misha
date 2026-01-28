@@ -13,7 +13,8 @@ def compress_image_if_needed(
     image_path: str,
     max_size_mb: float = 4.0,
     max_dimension: int = 2048,
-    output_format: str = "PNG"
+    output_format: str = "PNG",
+    force_format: bool = False
 ) -> str:
     """
     Compress image if it exceeds size or dimension limits.
@@ -23,6 +24,7 @@ def compress_image_if_needed(
         max_size_mb: Maximum file size in MB (default 4.0)
         max_dimension: Maximum width or height in pixels (default 2048)
         output_format: Output format (PNG or JPEG)
+        force_format: If True, never convert to a different format (default False)
 
     Returns:
         Path to the compressed image (same path if no compression needed)
@@ -98,10 +100,29 @@ def compress_image_if_needed(
 
             # Reduce quality and try again
             if output_format.upper() == "PNG":
-                # For PNG, if optimization isn't enough, convert to JPEG
-                output_format = "JPEG"
-                quality = 85
-                logger.info("converting_png_to_jpeg_for_compression")
+                if force_format:
+                    # For PNG with force_format, reduce dimensions instead of converting
+                    # Reduce by 20% each iteration
+                    new_width = int(width * 0.8)
+                    new_height = int(height * 0.8)
+
+                    if new_width < 256 or new_height < 256:
+                        # Too small, can't compress further
+                        break
+
+                    logger.info(
+                        "reducing_png_dimensions",
+                        from_size=f"{width}x{height}",
+                        to_size=f"{new_width}x{new_height}"
+                    )
+
+                    img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                    width, height = new_width, new_height
+                else:
+                    # For PNG without force_format, convert to JPEG
+                    output_format = "JPEG"
+                    quality = 85
+                    logger.info("converting_png_to_jpeg_for_compression")
             else:
                 quality -= 10
 
