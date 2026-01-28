@@ -1,16 +1,26 @@
 """
 Perplexity AI service (OpenAI-compatible API with web search).
 """
+import asyncio
 import time
 from typing import Optional, List, Dict
 
 from openai import AsyncOpenAI
+import httpx
 
 from app.core.config import settings
 from app.core.logger import get_logger
 from app.services.ai.base import BaseAIProvider, AIResponse
 
 logger = get_logger(__name__)
+
+# Timeout settings for Perplexity requests
+PERPLEXITY_TIMEOUT = httpx.Timeout(
+    connect=10.0,
+    read=120.0,  # Web search can take time
+    write=30.0,
+    pool=10.0
+)
 
 
 class PerplexityService(BaseAIProvider):
@@ -22,7 +32,9 @@ class PerplexityService(BaseAIProvider):
         # Perplexity uses OpenAI-compatible API
         self.client = AsyncOpenAI(
             api_key=self.api_key,
-            base_url="https://api.perplexity.ai"
+            base_url="https://api.perplexity.ai",
+            timeout=PERPLEXITY_TIMEOUT,
+            max_retries=2
         ) if self.api_key else None
 
     async def generate_text(

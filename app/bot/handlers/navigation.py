@@ -42,7 +42,7 @@ DIALOG_STATES = {}
 async def reset_menu_context(state: FSMContext, user: User) -> None:
     """Clear FSM state and active dialog when entering menu navigation."""
     await state.clear()
-    clear_active_dialog(user.telegram_id)
+    await clear_active_dialog(user.telegram_id)
 
 
 
@@ -216,7 +216,7 @@ async def start_dialog(callback: CallbackQuery, user: User):
         set_dialog_state(user.telegram_id, dialog_id, show_costs=show_costs)
 
     # Set active dialog in context
-    set_active_dialog(user.telegram_id, dialog_id, history_enabled, show_costs)
+    await set_active_dialog(user.telegram_id, dialog_id, history_enabled, show_costs)
 
     model_config = MODEL_MAPPINGS.get(dialog_id)
     if not model_config:

@@ -9,7 +9,7 @@ from aiogram.filters import Command
 from aiogram.enums import ParseMode
 
 from app.bot.handlers.dialog_context import (
-    get_active_dialog,
+    get_active_dialog_async,
     clear_active_dialog,
     has_active_dialog
 )
@@ -91,12 +91,12 @@ def split_long_message(text: str, max_length: int = 4000) -> list[str]:
 @router.message(Command("end"))
 async def cmd_end_dialog(message: Message, user: User):
     """End current dialog."""
-    if not has_active_dialog(user.telegram_id):
+    if not await has_active_dialog(user.telegram_id):
         await message.answer("У вас нет активного диалога.")
         return
 
-    dialog = get_active_dialog(user.telegram_id)
-    clear_active_dialog(user.telegram_id)
+    dialog = await get_active_dialog_async(user.telegram_id)
+    await clear_active_dialog(user.telegram_id)
 
     await message.answer(
         f"✅ Диалог с {dialog['model_name']} завершен.\n\n"
@@ -107,11 +107,11 @@ async def cmd_end_dialog(message: Message, user: User):
 @router.message(Command("clear"))
 async def cmd_clear_history(message: Message, user: User):
     """Clear dialog history."""
-    if not has_active_dialog(user.telegram_id):
+    if not await has_active_dialog(user.telegram_id):
         await message.answer("У вас нет активного диалога.")
         return
 
-    dialog = get_active_dialog(user.telegram_id)
+    dialog = await get_active_dialog_async(user.telegram_id)
 
     # TODO: Clear dialog history in database
     # For now just send confirmation
@@ -129,7 +129,7 @@ async def handle_text_message(message: Message, user: User):
         return
 
     # Check if user has active dialog
-    dialog = get_active_dialog(user.telegram_id)
+    dialog = await get_active_dialog_async(user.telegram_id)
     if not dialog:
         # No active dialog - ignore message
         logger.debug(f"User {user.telegram_id} sent message but no active dialog")
@@ -158,7 +158,7 @@ async def handle_text_message(message: Message, user: User):
 @router.message(F.voice)
 async def handle_voice_message(message: Message, user: User):
     """Handle voice messages in active dialog."""
-    dialog = get_active_dialog(user.telegram_id)
+    dialog = await get_active_dialog_async(user.telegram_id)
     if not dialog:
         return
 
@@ -182,7 +182,7 @@ async def handle_voice_message(message: Message, user: User):
 @router.message(F.photo)
 async def handle_photo_message(message: Message, user: User):
     """Handle photo messages in active dialog."""
-    dialog = get_active_dialog(user.telegram_id)
+    dialog = await get_active_dialog_async(user.telegram_id)
     if not dialog:
         return
 
@@ -206,7 +206,7 @@ async def handle_photo_message(message: Message, user: User):
 @router.message(F.document)
 async def handle_document_message(message: Message, user: User):
     """Handle document/file messages in active dialog."""
-    dialog = get_active_dialog(user.telegram_id)
+    dialog = await get_active_dialog_async(user.telegram_id)
     if not dialog:
         return
 
@@ -237,6 +237,15 @@ async def process_dialog_message(
     """Process message with AI model using new billing system."""
     from app.services.billing.billing_service import BillingService
     from app.core.billing_config import get_text_model_billing, ModelType
+    from app.core.ai_limiter import check_user_rate_limit, acquire_ai_slot, release_ai_slot
+
+    # Check user rate limit first
+    allowed, wait_seconds = await check_user_rate_limit(user.telegram_id)
+    if not allowed:
+        await message.answer(
+            f"⚠️ Слишком много запросов. Подождите {wait_seconds} секунд."
+        )
+        return
 
     # For text models, estimate minimum cost for balance check
     # For other types, use fixed cost from dialog
@@ -301,6 +310,14 @@ async def process_dialog_message(
 
     # Show processing message
     processing_msg = await message.answer("⏳ Обрабатываю запрос...")
+
+    # Acquire AI slot (limits concurrent requests)
+    slot_acquired = await acquire_ai_slot(timeout=30.0)
+    if not slot_acquired:
+        await processing_msg.edit_text(
+            "⚠️ Сервис временно перегружен. Пожалуйста, попробуйте через несколько секунд."
+        )
+        return
 
     try:
         # Route to appropriate AI service based on provider
@@ -452,6 +469,9 @@ async def process_dialog_message(
         )
         await processing_msg.edit_text(f"❌ {user_message}")
         logger.error("dialog_message_exception", user_id=user.id, error=str(e), exc_info=True)
+    finally:
+        # Always release AI slot
+        release_ai_slot()
 
 
 async def process_openai_message(
