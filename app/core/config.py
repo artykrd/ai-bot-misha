@@ -60,7 +60,9 @@ class Settings(BaseSettings):
     suno_api_key: Optional[str] = Field(None, description="Suno AI API key")
     luma_api_key: Optional[str] = Field(None, description="Luma Labs API key")
     hailuo_api_key: Optional[str] = Field(None, description="Hailuo (MiniMax) API key")
-    kling_api_key: Optional[str] = Field(None, description="Kling AI API key")
+    kling_api_key: Optional[str] = Field(None, description="Kling AI API key (legacy)")
+    kling_access_key: Optional[str] = Field(None, description="Kling AI access key for official API")
+    kling_secret_key: Optional[str] = Field(None, description="Kling AI secret key for official API")
     aimlapi_key: Optional[str] = Field(None, description="AI/ML API unified key (fallback for multiple services)")
     removebg_api_key: Optional[str] = Field(None, description="Remove.bg API key")
 

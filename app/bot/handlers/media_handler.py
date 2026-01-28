@@ -16,11 +16,18 @@ import io
 from app.bot.keyboards.inline import (
     back_to_main_keyboard,
     kling_choice_keyboard,
+    kling_main_keyboard,
+    kling_settings_keyboard,
+    kling_aspect_ratio_keyboard,
+    kling_duration_keyboard,
+    kling_version_keyboard,
+    kling_auto_translate_keyboard,
     nano_banana_keyboard,
     nano_format_keyboard,
     nano_multi_images_keyboard
 )
 from app.bot.states import MediaState
+from app.bot.states.media import KlingSettings
 from app.bot.utils.notifications import (
     format_generation_message,
     create_action_keyboard,
@@ -36,6 +43,8 @@ from app.core.billing_config import (
     get_image_model_billing,
     get_video_model_billing,
     format_token_amount,
+    get_kling_tokens_cost,
+    get_kling_api_model,
 )
 from app.core.temp_files import get_temp_file_path, cleanup_temp_file
 from app.services.video import VeoService, SoraService, LumaService, HailuoService, KlingService
@@ -304,32 +313,212 @@ async def start_kling_image(callback: CallbackQuery, state: FSMContext, user: Us
 # Handler for Kling Video generation (renamed from bot.kling)
 @router.callback_query(F.data == "bot.kling_video")
 async def start_kling_video(callback: CallbackQuery, state: FSMContext, user: User):
-    """Start Kling video generation."""
+    """Start Kling video generation with settings."""
+    # Get or create Kling settings from FSM
+    data = await state.get_data()
+    kling_settings = KlingSettings.from_dict(data)
+
     total_tokens = await get_available_tokens(user.id)
-    kling_billing = get_video_model_billing("kling-video")
-    videos_available = int(total_tokens / kling_billing.tokens_per_generation) if total_tokens > 0 else 0
+    tokens_per_request = get_kling_tokens_cost(kling_settings.version, kling_settings.duration)
+    videos_available = int(total_tokens / tokens_per_request) if total_tokens > 0 else 0
+
+    # Build version info text
+    if kling_settings.version == "2.5":
+        version_info = (
+            "📷 Вы выбрали версию 2.5 Turbo: эта версия может принять до двух фото "
+            "с промптом в одном запросе. Можно использовать как начальный кадр / конечный кадр."
+        )
+    else:
+        version_info = f"📷 Вы выбрали версию {kling_settings.version}."
 
     text = (
-        "🎞 **Kling · меняй реальность**\n\n"
+        "🎞 Kling · меняй реальность\n\n"
         "✏️ Отправьте мне описание того, что хотите видеть на вашем видео, например:\n"
         "└ Оживи моё фото и сделай так, чтобы я улыбался и махал рукой в камеру. (прикрепите своё фото или фото близкого).\n"
         "└ Неоновое иайдзюцу: киберпанк-самурай в действии. (прикрепите своё фото).\n\n"
-        "📷 Вы выбрали версию 2.5 Turbo: эта версия может принять до двух фото с промптом в одном запросе. "
-        "Можно использовать как начальный кадр / конечный кадр..\n\n"
-        "⚙️ **Настройки:**\n"
-        "Длительность: 5 секунд\n"
-        "Формат видео: 1:1\n"
-        "Версия: 2.5\n"
-        "Автоперевод: включен\n\n"
-        f"🔹 Токенов хватит на {videos_available} запросов. "
-        f"1 запрос = {format_token_amount(kling_billing.tokens_per_generation)} токенов."
+        f"{version_info}\n\n"
+        f"⚙️ Настройки (выбранные настройки):\n"
+        f"{kling_settings.get_display_settings()}\n\n"
+        f"🔹 Токенов хватит на {videos_available} запросов.\n"
+        f"1 запрос = {format_token_amount(tokens_per_request)} токенов."
     )
 
-    await state.set_state(MediaState.waiting_for_video_prompt)
-    await state.update_data(service="kling", image_path=None, photo_caption_prompt=None)
+    await state.set_state(MediaState.kling_waiting_for_prompt)
+    # Save Kling settings and reset images
+    await state.update_data(
+        service="kling",
+        image_path=None,
+        photo_caption_prompt=None,
+        **kling_settings.to_dict(),
+        kling_images=[]  # Reset collected images
+    )
 
-    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
+    # Try to edit message, fall back to answer if it fails (e.g., message is a photo)
+    try:
+        await callback.message.edit_text(text, reply_markup=kling_main_keyboard())
+    except Exception:
+        await callback.message.answer(text, reply_markup=kling_main_keyboard())
     await callback.answer()
+
+
+# ======================
+# KLING SETTINGS HANDLERS
+# ======================
+
+@router.callback_query(F.data == "kling.settings")
+async def kling_settings_menu(callback: CallbackQuery, state: FSMContext, user: User):
+    """Show Kling settings menu."""
+    text = (
+        "⚙️ Настройки генерации видео Kling\n\n"
+        "Выберите параметр для изменения:"
+    )
+
+    try:
+        await callback.message.edit_text(text, reply_markup=kling_settings_keyboard())
+    except Exception:
+        await callback.message.answer(text, reply_markup=kling_settings_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "kling.settings.aspect_ratio")
+async def kling_settings_aspect_ratio(callback: CallbackQuery, state: FSMContext, user: User):
+    """Show aspect ratio selection for Kling."""
+    data = await state.get_data()
+    kling_settings = KlingSettings.from_dict(data)
+
+    text = (
+        "📐 Выберите соотношение сторон у генерируемого видео в Kling.\n\n"
+        "1:1 — квадратный формат видео, востребованный в социальных сетях, таких как VK, "
+        "особенно для постов и рекламы. Этот формат обеспечивает равные размеры по ширине "
+        "и высоте, что делает его удобным для мобильных устройств.\n\n"
+        "16:9 — наиболее распространенное соотношение сторон, используемое для кино, "
+        "YouTube и VK Video.\n\n"
+        "9:16 — вертикальный формат, идеальный для Stories и мобильных платформ."
+    )
+
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=kling_aspect_ratio_keyboard(kling_settings.aspect_ratio)
+        )
+    except Exception:
+        await callback.message.answer(
+            text,
+            reply_markup=kling_aspect_ratio_keyboard(kling_settings.aspect_ratio)
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("kling.set.aspect_ratio:"))
+async def kling_set_aspect_ratio(callback: CallbackQuery, state: FSMContext, user: User):
+    """Set Kling aspect ratio."""
+    aspect_ratio = callback.data.split(":")[1]
+
+    await state.update_data(kling_aspect_ratio=aspect_ratio)
+
+    await callback.answer(f"✅ Формат видео установлен: {aspect_ratio}")
+    # Return to main Kling menu
+    await start_kling_video(callback, state, user)
+
+
+@router.callback_query(F.data == "kling.settings.duration")
+async def kling_settings_duration(callback: CallbackQuery, state: FSMContext, user: User):
+    """Show duration selection for Kling."""
+    data = await state.get_data()
+    kling_settings = KlingSettings.from_dict(data)
+
+    text = "🕓 Выберите длительность видео в Kling."
+
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=kling_duration_keyboard(kling_settings.duration)
+        )
+    except Exception:
+        await callback.message.answer(
+            text,
+            reply_markup=kling_duration_keyboard(kling_settings.duration)
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("kling.set.duration:"))
+async def kling_set_duration(callback: CallbackQuery, state: FSMContext, user: User):
+    """Set Kling duration."""
+    duration = int(callback.data.split(":")[1])
+
+    await state.update_data(kling_duration=duration)
+
+    await callback.answer(f"✅ Длительность установлена: {duration} секунд")
+    # Return to main Kling menu
+    await start_kling_video(callback, state, user)
+
+
+@router.callback_query(F.data == "kling.settings.version")
+async def kling_settings_version(callback: CallbackQuery, state: FSMContext, user: User):
+    """Show version selection for Kling."""
+    data = await state.get_data()
+    kling_settings = KlingSettings.from_dict(data)
+
+    text = "🔢 Выберите версию Kling."
+
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=kling_version_keyboard(kling_settings.version)
+        )
+    except Exception:
+        await callback.message.answer(
+            text,
+            reply_markup=kling_version_keyboard(kling_settings.version)
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("kling.set.version:"))
+async def kling_set_version(callback: CallbackQuery, state: FSMContext, user: User):
+    """Set Kling version."""
+    version = callback.data.split(":")[1]
+
+    await state.update_data(kling_version=version)
+
+    await callback.answer(f"✅ Версия установлена: {version}")
+    # Return to main Kling menu
+    await start_kling_video(callback, state, user)
+
+
+@router.callback_query(F.data == "kling.settings.auto_translate")
+async def kling_settings_auto_translate(callback: CallbackQuery, state: FSMContext, user: User):
+    """Show auto-translate selection for Kling."""
+    data = await state.get_data()
+    kling_settings = KlingSettings.from_dict(data)
+
+    text = "🔤 Переводить ваш запрос на английский с любого языка?"
+
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=kling_auto_translate_keyboard(kling_settings.auto_translate)
+        )
+    except Exception:
+        await callback.message.answer(
+            text,
+            reply_markup=kling_auto_translate_keyboard(kling_settings.auto_translate)
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("kling.set.auto_translate:"))
+async def kling_set_auto_translate(callback: CallbackQuery, state: FSMContext, user: User):
+    """Set Kling auto-translate."""
+    value = callback.data.split(":")[1] == "yes"
+
+    await state.update_data(kling_auto_translate=value)
+
+    status = "включен" if value else "выключен"
+    await callback.answer(f"✅ Автоперевод {status}")
+    # Return to main Kling menu
+    await start_kling_video(callback, state, user)
 
 
 # ======================
@@ -753,6 +942,102 @@ async def process_video_prompt(message: Message, state: FSMContext, user: User):
             f"Ваш запрос получен: {message.text[:100]}..."
         )
         await state.clear()
+
+
+# ======================
+# FSM HANDLERS - KLING VIDEO GENERATION
+# ======================
+
+@router.message(MediaState.kling_waiting_for_prompt, F.photo)
+async def process_kling_photo(message: Message, state: FSMContext, user: User):
+    """Handle photo for Kling video generation (supports up to 2 photos for v2.5)."""
+    data = await state.get_data()
+    kling_settings = KlingSettings.from_dict(data)
+
+    # Get current images list
+    kling_images = data.get("kling_images", [])
+
+    # Download the photo
+    photo = message.photo[-1]
+    file = await message.bot.get_file(photo.file_id)
+
+    temp_path = get_temp_file_path(prefix="kling_input", suffix=".jpg", user_id=user.id)
+    await message.bot.download_file(file.file_path, temp_path)
+
+    # Resize image if needed
+    resize_image_if_needed(str(temp_path), max_size_mb=10.0, max_dimension=2048)
+
+    # Add image to list
+    kling_images.append(str(temp_path))
+    await state.update_data(kling_images=kling_images)
+
+    # Check max images based on version
+    max_images = 2 if kling_settings.version == "2.5" else 1
+
+    if len(kling_images) > max_images:
+        # Too many images - remove the last one and warn
+        cleanup_temp_file(str(temp_path))
+        kling_images.pop()
+        await state.update_data(kling_images=kling_images)
+
+        if max_images == 1:
+            await message.answer(
+                f"⚠️ Версия {kling_settings.version} поддерживает только 1 изображение.\n"
+                "Переключитесь на версию 2.5 для использования двух изображений."
+            )
+        else:
+            await message.answer("⚠️ Максимум 2 изображения для версии 2.5.")
+        return
+
+    # Check if photo has caption (description) - process immediately
+    if message.caption and message.caption.strip():
+        await state.update_data(photo_caption_prompt=message.caption.strip())
+        await process_kling_video(message, user, state)
+    else:
+        # No caption - show status
+        photos_count = len(kling_images)
+
+        if kling_settings.version == "2.5":
+            if photos_count == 1:
+                await message.answer(
+                    f"✅ Фото {photos_count} сохранено! (начальный кадр)\n\n"
+                    "📸 Вы можете:\n"
+                    "• Загрузить второе фото (конечный кадр)\n"
+                    "• Отправить текстовый промпт для начала генерации\n\n"
+                    "💡 В версии 2.5 можно использовать 2 фото как начальный и конечный кадры."
+                )
+            else:
+                await message.answer(
+                    f"✅ Фото {photos_count} сохранено! (конечный кадр)\n\n"
+                    "📝 Теперь отправьте текстовое описание видео."
+                )
+        else:
+            await message.answer(
+                "✅ Фото получено!\n\n"
+                "📝 Теперь отправьте описание видео, которое хотите создать."
+            )
+
+
+@router.message(MediaState.kling_waiting_for_prompt, F.text)
+async def process_kling_prompt(message: Message, state: FSMContext, user: User):
+    """Process Kling video generation prompt."""
+    # Ignore commands
+    if message.text and message.text.startswith('/'):
+        await state.clear()
+        return
+
+    # Check message length (max 2500 characters for Kling)
+    if message.text and len(message.text) > 2500:
+        await message.answer(
+            "⚠️ Описание слишком длинное!\n\n"
+            f"Максимальная длина: 2500 символов\n"
+            f"Ваше описание: {len(message.text)} символов\n\n"
+            "Пожалуйста, сократите описание и попробуйте снова."
+        )
+        return
+
+    # Process Kling video generation
+    await process_kling_video(message, user, state)
 
 
 async def process_veo_video(message: Message, user: User, state: FSMContext):
@@ -1217,36 +1502,75 @@ async def process_hailuo_video(message: Message, user: User, state: FSMContext):
 
 
 async def process_kling_video(message: Message, user: User, state: FSMContext, is_effects: bool = False):
-    """Process Kling AI video generation."""
+    """Process Kling AI video generation with configurable settings."""
     # Get state data (check if image was provided)
     data = await state.get_data()
 
+    # Get Kling settings from FSM
+    kling_settings = KlingSettings.from_dict(data)
+
     # Get prompt from caption if available, otherwise from message text
     prompt = data.get("photo_caption_prompt") or message.text
-    image_path = data.get("image_path", None)
 
-    kling_billing = get_video_model_billing("kling-effects" if is_effects else "kling-video")
-    estimated_tokens = kling_billing.tokens_per_generation
+    # Get images (single image or list of images for multi-image mode)
+    images = data.get("kling_images", [])
+    single_image = data.get("image_path", None)
+    if single_image and single_image not in images:
+        images = [single_image]
 
+    # Calculate tokens based on version and duration
+    if is_effects:
+        kling_billing = get_video_model_billing("kling-effects")
+        estimated_tokens = kling_billing.tokens_per_generation
+    else:
+        estimated_tokens = get_kling_tokens_cost(kling_settings.version, kling_settings.duration)
+
+    # Check if user has enough tokens
     async with async_session_maker() as session:
         sub_service = SubscriptionService(session)
         try:
             await sub_service.check_and_use_tokens(user.id, estimated_tokens)
         except InsufficientTokensError as e:
-            # Clean up image if exists
-            if image_path:
-                cleanup_temp_file(image_path)
+            # Clean up images if exist
+            for img_path in images:
+                cleanup_temp_file(img_path)
 
             await message.answer(
                 f"❌ Недостаточно токенов!\n\n"
-                f"Требуется: {estimated_tokens:,} токенов\n"
-                f"Доступно: {e.details['available']:,} токенов"
+                f"Требуется: {format_token_amount(estimated_tokens)} токенов\n"
+                f"Доступно: {format_token_amount(e.details['available'])} токенов"
             )
             await state.clear()
             return
 
-    service_name = "Kling Effects" if is_effects else "Kling AI"
-    mode_text = "image-to-video" if image_path else "text-to-video"
+    # Validate image count based on version
+    if len(images) > 2:
+        for img_path in images:
+            cleanup_temp_file(img_path)
+        await message.answer("❌ Максимум 2 изображения поддерживаются.")
+        await state.clear()
+        return
+
+    if len(images) == 2 and kling_settings.version != "2.5":
+        for img_path in images:
+            cleanup_temp_file(img_path)
+        await message.answer("❌ Два изображения поддерживаются только в версии 2.5.")
+        await state.clear()
+        return
+
+    # Determine mode
+    if is_effects:
+        service_name = "Kling Effects"
+    else:
+        service_name = f"Kling {kling_settings.version}"
+
+    if len(images) == 0:
+        mode_text = "text-to-video"
+    elif len(images) == 1:
+        mode_text = "image-to-video"
+    else:
+        mode_text = "multi-image-to-video"
+
     progress_msg = await message.answer(f"🎬 Инициализация {service_name} ({mode_text})...")
     kling_service = KlingService()
 
@@ -1256,19 +1580,17 @@ async def process_kling_video(message: Message, user: User, state: FSMContext, i
         except Exception:
             pass
 
-    # For Kling, we would need to upload the image first or provide URL
-    # For simplicity, we'll pass image_path and let service handle upload if needed
-    kwargs = {}
-    if image_path:
-        # Note: Kling API expects image_url, so service needs to handle upload
-        # For now, we'll pass the local path as image_url parameter
-        kwargs["image_url"] = image_path
+    # Prepare kwargs for video generation
+    api_model = get_kling_api_model(kling_settings.version) if not is_effects else "kling-v1.6-pro"
 
     result = await kling_service.generate_video(
         prompt=prompt,
-        model="kling-v1.6-pro",
+        model=api_model,
         progress_callback=update_progress,
-        **kwargs
+        images=images,
+        duration=kling_settings.duration,
+        aspect_ratio=kling_settings.aspect_ratio,
+        version=kling_settings.version
     )
 
     if result.success:
@@ -1280,14 +1602,13 @@ async def process_kling_video(message: Message, user: User, state: FSMContext, i
         tokens_used = estimated_tokens
 
         # Generate unified notification message
-        mode_info = "image-to-video" if image_path else "text-to-video"
         caption = format_generation_message(
             content_type=CONTENT_TYPES["video"],
-            model_name=service_name,  # "Kling AI" or "Kling Effects"
+            model_name=service_name,
             tokens_used=tokens_used,
             user_tokens=user_tokens,
             prompt=prompt,
-            mode=mode_info
+            mode=mode_text
         )
 
         # Create action keyboard
@@ -1305,25 +1626,20 @@ async def process_kling_video(message: Message, user: User, state: FSMContext, i
             caption=caption,
             reply_markup=builder.as_markup()
         )
-        try:
-            pass  # os.remove(result.video_path) - DISABLED: files managed by file_cache
-        except Exception as e:
-            logger.error("video_cleanup_failed", error=str(e))
 
-        # Clean up input image if exists
-        if image_path:
-            cleanup_temp_file(image_path)
+        # Clean up input images
+        for img_path in images:
+            cleanup_temp_file(img_path)
 
         await progress_msg.delete()
     else:
-        # Clean up input image if exists
-        if image_path:
-            cleanup_temp_file(image_path)
+        # Clean up input images
+        for img_path in images:
+            cleanup_temp_file(img_path)
 
         try:
             await progress_msg.edit_text(f"❌ Ошибка: {result.error}", parse_mode=None)
         except Exception:
-            # Ignore errors when message is not modified
             pass
 
     await state.clear()
