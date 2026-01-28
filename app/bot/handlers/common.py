@@ -93,7 +93,7 @@ async def cmd_faq(event):
 • Посмотреть баланс: /profile
 
 <b>Поддержка:</b>
-Если возникли вопросы, напишите @support"""
+Если возникли вопросы, напишите @nova_support_new"""
 
     if is_callback:
         await event.message.edit_text(text, reply_markup=back_to_main_keyboard(), parse_mode=ParseMode.HTML)
@@ -120,7 +120,7 @@ async def help_from_reply(message: Message, user: User, state: FSMContext):
 • Посмотреть баланс: /profile
 
 <b>Поддержка:</b>
-Если возникли вопросы, напишите @support"""
+Если возникли вопросы, напишите @nova_support_new"""
     await message.answer(text, reply_markup=main_menu_reply_keyboard(), parse_mode=ParseMode.HTML)
 
 
