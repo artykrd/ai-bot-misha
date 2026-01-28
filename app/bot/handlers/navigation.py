@@ -662,8 +662,14 @@ async def photo_tool_selected(callback: CallbackQuery, state: FSMContext):
             reply_markup=back_to_main_keyboard()
         )
     except TelegramBadRequest as e:
+        # Handle case when message has no text (e.g., photo message)
+        if "there is no text in the message" in str(e):
+            await callback.message.answer(
+                text,
+                reply_markup=back_to_main_keyboard()
+            )
         # Ignore error if message content hasn't changed
-        if "message is not modified" not in str(e):
+        elif "message is not modified" not in str(e):
             raise
     await callback.answer()
 
