@@ -345,12 +345,13 @@ async def start_kling_video(callback: CallbackQuery, state: FSMContext, user: Us
 
     await state.set_state(MediaState.kling_waiting_for_prompt)
     # Save Kling settings and reset images
+    settings_dict = kling_settings.to_dict()
+    settings_dict["kling_images"] = []  # Reset collected images
     await state.update_data(
         service="kling",
         image_path=None,
         photo_caption_prompt=None,
-        **kling_settings.to_dict(),
-        kling_images=[]  # Reset collected images
+        **settings_dict
     )
 
     # Try to edit message, fall back to answer if it fails (e.g., message is a photo)
