@@ -181,13 +181,19 @@ class SunoService(BaseAudioProvider):
         Returns:
             List of audio URLs
         """
-        # Terminal statuses that indicate task completion
-        # NOTE: Based on API behavior, these statuses are considered final:
-        # - SUCCESS: Full completion with audio
-        # - FIRST_SUCCESS: First track ready (common terminal state)
+        # Terminal statuses that indicate task completion with audio available
+        # NOTE: Based on API behavior and logs analysis:
+        # - SUCCESS: Full completion with audio URLs available
         # - COMPLETED: Alternative completion status
-        # If API returns other terminal statuses, they should be added here.
-        TERMINAL_STATUSES = {"SUCCESS", "FIRST_SUCCESS", "COMPLETED"}
+        #
+        # Non-terminal statuses (continue polling):
+        # - PENDING: Task queued
+        # - TEXT_SUCCESS: Lyrics generated, audio not ready yet
+        # - FIRST_SUCCESS: First track processing, audio URLs not available yet
+        #
+        # IMPORTANT: TEXT_SUCCESS and FIRST_SUCCESS are intermediate states.
+        # Audio URLs appear only in SUCCESS status. Do not treat them as terminal.
+        TERMINAL_STATUSES = {"SUCCESS", "COMPLETED"}
 
         # Error statuses that should stop polling immediately
         ERROR_STATUSES = {"FAILED", "ERROR", "CANCELLED"}
@@ -232,13 +238,16 @@ class SunoService(BaseAudioProvider):
 
                             data = await response.json()
 
-                            # Log raw response for debugging
+                            # Log raw response for debugging (more verbose for terminal statuses)
+                            status_preview = data.get("data", {}).get("status", "").upper() if isinstance(data.get("data"), dict) else ""
+                            is_terminal_status = status_preview in {"SUCCESS", "COMPLETED"}
+
                             logger.info(
                                 "suno_poll_response",
                                 task_id=task_id,
                                 response_code=data.get("code"),
                                 has_data="data" in data,
-                                raw_data=str(data)[:500]  # First 500 chars
+                                raw_data=str(data) if is_terminal_status else str(data)[:500]  # Full data for terminal statuses
                             )
 
                             # Response format: {"code": 200, "msg": "success", "data": {"taskId": "...", "status": "...", "response": {"sunoData": [...]}}}
@@ -350,15 +359,28 @@ class SunoService(BaseAudioProvider):
                         )
 
                 # Protection against stuck polling (same status for too long)
-                if same_status_count > 20:  # 20 * 5s = 100 seconds on same status
+                # Different thresholds for different statuses:
+                # - PENDING: 240s (API might take time to start processing)
+                # - Processing statuses: 360s (music generation takes time)
+                # - Unknown statuses: 120s (fail fast for unexpected states)
+                if last_status == "PENDING":
+                    max_stuck_iterations = 48  # 48 * 5s = 240 seconds
+                elif last_status in {"TEXT_SUCCESS", "FIRST_SUCCESS"}:
+                    max_stuck_iterations = 72  # 72 * 5s = 360 seconds
+                else:
+                    max_stuck_iterations = 24  # 24 * 5s = 120 seconds
+
+                if same_status_count > max_stuck_iterations:
                     logger.warning(
                         "suno_status_stuck",
                         status=last_status,
-                        stuck_iterations=same_status_count
+                        stuck_iterations=same_status_count,
+                        max_allowed=max_stuck_iterations
                     )
                     raise Exception(
                         f"Generation stuck at status {last_status} "
-                        f"for {same_status_count * poll_interval} seconds"
+                        f"for {same_status_count * poll_interval} seconds "
+                        f"(max allowed: {max_stuck_iterations * poll_interval}s)"
                     )
 
                 # Wait before next poll
