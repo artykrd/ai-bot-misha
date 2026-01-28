@@ -265,10 +265,28 @@ class DalleService(BaseImageProvider):
             if progress_callback:
                 await progress_callback("🎨 Подготавливаю изображение...")
 
-            # CRITICAL: DALL-E requires PNG format and < 4MB
-            # Convert to PNG and compress if needed
+            # CRITICAL: DALL-E variations requires PNG format and < 4MB
+            # Convert to PNG and compress if needed (never convert to JPEG)
             image_path = ensure_png_format(image_path)
-            image_path = compress_image_if_needed(image_path, max_size_mb=3.9, output_format="PNG")
+            image_path = compress_image_if_needed(
+                image_path,
+                max_size_mb=3.9,
+                output_format="PNG",
+                force_format=True  # Never convert PNG to JPEG for DALL-E variations
+            )
+
+            # Validate format and size before API call
+            file_size_mb = Path(image_path).stat().st_size / (1024 * 1024)
+            if not image_path.lower().endswith('.png'):
+                raise ValueError(f"Image must be PNG format, got: {Path(image_path).suffix}")
+            if file_size_mb >= 4.0:
+                raise ValueError(f"Image must be less than 4MB, got: {file_size_mb:.2f}MB")
+
+            logger.info(
+                "dalle_variation_image_prepared",
+                path=image_path,
+                size_mb=round(file_size_mb, 2)
+            )
 
             if progress_callback:
                 await progress_callback("🎨 Создаю вариацию изображения...")
