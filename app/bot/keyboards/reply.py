@@ -8,11 +8,9 @@ def main_menu_reply_keyboard() -> ReplyKeyboardMarkup:
     """Minimal main menu reply keyboard."""
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="🎬 Создать видео"), KeyboardButton(text="💬 Диалоги")],
-            [KeyboardButton(text="🎨 Работа с фото"), KeyboardButton(text="🖼 Создать фото")],
-            [KeyboardButton(text="🤖 Выбрать модель"), KeyboardButton(text="🎧 Работа с аудио")],
+            [KeyboardButton(text="🎨 Создать фото"), KeyboardButton(text="🎬 Создать видео")],
+            [KeyboardButton(text="🎵 Аудио"), KeyboardButton(text="💬 AI Чат")],
             [KeyboardButton(text="👤 Мой профиль"), KeyboardButton(text="💎 Подписка")],
-            [KeyboardButton(text="🤝 Пригласи друга"), KeyboardButton(text="🆘 Поддержка")],
         ],
         resize_keyboard=True
     )
