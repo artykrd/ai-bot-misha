@@ -56,6 +56,23 @@ class ErrorNotifier:
         if not self.bot or not settings.admin_user_ids:
             return
 
+        # Filter out user-facing errors that are not technical issues
+        # These errors are expected and part of normal operation
+        user_facing_error_patterns = [
+            "Не удалось сгенерировать изображение. Это может быть из-за:",
+            "• Сложности промпта или референсного изображения",
+            "• Технической проблемы на стороне API",
+            "• Несовместимости параметров",
+        ]
+
+        # Check if error message contains user-facing error text
+        full_error_text = f"{error_message} {details}".replace("\\", "")
+        for pattern in user_facing_error_patterns:
+            if pattern in full_error_text:
+                # This is a user-facing error, not a technical issue - don't notify
+                logging.debug(f"Skipping notification for user-facing error: {error_message[:50]}")
+                return
+
         # Create error key for throttling
         error_key = f"{error_type}:{error_message[:50]}"
 

@@ -774,6 +774,15 @@ async def tariff_selected(callback: CallbackQuery, user: User):
 
     logger = get_logger(__name__)
 
+    # Answer callback immediately to avoid timeout
+    # Telegram requires callback answer within ~1 minute
+    try:
+        await callback.answer()
+    except TelegramBadRequest as e:
+        # Callback might already be expired if processing took too long
+        if "query is too old" not in str(e).lower():
+            logger.warning("callback_answer_failed", error=str(e))
+
     # Extract tariff ID
     tariff_id = callback.data.split("_")[-1]
 
@@ -784,7 +793,11 @@ async def tariff_selected(callback: CallbackQuery, user: User):
         tariff_tokens = None
     else:
         if not plan:
-            await callback.answer("❌ Неизвестный тариф", show_alert=True)
+            # Callback already answered, just edit message
+            try:
+                await callback.message.edit_text("❌ Неизвестный тариф")
+            except Exception:
+                pass
             return
         tariff = plan
         tariff_name = plan.display_name
@@ -807,14 +820,20 @@ async def tariff_selected(callback: CallbackQuery, user: User):
         )
 
         if not payment:
-            await callback.answer("❌ Ошибка создания платежа. Попробуйте позже.", show_alert=True)
+            try:
+                await callback.message.edit_text("❌ Ошибка создания платежа. Попробуйте позже.")
+            except Exception:
+                pass
             return
 
         # Get payment URL
         confirmation_url = payment.yukassa_response.get("confirmation_url")
 
         if not confirmation_url:
-            await callback.answer("❌ Ошибка получения ссылки на оплату", show_alert=True)
+            try:
+                await callback.message.edit_text("❌ Ошибка получения ссылки на оплату")
+            except Exception:
+                pass
             return
 
     logger.info(
@@ -904,7 +923,6 @@ async def tariff_selected(callback: CallbackQuery, user: User):
         # Ignore error if message content hasn't changed
         if "message is not modified" not in str(e):
             raise
-    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("buy:eternal_"))
