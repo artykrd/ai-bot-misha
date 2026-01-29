@@ -228,12 +228,36 @@ class KlingService(BaseVideoProvider):
                 images_count=len(images)
             )
 
-            # Poll for completion
-            video_url = await self._poll_generation_status(
+            # Poll for video completion and get video_id
+            video_url, video_id = await self._poll_generation_status(
                 task_id=task_id,
                 endpoint_type=endpoint_type,
                 progress_callback=progress_callback
             )
+
+            # Step 2: Add audio to video (video-to-audio)
+            if self.use_official and video_id:
+                if progress_callback:
+                    await progress_callback("🔊 Генерирую звук для видео...")
+
+                try:
+                    audio_video_url = await self._add_audio_to_video(
+                        video_id=video_id,
+                        prompt=prompt,
+                        progress_callback=progress_callback
+                    )
+                    # Use video with audio
+                    video_url = audio_video_url
+                    logger.info("kling_audio_added", video_id=video_id)
+                except Exception as audio_error:
+                    # If audio generation fails, continue with silent video
+                    logger.warning(
+                        "kling_audio_failed",
+                        error=str(audio_error),
+                        video_id=video_id
+                    )
+                    if progress_callback:
+                        await progress_callback("⚠️ Звук не добавлен, продолжаю без аудио...")
 
             # Download video
             if progress_callback:
@@ -264,6 +288,7 @@ class KlingService(BaseVideoProvider):
                     "provider": "kling",
                     "model": model,
                     "task_id": task_id,
+                    "video_id": video_id,
                     "version": version,
                     "duration": duration,
                     "aspect_ratio": aspect_ratio,
@@ -420,7 +445,7 @@ class KlingService(BaseVideoProvider):
         progress_callback: Optional[Callable[[str], Awaitable[None]]] = None,
         max_wait_time: int = 600,  # 10 minutes
         poll_interval: int = 5  # 5 seconds
-    ) -> str:
+    ) -> tuple:
         """
         Poll generation status until complete.
 
@@ -432,7 +457,7 @@ class KlingService(BaseVideoProvider):
             poll_interval: Poll interval in seconds
 
         Returns:
-            URL of the generated video
+            Tuple of (video_url, video_id)
         """
         if self.use_official:
             url = f"{self.base_url}/v1/videos/{endpoint_type}/{task_id}"
@@ -489,11 +514,13 @@ class KlingService(BaseVideoProvider):
 
                         # Check if complete
                         if status in ["succeed", "completed", "success", "succeeded"]:
-                            # Get video URL
+                            # Get video URL and ID
                             if self.use_official:
                                 videos = task_data.get("task_result", {}).get("videos", [])
                                 if videos:
-                                    return videos[0].get("url")
+                                    video_url = videos[0].get("url")
+                                    video_id = videos[0].get("id")
+                                    return (video_url, video_id)
                             else:
                                 video_url = (
                                     data.get("video_url") or
@@ -502,7 +529,7 @@ class KlingService(BaseVideoProvider):
                                     data.get("result", {}).get("video_url")
                                 )
                                 if video_url:
-                                    return video_url
+                                    return (video_url, None)
 
                             raise Exception("URL видео не найден в ответе")
 
@@ -527,4 +554,92 @@ class KlingService(BaseVideoProvider):
                     continue
 
                 # Wait before next poll
+                await asyncio.sleep(poll_interval)
+
+    async def _add_audio_to_video(
+        self,
+        video_id: str,
+        prompt: str,
+        progress_callback: Optional[Callable[[str], Awaitable[None]]] = None,
+        max_wait_time: int = 300,  # 5 minutes for audio
+        poll_interval: int = 5
+    ) -> str:
+        """
+        Add AI-generated audio to video using video-to-audio API.
+
+        Args:
+            video_id: ID of the generated video
+            prompt: Original prompt to help generate relevant audio
+            progress_callback: Optional callback for status updates
+            max_wait_time: Maximum wait time in seconds
+            poll_interval: Poll interval in seconds
+
+        Returns:
+            URL of the video with audio
+        """
+        if not self.use_official:
+            raise ValueError("Video-to-audio requires official Kling API")
+
+        # Create video-to-audio task
+        url = f"{self.base_url}/v1/audio/video-to-audio"
+
+        payload = {
+            "video_id": video_id,
+            # Use prompt as sound effect hint (optional)
+            # "sound_effect_prompt": prompt[:200] if prompt else None,
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                url,
+                headers=self._get_auth_headers(),
+                json=payload
+            ) as response:
+                await self._handle_response_errors(response)
+                data = await response.json()
+                audio_task_id = data.get("data", {}).get("task_id")
+
+                if not audio_task_id:
+                    raise Exception("Failed to create audio task")
+
+                logger.info("kling_audio_task_created", task_id=audio_task_id)
+
+        # Poll for audio completion
+        poll_url = f"{self.base_url}/v1/audio/video-to-audio/{audio_task_id}"
+        start_time = time.time()
+
+        async with aiohttp.ClientSession() as session:
+            while True:
+                if time.time() - start_time > max_wait_time:
+                    raise Exception("Таймаут генерации аудио")
+
+                async with session.get(
+                    poll_url,
+                    headers=self._get_auth_headers()
+                ) as response:
+                    if response.status == 401:
+                        self._jwt_token = None
+                        self._jwt_expires_at = 0
+                        await asyncio.sleep(poll_interval)
+                        continue
+
+                    if response.status != 200:
+                        error_text = await response.text()
+                        raise Exception(f"Audio status check failed: {response.status} - {error_text}")
+
+                    data = await response.json()
+                    task_data = data.get("data", {})
+                    status = task_data.get("task_status", "unknown")
+                    status_msg = task_data.get("task_status_msg", "")
+
+                    if status == "succeed":
+                        # Get video with audio URL
+                        videos = task_data.get("task_result", {}).get("videos", [])
+                        if videos:
+                            return videos[0].get("url")
+                        raise Exception("URL видео со звуком не найден")
+
+                    if status == "failed":
+                        raise Exception(f"Генерация аудио не удалась: {status_msg}")
+
                 await asyncio.sleep(poll_interval)
