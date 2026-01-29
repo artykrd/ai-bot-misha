@@ -19,6 +19,7 @@ from app.database.models.system import (
 )
 from app.database.models.model_cost import ModelCost, OperationCategory
 from app.database.models.video_job import VideoGenerationJob
+from app.database.models.broadcast import BroadcastMessage, BroadcastClick
 
 __all__ = [
     "User",
@@ -43,4 +44,7 @@ __all__ = [
     "OperationCategory",
     # Video jobs
     "VideoGenerationJob",
+    # Broadcast
+    "BroadcastMessage",
+    "BroadcastClick",
 ]

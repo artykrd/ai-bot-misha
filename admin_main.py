@@ -35,6 +35,7 @@ from app.admin.states import (
     UnbanUser,
     CreatePromo,
     Broadcast,
+    BroadcastWithButtons,
     SearchUser,
     ManageUserTariff
 )
@@ -1571,21 +1572,37 @@ async def show_logs_callback(callback: CallbackQuery):
 
 @admin_router.callback_query(F.data == "admin:broadcast")
 async def start_broadcast(callback: CallbackQuery, state: FSMContext):
-    """Show broadcast filter selection."""
+    """Show broadcast type selection."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    from app.admin.keyboards.inline import broadcast_type_menu
+
+    text = "📢 Рассылка сообщения\n\n"
+    text += "Выберите тип рассылки:"
+
+    await callback.message.edit_text(text, reply_markup=broadcast_type_menu())
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data == "admin:broadcast_type:simple")
+async def start_simple_broadcast(callback: CallbackQuery, state: FSMContext):
+    """Start simple broadcast (legacy flow)."""
     if not is_admin(callback.from_user.id):
         await callback.answer("❌ Нет доступа")
         return
 
     from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-    text = "📢 Рассылка сообщения\n\n"
+    text = "📢 Простая рассылка\n\n"
     text += "Выберите целевую аудиторию:"
 
     builder = InlineKeyboardBuilder()
     builder.button(text="👥 Всем пользователям", callback_data="admin:broadcast_filter:all")
     builder.button(text="💎 С активной подпиской", callback_data="admin:broadcast_filter:subscribed")
     builder.button(text="🆓 Без подписки", callback_data="admin:broadcast_filter:no_subscription")
-    builder.button(text="🔙 Назад", callback_data="admin:back")
+    builder.button(text="🔙 Назад", callback_data="admin:broadcast")
     builder.adjust(1)
 
     await callback.message.edit_text(text, reply_markup=builder.as_markup())
@@ -1735,6 +1752,657 @@ async def process_broadcast_message(message: Message, state: FSMContext):
         await message.answer(f"❌ Ошибка рассылки: {str(e)}", reply_markup=back_keyboard())
 
     await state.clear()
+
+
+# ==================== BROADCAST WITH BUTTONS ====================
+
+
+@admin_router.callback_query(F.data == "admin:broadcast_type:advanced")
+async def start_advanced_broadcast(callback: CallbackQuery, state: FSMContext):
+    """Start advanced broadcast with buttons."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    await state.set_state(BroadcastWithButtons.waiting_for_text)
+
+    text = "📢 Рассылка с кнопками\n\n"
+    text += "Шаг 1/5: Введите текст сообщения:"
+
+    await callback.message.edit_text(text, reply_markup=cancel_keyboard())
+    await callback.answer()
+
+
+@admin_router.message(StateFilter(BroadcastWithButtons.waiting_for_text))
+async def process_broadcast_text(message: Message, state: FSMContext):
+    """Process broadcast text input."""
+    if not is_admin(message.from_user.id):
+        return
+
+    text = message.text.strip()
+    if not text:
+        await message.answer("❌ Текст не может быть пустым. Попробуйте снова:")
+        return
+
+    # Save text to state
+    await state.update_data(text=text)
+    await state.set_state(BroadcastWithButtons.waiting_for_image)
+
+    from app.admin.keyboards.inline import skip_image_keyboard
+
+    await message.answer(
+        f"✅ Текст сохранён ({len(text)} символов)\n\n"
+        f"Шаг 2/5: Отправьте фото для сообщения\n"
+        f"или нажмите [Пропустить]",
+        reply_markup=skip_image_keyboard()
+    )
+
+
+@admin_router.message(StateFilter(BroadcastWithButtons.waiting_for_image), F.photo)
+async def process_broadcast_image(message: Message, state: FSMContext):
+    """Process broadcast image."""
+    if not is_admin(message.from_user.id):
+        return
+
+    # Get largest photo
+    photo = message.photo[-1]
+    await state.update_data(image_file_id=photo.file_id)
+    await state.set_state(BroadcastWithButtons.waiting_for_buttons)
+
+    from app.admin.keyboards.inline import button_input_menu
+
+    await message.answer(
+        f"✅ Фото прикреплено\n\n"
+        f"Шаг 3/5: Добавьте кнопки к сообщению",
+        reply_markup=button_input_menu()
+    )
+
+
+@admin_router.callback_query(F.data == "admin:broadcast_skip_image")
+async def skip_broadcast_image(callback: CallbackQuery, state: FSMContext):
+    """Skip image attachment."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    await state.update_data(image_file_id=None)
+    await state.set_state(BroadcastWithButtons.waiting_for_buttons)
+
+    from app.admin.keyboards.inline import button_input_menu
+
+    await callback.message.edit_text(
+        f"⏭ Фото пропущено\n\n"
+        f"Шаг 3/5: Добавьте кнопки к сообщению",
+        reply_markup=button_input_menu()
+    )
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data == "admin:broadcast_preset_buttons")
+async def show_preset_button_categories(callback: CallbackQuery, state: FSMContext):
+    """Show preset button categories."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    from app.admin.keyboards.inline import preset_button_categories
+
+    text = "📱 Выберите категорию кнопок:"
+
+    await callback.message.edit_text(text, reply_markup=preset_button_categories())
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data.startswith("admin:broadcast_category:"))
+async def show_category_buttons(callback: CallbackQuery, state: FSMContext):
+    """Show buttons for selected category."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    category_key = callback.data.split(":")[-1]
+
+    from app.admin.keyboards.inline import preset_button_list
+    from app.admin.config import PRESET_BUTTONS
+
+    category = PRESET_BUTTONS.get(category_key, {})
+    text = f"{category.get('name', 'Кнопки')}\n\n"
+    text += f"{category.get('description', '')}\n\n"
+    text += "Выберите кнопку:"
+
+    await callback.message.edit_text(text, reply_markup=preset_button_list(category_key))
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data.startswith("admin:broadcast_select_btn:"))
+async def select_preset_button(callback: CallbackQuery, state: FSMContext):
+    """Process preset button selection."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    parts = callback.data.split(":")
+    category_key = parts[-2]
+    button_index = int(parts[-1])
+
+    from app.admin.config import get_category_buttons
+    from app.admin.keyboards.inline import button_text_choice
+
+    buttons = get_category_buttons(category_key)
+    if button_index >= len(buttons):
+        await callback.answer("❌ Кнопка не найдена")
+        return
+
+    selected_button = buttons[button_index]
+
+    # Save to state temporarily
+    await state.update_data(
+        pending_button=selected_button,
+        pending_category=category_key,
+        pending_index=button_index
+    )
+
+    default_text = selected_button.get("text", "")
+    text = f"✅ Выбрана кнопка: {default_text}\n\n"
+    text += f"Стандартный текст: \"{default_text}\"\n\n"
+    text += "Использовать стандартный текст или ввести свой?"
+
+    await callback.message.edit_text(text, reply_markup=button_text_choice(default_text))
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data == "admin:broadcast_use_default_text")
+async def use_default_button_text(callback: CallbackQuery, state: FSMContext):
+    """Use default text for button."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    data = await state.get_data()
+    pending_button = data.get("pending_button")
+
+    if not pending_button:
+        await callback.answer("❌ Ошибка: кнопка не найдена")
+        return
+
+    # Add button to list
+    buttons = data.get("buttons", [])
+    buttons.append({
+        "text": pending_button["text"],
+        "callback_data": pending_button["callback_data"]
+    })
+    await state.update_data(buttons=buttons)
+
+    # Clear pending button
+    await state.update_data(pending_button=None)
+
+    from app.admin.keyboards.inline import add_more_buttons_keyboard
+
+    button_count = len(buttons)
+    text = f"✅ Кнопка {button_count} добавлена: \"{pending_button['text']}\"\n\n"
+    text += f"Текущие кнопки ({button_count}/8):\n"
+    for idx, btn in enumerate(buttons, 1):
+        text += f"{idx}. {btn['text']}\n"
+
+    await callback.message.edit_text(text, reply_markup=add_more_buttons_keyboard(button_count))
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data == "admin:broadcast_custom_text")
+async def request_custom_button_text(callback: CallbackQuery, state: FSMContext):
+    """Request custom text for button."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    await state.set_state(BroadcastWithButtons.waiting_for_buttons)
+    await state.update_data(awaiting_custom_text=True)
+
+    text = "✏️ Введите текст кнопки:"
+
+    await callback.message.edit_text(text, reply_markup=cancel_keyboard())
+    await callback.answer()
+
+
+@admin_router.message(StateFilter(BroadcastWithButtons.waiting_for_buttons))
+async def process_button_input(message: Message, state: FSMContext):
+    """Process button input (manual or custom text)."""
+    if not is_admin(message.from_user.id):
+        return
+
+    data = await state.get_data()
+    buttons = data.get("buttons", [])
+
+    # Check if max buttons reached
+    if len(buttons) >= 8:
+        await message.answer("❌ Максимум 8 кнопок. Нажмите [Готово] для продолжения.")
+        return
+
+    # Check if we're awaiting custom text for preset button
+    if data.get("awaiting_custom_text"):
+        pending_button = data.get("pending_button")
+        if not pending_button:
+            await message.answer("❌ Ошибка: кнопка не найдена")
+            return
+
+        custom_text = message.text.strip()
+        if not custom_text:
+            await message.answer("❌ Текст не может быть пустым")
+            return
+
+        # Add button with custom text
+        buttons.append({
+            "text": custom_text,
+            "callback_data": pending_button["callback_data"]
+        })
+        await state.update_data(buttons=buttons, awaiting_custom_text=False, pending_button=None)
+
+        from app.admin.keyboards.inline import add_more_buttons_keyboard
+
+        button_count = len(buttons)
+        text = f"✅ Кнопка {button_count} добавлена: \"{custom_text}\"\n\n"
+        text += f"Текущие кнопки ({button_count}/8):\n"
+        for idx, btn in enumerate(buttons, 1):
+            text += f"{idx}. {btn['text']}\n"
+
+        await message.answer(text, reply_markup=add_more_buttons_keyboard(button_count))
+        return
+
+    # Manual input format: "Text | callback_data"
+    text = message.text.strip()
+    if "|" not in text:
+        await message.answer(
+            "❌ Неверный формат. Используйте:\n"
+            "Текст кнопки | callback_data\n\n"
+            "Пример:\n"
+            "Попробовать GPT 4o | bot.start_chatgpt_dialog_325"
+        )
+        return
+
+    button_text, callback_data = text.split("|", 1)
+    button_text = button_text.strip()
+    callback_data = callback_data.strip()
+
+    if not button_text or not callback_data:
+        await message.answer("❌ Текст и callback_data не могут быть пустыми")
+        return
+
+    # Validate callback_data
+    if not callback_data.replace("_", "").replace(".", "").replace(":", "").replace("#", "").isalnum():
+        await message.answer("❌ callback_data содержит недопустимые символы")
+        return
+
+    buttons.append({"text": button_text, "callback_data": callback_data})
+    await state.update_data(buttons=buttons)
+
+    from app.admin.keyboards.inline import add_more_buttons_keyboard
+
+    button_count = len(buttons)
+    text = f"✅ Кнопка {button_count} добавлена: \"{button_text}\"\n\n"
+    text += f"Текущие кнопки ({button_count}/8):\n"
+    for idx, btn in enumerate(buttons, 1):
+        text += f"{idx}. {btn['text']}\n"
+
+    await message.answer(text, reply_markup=add_more_buttons_keyboard(button_count))
+
+
+@admin_router.callback_query(F.data == "admin:broadcast_no_buttons")
+async def broadcast_no_buttons(callback: CallbackQuery, state: FSMContext):
+    """Continue without buttons."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    await state.update_data(buttons=[])
+    await state.set_state(BroadcastWithButtons.waiting_for_filter)
+
+    from app.admin.keyboards.inline import broadcast_filter_keyboard
+
+    text = "📊 Шаг 4/5: Выберите получателей"
+
+    await callback.message.edit_text(text, reply_markup=broadcast_filter_keyboard())
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data == "admin:broadcast_button_input")
+async def back_to_button_input(callback: CallbackQuery, state: FSMContext):
+    """Go back to button input menu."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    from app.admin.keyboards.inline import button_input_menu
+
+    await callback.message.edit_text(
+        "Шаг 3/5: Добавьте кнопки к сообщению",
+        reply_markup=button_input_menu()
+    )
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data == "admin:broadcast_add_more")
+async def add_more_buttons(callback: CallbackQuery, state: FSMContext):
+    """Add more buttons."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    from app.admin.keyboards.inline import button_input_menu
+
+    await callback.message.edit_text(
+        "Добавьте ещё кнопку:",
+        reply_markup=button_input_menu()
+    )
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data == "admin:broadcast_buttons_done")
+async def broadcast_buttons_done(callback: CallbackQuery, state: FSMContext):
+    """Finish adding buttons, proceed to filter selection."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    data = await state.get_data()
+    buttons = data.get("buttons", [])
+
+    if not buttons:
+        await callback.answer("❌ Добавьте хотя бы одну кнопку или выберите [Без кнопок]")
+        return
+
+    await state.set_state(BroadcastWithButtons.waiting_for_filter)
+
+    from app.admin.keyboards.inline import broadcast_filter_keyboard
+
+    text = f"✅ Кнопки добавлены ({len(buttons)})\n\n"
+    text += "📊 Шаг 4/5: Выберите получателей"
+
+    await callback.message.edit_text(text, reply_markup=broadcast_filter_keyboard())
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data.startswith("admin:broadcast_filter:"), StateFilter(BroadcastWithButtons.waiting_for_filter))
+async def select_broadcast_filter(callback: CallbackQuery, state: FSMContext):
+    """Select recipient filter for advanced broadcast."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    from app.database.database import async_session_maker
+    from app.admin.services import get_recipients_count
+    from app.admin.keyboards.inline import broadcast_confirmation_keyboard, build_user_broadcast_keyboard
+
+    filter_type = callback.data.split(":")[-1]
+    await state.update_data(filter_type=filter_type)
+    await state.set_state(BroadcastWithButtons.waiting_for_confirmation)
+
+    # Get recipient count
+    async with async_session_maker() as session:
+        recipient_count = await get_recipients_count(session, filter_type)
+
+    # Get state data
+    data = await state.get_data()
+    text = data.get("text", "")
+    image_file_id = data.get("image_file_id")
+    buttons = data.get("buttons", [])
+
+    filter_names = {
+        "all": "Все пользователи",
+        "subscribed": "С подпиской",
+        "free": "Без подписки"
+    }
+
+    # Send preview message
+    preview_text = f"📋 Шаг 5/5: Превью сообщения\n\n"
+    preview_text += "─────────────────\n"
+    preview_text += f"{text}\n"
+    preview_text += "─────────────────\n\n"
+    preview_text += f"📊 Будет отправлено: ~{recipient_count} пользователям\n"
+    preview_text += f"🎯 Фильтр: {filter_names.get(filter_type, 'Неизвестно')}\n"
+    preview_text += f"📸 Фото: {'Да' if image_file_id else 'Нет'}\n"
+    preview_text += f"🔘 Кнопок: {len(buttons)}\n\n"
+
+    # Send actual preview
+    try:
+        keyboard = build_user_broadcast_keyboard(buttons) if buttons else None
+
+        if image_file_id:
+            await callback.message.answer_photo(
+                photo=image_file_id,
+                caption=text,
+                reply_markup=keyboard
+            )
+        else:
+            await callback.message.answer(
+                text=text,
+                reply_markup=keyboard
+            )
+
+        await callback.message.answer(
+            preview_text,
+            reply_markup=broadcast_confirmation_keyboard()
+        )
+    except Exception as e:
+        logger.error("broadcast_preview_error", error=str(e))
+        await callback.message.answer(
+            f"❌ Ошибка предпросмотра: {str(e)}",
+            reply_markup=cancel_keyboard()
+        )
+
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data == "admin:broadcast_confirm_send")
+async def confirm_broadcast_send(callback: CallbackQuery, state: FSMContext):
+    """Confirm and send broadcast."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    from app.database.database import async_session_maker
+    from app.admin.services import (
+        create_broadcast_message,
+        get_recipients,
+        update_broadcast_stats
+    )
+    from app.admin.keyboards.inline import build_user_broadcast_keyboard
+    from aiogram import Bot
+
+    data = await state.get_data()
+    text = data.get("text", "")
+    image_file_id = data.get("image_file_id")
+    buttons = data.get("buttons", [])
+    filter_type = data.get("filter_type", "all")
+
+    try:
+        # Create broadcast record
+        async with async_session_maker() as session:
+            broadcast = await create_broadcast_message(
+                session=session,
+                admin_id=callback.from_user.id,
+                text=text,
+                image_file_id=image_file_id,
+                buttons=buttons,
+                filter_type=filter_type
+            )
+
+            # Get recipients
+            recipients = await get_recipients(session, filter_type)
+
+        # Send broadcast
+        main_bot = Bot(token=settings.telegram_bot_token)
+        keyboard = build_user_broadcast_keyboard(buttons) if buttons else None
+
+        total_users = len(recipients)
+        success_count = 0
+        error_count = 0
+
+        status_msg = await callback.message.answer(
+            f"⏳ Отправка... 0/{total_users}"
+        )
+
+        for i, user in enumerate(recipients, 1):
+            try:
+                if image_file_id:
+                    await main_bot.send_photo(
+                        chat_id=user.telegram_id,
+                        photo=image_file_id,
+                        caption=text,
+                        reply_markup=keyboard
+                    )
+                else:
+                    await main_bot.send_message(
+                        chat_id=user.telegram_id,
+                        text=text,
+                        reply_markup=keyboard
+                    )
+                success_count += 1
+            except Exception as e:
+                error_count += 1
+                logger.error("broadcast_send_error", user_id=user.telegram_id, error=str(e))
+
+            # Update progress every 100 messages
+            if i % 100 == 0 or i == total_users:
+                try:
+                    await status_msg.edit_text(
+                        f"⏳ Отправка... {i}/{total_users}\n"
+                        f"✅ Успешно: {success_count}\n"
+                        f"❌ Ошибок: {error_count}"
+                    )
+                except:
+                    pass
+
+        # Update statistics
+        async with async_session_maker() as session:
+            await update_broadcast_stats(
+                session=session,
+                broadcast_id=broadcast.id,
+                sent_count=success_count,
+                error_count=error_count
+            )
+
+        # Final status
+        final_text = f"✅ Рассылка завершена!\n\n"
+        final_text += f"📊 Статистика:\n"
+        final_text += f"  • Отправлено: {success_count}\n"
+        final_text += f"  • Ошибки: {error_count}\n"
+        final_text += f"  • Успешность: {success_count*100//total_users if total_users > 0 else 0}%\n\n"
+        final_text += f"🔗 ID рассылки: #{broadcast.id}\n"
+        final_text += f"Статистика доступна в разделе [📊 Статистика]"
+
+        await status_msg.edit_text(final_text, reply_markup=back_keyboard())
+
+        await main_bot.session.close()
+
+        logger.info(
+            "admin_broadcast_with_buttons_complete",
+            admin_id=callback.from_user.id,
+            broadcast_id=broadcast.id,
+            filter=filter_type,
+            total=total_users,
+            success=success_count,
+            failed=error_count,
+            buttons_count=len(buttons)
+        )
+
+    except Exception as e:
+        logger.error("admin_broadcast_with_buttons_error", error=str(e))
+        await callback.message.answer(
+            f"❌ Ошибка рассылки: {str(e)}",
+            reply_markup=back_keyboard()
+        )
+
+    await state.clear()
+    await callback.answer()
+
+
+# ==================== BROADCAST STATISTICS ====================
+
+
+@admin_router.callback_query(F.data == "admin:broadcast_stats")
+async def show_broadcast_stats(callback: CallbackQuery):
+    """Show broadcast statistics list."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    await show_broadcast_stats_page(callback, page=0)
+
+
+@admin_router.callback_query(F.data.startswith("admin:broadcast_stats_page:"))
+async def show_broadcast_stats_page_handler(callback: CallbackQuery):
+    """Show broadcast statistics page."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    page = int(callback.data.split(":")[-1])
+    await show_broadcast_stats_page(callback, page=page)
+
+
+async def show_broadcast_stats_page(callback: CallbackQuery, page: int = 0):
+    """Show broadcast statistics for given page."""
+    from app.database.database import async_session_maker
+    from app.admin.services import get_recent_broadcasts
+    from app.admin.keyboards.inline import broadcast_stats_keyboard
+    from sqlalchemy import select, func
+    from app.database.models.broadcast import BroadcastClick
+
+    page_size = 10
+
+    async with async_session_maker() as session:
+        broadcasts, total_count = await get_recent_broadcasts(session, page=page, page_size=page_size)
+
+        if not broadcasts:
+            await callback.message.edit_text(
+                "📊 Статистика рассылок\n\n"
+                "Пока нет рассылок с кнопками.",
+                reply_markup=back_keyboard()
+            )
+            await callback.answer()
+            return
+
+        text = "📊 История рассылок с кнопками\n\n"
+
+        for broadcast in broadcasts:
+            # Get click stats
+            result = await session.execute(
+                select(func.count(BroadcastClick.id)).where(
+                    BroadcastClick.broadcast_id == broadcast.id
+                )
+            )
+            total_clicks = result.scalar() or 0
+
+            result = await session.execute(
+                select(func.count(func.distinct(BroadcastClick.user_id))).where(
+                    BroadcastClick.broadcast_id == broadcast.id
+                )
+            )
+            unique_clicks = result.scalar() or 0
+
+            # Format date
+            date_str = broadcast.created_at.strftime("%d.%m.%Y %H:%M")
+
+            # Truncate text
+            msg_text = broadcast.text[:50] + "..." if len(broadcast.text) > 50 else broadcast.text
+            msg_text = msg_text.replace("\n", " ")
+
+            # Click rate
+            click_rate = (unique_clicks * 100 // broadcast.sent_count) if broadcast.sent_count > 0 else 0
+
+            text += f"#{broadcast.id} | {date_str}\n"
+            text += f"   \"{msg_text}\"\n"
+            text += f"   📤 {broadcast.sent_count} | 👆 {unique_clicks} ({click_rate}%)\n"
+            text += f"   🔘 {len(broadcast.buttons)} кнопок\n\n"
+
+        total_pages = (total_count + page_size - 1) // page_size
+        text += f"\nСтраница {page + 1} из {total_pages}"
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=broadcast_stats_keyboard(page=page, total_pages=total_pages)
+    )
+    await callback.answer()
 
 
 # ==================== LEGACY COMMAND HANDLERS ====================
