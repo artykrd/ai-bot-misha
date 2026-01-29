@@ -45,7 +45,8 @@ async def setup_bot() -> Dispatcher:
         profile,
         text_ai,
         common,
-        download_handler
+        download_handler,
+        async_kling_handler  # Async Kling handler for job queue
     )
     from app.bot.handlers import dialog_handler
 
@@ -55,6 +56,7 @@ async def setup_bot() -> Dispatcher:
     dp.include_router(common.router)  # Commands BEFORE FSM handlers
     dp.include_router(download_handler.router)  # Download handler
     dp.include_router(suno_handler.router)  # Suno handlers
+    dp.include_router(async_kling_handler.router)  # Async Kling BEFORE media_handler
     dp.include_router(media_handler.router)  # FSM state handlers
     dp.include_router(profile.router)
     dp.include_router(text_ai.router)
@@ -66,6 +68,12 @@ async def setup_bot() -> Dispatcher:
 
     from app.core.error_notifier import setup_error_notifications
     setup_error_notifications(bot)
+
+    # Start video worker for async video generation
+    from app.workers.video_worker import VideoWorker
+    video_worker = VideoWorker(bot, poll_interval=30)
+    video_worker.start()
+    logger.info("video_worker_started")
 
     logger.info("bot_setup_completed")
 

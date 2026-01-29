@@ -18,6 +18,7 @@ from app.database.models.system import (
     AdminLog,
 )
 from app.database.models.model_cost import ModelCost, OperationCategory
+from app.database.models.video_job import VideoGenerationJob
 
 __all__ = [
     "User",
@@ -40,4 +41,6 @@ __all__ = [
     # Cost tracking
     "ModelCost",
     "OperationCategory",
+    # Video jobs
+    "VideoGenerationJob",
 ]

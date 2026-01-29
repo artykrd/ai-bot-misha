@@ -10,6 +10,7 @@ from app.database.repositories.subscription import SubscriptionRepository
 from app.core.logger import get_logger
 from app.core.exceptions import InsufficientTokensError
 from app.core.subscription_plans import get_subscription_tariff, get_all_tariffs
+from app.services.subscription.unlimited_limits_service import UnlimitedLimitsService
 
 logger = get_logger(__name__)
 
@@ -79,16 +80,22 @@ class SubscriptionService:
     async def check_and_use_tokens(
         self,
         user_id: int,
-        tokens_required: int
+        tokens_required: int,
+        model_id: Optional[str] = None
     ) -> Subscription:
         """
         Check if user has enough tokens and use them.
+
+        Args:
+            user_id: User ID
+            tokens_required: Required token amount
+            model_id: Optional model ID for unlimited limits check
 
         Returns:
             Subscription that was used
 
         Raises:
-            InsufficientTokensError: If user doesn't have enough tokens
+            InsufficientTokensError: If user doesn't have enough tokens or limits exceeded
         """
         subscriptions = await self.repository.get_user_subscriptions(
             user_id,
@@ -101,6 +108,28 @@ class SubscriptionService:
                 "No active subscription found",
                 {"required": tokens_required, "available": 0}
             )
+
+        # Check unlimited subscription limits (if applicable and model_id provided)
+        for sub in subscriptions:
+            if sub.is_unlimited and model_id:
+                limits_service = UnlimitedLimitsService(self.session)
+                allowed, error_message = await limits_service.check_unlimited_limits(
+                    user_id=user_id,
+                    subscription=sub,
+                    model_id=model_id,
+                    tokens_cost=tokens_required
+                )
+                if not allowed:
+                    logger.warning(
+                        "unlimited_limits_exceeded",
+                        user_id=user_id,
+                        model_id=model_id,
+                        error=error_message
+                    )
+                    raise InsufficientTokensError(
+                        error_message,
+                        {"required": tokens_required, "available": 0, "unlimited_limit_reached": True}
+                    )
 
         available_tokens = sum(sub.tokens_remaining for sub in subscriptions)
         if available_tokens < tokens_required:
