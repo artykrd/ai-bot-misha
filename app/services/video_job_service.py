@@ -11,7 +11,7 @@ from app.database.database import async_session_maker
 from app.database.repositories.video_job import VideoJobRepository
 from app.database.models.video_job import VideoGenerationJob
 from app.services.video import KlingService, SoraService, VeoService, LumaService, HailuoService
-from app.services.logging import log_ai_operation_background
+from app.services.logging import log_ai_operation_background, ai_logger
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -78,6 +78,78 @@ class VideoJobService:
             raise ValueError(f"Unknown provider: {provider}")
 
         return service_class()
+
+    async def _update_ai_request(
+        self,
+        job: VideoGenerationJob,
+        status: str,
+        video_path: Optional[str] = None,
+        error_message: Optional[str] = None
+    ) -> None:
+        """
+        Update linked ai_request when job completes/fails.
+
+        This is critical for:
+        - Cost tracking (cost_usd, cost_rub)
+        - Analytics (proper status)
+        - Unlimited limits enforcement
+        """
+        if not job.ai_request_id:
+            logger.debug("no_ai_request_linked", job_id=job.id)
+            return
+
+        try:
+            # Calculate processing time
+            processing_time = None
+            if job.started_processing_at and job.completed_at:
+                delta = job.completed_at - job.started_processing_at
+                processing_time = int(delta.total_seconds())
+            elif job.started_processing_at:
+                delta = datetime.now(timezone.utc) - job.started_processing_at
+                processing_time = int(delta.total_seconds())
+
+            # Additional metadata for input_data
+            metadata = {
+                "provider": job.provider,
+                "task_id": job.task_id,
+                "video_path": video_path,
+                "job_id": job.id,
+            }
+
+            # Update ai_request
+            success = await ai_logger.update_operation_status(
+                ai_request_id=job.ai_request_id,
+                status=status,
+                response_file_path=video_path,
+                error_message=error_message,
+                processing_time_seconds=processing_time,
+                calculate_costs=True,  # Calculate cost_usd/cost_rub
+                input_data=metadata
+            )
+
+            if success:
+                logger.info(
+                    "ai_request_updated_from_job",
+                    job_id=job.id,
+                    ai_request_id=job.ai_request_id,
+                    status=status,
+                    processing_time=processing_time
+                )
+            else:
+                logger.warning(
+                    "ai_request_update_failed",
+                    job_id=job.id,
+                    ai_request_id=job.ai_request_id
+                )
+
+        except Exception as e:
+            # Never let ai_request update break the main flow
+            logger.error(
+                "ai_request_update_exception",
+                job_id=job.id,
+                ai_request_id=job.ai_request_id,
+                error=str(e)
+            )
 
     async def process_job(self, job: VideoGenerationJob, bot: Bot) -> bool:
         """
@@ -146,11 +218,18 @@ class VideoJobService:
             # Check result
             if result.success:
                 # Update job as completed
-                await self.repository.update_job_status(
+                updated_job = await self.repository.update_job_status(
                     job.id,
                     "completed",
                     video_path=result.video_path,
                     task_id=result.metadata.get("task_id") if result.metadata else None
+                )
+
+                # Update linked ai_request (critical for cost tracking)
+                await self._update_ai_request(
+                    job=updated_job or job,
+                    status="completed",
+                    video_path=result.video_path
                 )
 
                 # Send video to user
@@ -175,9 +254,16 @@ class VideoJobService:
             else:
                 # Failed
                 error_msg = result.error or "Unknown error"
-                await self.repository.update_job_status(
+                updated_job = await self.repository.update_job_status(
                     job.id,
                     "failed",
+                    error_message=error_msg
+                )
+
+                # Update linked ai_request (mark as failed)
+                await self._update_ai_request(
+                    job=updated_job or job,
+                    status="failed",
                     error_message=error_msg
                 )
 
@@ -198,10 +284,17 @@ class VideoJobService:
         except Exception as e:
             logger.error("video_job_processing_exception", job_id=job.id, error=str(e))
 
-            await self.repository.update_job_status(
+            updated_job = await self.repository.update_job_status(
                 job.id,
                 "failed",
                 error_message=str(e)
+            )
+
+            # Update linked ai_request (mark as failed)
+            await self._update_ai_request(
+                job=updated_job or job,
+                status="failed",
+                error_message=str(e)[:500]
             )
 
             # Notify user
@@ -226,16 +319,24 @@ class VideoJobService:
         return await self.repository.get_timeout_waiting_jobs(limit=limit)
 
     async def cleanup_expired_jobs(self) -> int:
-        """Mark expired jobs as failed."""
+        """Mark expired jobs as failed and update linked ai_requests."""
         expired_jobs = await self.repository.get_expired_jobs(limit=100)
         count = 0
 
         for job in expired_jobs:
-            await self.repository.update_job_status(
+            updated_job = await self.repository.update_job_status(
                 job.id,
                 "failed",
                 error_message="Job expired before completion"
             )
+
+            # Update linked ai_request (mark as failed)
+            await self._update_ai_request(
+                job=updated_job or job,
+                status="failed",
+                error_message="Job expired before completion"
+            )
+
             count += 1
 
         if count > 0:

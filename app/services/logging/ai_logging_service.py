@@ -221,6 +221,8 @@ class AILoggingService:
         response_file_path: Optional[str] = None,
         error_message: Optional[str] = None,
         processing_time_seconds: Optional[int] = None,
+        calculate_costs: bool = True,
+        input_data: Optional[Dict[str, Any]] = None,
     ) -> bool:
         """
         Update an existing AI request record.
@@ -231,6 +233,8 @@ class AILoggingService:
             response_file_path: Path to generated file
             error_message: Error message if failed
             processing_time_seconds: Time taken to process
+            calculate_costs: Whether to calculate cost_usd/cost_rub if missing
+            input_data: Additional input data to merge with existing
 
         Returns:
             True if successful, False otherwise
@@ -249,6 +253,7 @@ class AILoggingService:
                     logger.warning("ai_request_not_found", ai_request_id=ai_request_id)
                     return False
 
+                # Update basic fields
                 ai_request.status = status
                 if response_file_path:
                     ai_request.response_file_path = response_file_path
@@ -257,12 +262,45 @@ class AILoggingService:
                 if processing_time_seconds is not None:
                     ai_request.processing_time_seconds = processing_time_seconds
 
+                # Merge input_data if provided
+                if input_data:
+                    existing_data = ai_request.input_data or {}
+                    ai_request.input_data = {**existing_data, **input_data}
+
+                # Calculate costs if missing and requested
+                if calculate_costs and (not ai_request.cost_usd or not ai_request.cost_rub):
+                    await self._load_model_costs(session)
+                    model_cost = self._get_model_cost(ai_request.ai_model)
+
+                    if model_cost and ai_request.tokens_cost:
+                        # Calculate based on tokens_cost
+                        cost_usd = model_cost.calculate_cost_usd(1.0)
+                        cost_rub = cost_usd * Decimal(str(DEFAULT_USD_RUB_RATE))
+
+                        ai_request.cost_usd = cost_usd
+                        ai_request.cost_rub = cost_rub
+
+                        logger.info(
+                            "costs_calculated_on_update",
+                            ai_request_id=ai_request_id,
+                            cost_usd=float(cost_usd),
+                            cost_rub=float(cost_rub)
+                        )
+
+                # Ensure operation_category is filled
+                if not ai_request.operation_category:
+                    await self._load_model_costs(session)
+                    model_cost = self._get_model_cost(ai_request.ai_model)
+                    if model_cost:
+                        ai_request.operation_category = model_cost.category_code
+
                 await session.commit()
 
                 logger.info(
                     "ai_operation_updated",
                     ai_request_id=ai_request_id,
                     status=status,
+                    cost_usd=float(ai_request.cost_usd) if ai_request.cost_usd else None,
                 )
 
                 return True
