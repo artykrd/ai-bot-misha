@@ -12,6 +12,7 @@ from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
 import html
 import os
+import time
 
 from app.bot.keyboards.inline import (
     suno_main_keyboard,
@@ -32,6 +33,7 @@ from app.core.exceptions import InsufficientTokensError
 from app.services.audio import SunoService
 from app.services.subscription.subscription_service import SubscriptionService
 from app.services.ai.openai_service import OpenAIService  # For generating lyrics
+from app.services.logging import log_ai_operation_background
 
 logger = get_logger(__name__)
 
@@ -860,6 +862,9 @@ async def generate_suno_song(callback: CallbackQuery, state: FSMContext, user: U
 
     progress_msg = await callback.message.edit_text("🎵 Генерирую песню... Это может занять 1-2 минуты.")
 
+    # Track generation time for logging
+    generation_start_time = time.time()
+
     try:
         suno_service = SunoService()
 
@@ -925,6 +930,25 @@ async def generate_suno_song(callback: CallbackQuery, state: FSMContext, user: U
                 is_instrumental=is_instrumental,
                 tokens=tokens_cost
             )
+
+            # Log AI operation for cost tracking (fire-and-forget)
+            elapsed_time = int(time.time() - generation_start_time)
+            log_ai_operation_background(
+                user_id=user.id,
+                model_id="suno",
+                operation_category="audio_gen",
+                tokens_cost=tokens_cost,
+                prompt=f"{song_title}: {style}"[:500],
+                status="completed",
+                response_file_path=result.audio_path,
+                processing_time_seconds=elapsed_time,
+                input_data={
+                    "model_version": model_version,
+                    "is_instrumental": is_instrumental,
+                    "style": style,
+                    "vocal_gender": vocal_gender if not is_instrumental else None,
+                },
+            )
         else:
             await progress_msg.edit_text(
                 f"❌ Ошибка генерации: {result.error}\n\n"
@@ -946,6 +970,24 @@ async def generate_suno_song(callback: CallbackQuery, state: FSMContext, user: U
                 error=result.error
             )
 
+            # Log failed AI operation for tracking
+            elapsed_time = int(time.time() - generation_start_time)
+            log_ai_operation_background(
+                user_id=user.id,
+                model_id="suno",
+                operation_category="audio_gen",
+                tokens_cost=0,  # Tokens were refunded
+                prompt=f"{song_title}: {style}"[:500],
+                status="failed",
+                error_message=str(result.error)[:500],
+                processing_time_seconds=elapsed_time,
+                input_data={
+                    "model_version": model_version,
+                    "is_instrumental": is_instrumental,
+                    "style": style,
+                },
+            )
+
     except Exception as e:
         from app.core.error_handlers import format_user_error
         logger.error("suno_generation_exception", user_id=user.id, error=str(e))
@@ -964,3 +1006,21 @@ async def generate_suno_song(callback: CallbackQuery, state: FSMContext, user: U
                 subscription.tokens_used = max(0, subscription.tokens_used - tokens_cost)
                 await session.commit()
                 logger.info("tokens_refunded", user_id=user.id, amount=tokens_cost)
+
+        # Log failed AI operation for tracking
+        elapsed_time = int(time.time() - generation_start_time)
+        log_ai_operation_background(
+            user_id=user.id,
+            model_id="suno",
+            operation_category="audio_gen",
+            tokens_cost=0,  # Tokens were refunded
+            prompt=f"{song_title}: {style}"[:500],
+            status="failed",
+            error_message=str(e)[:500],
+            processing_time_seconds=elapsed_time,
+            input_data={
+                "model_version": model_version,
+                "is_instrumental": is_instrumental,
+                "style": style,
+            },
+        )

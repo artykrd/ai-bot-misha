@@ -17,6 +17,7 @@ from app.database.models.system import (
     SystemSetting,
     AdminLog,
 )
+from app.database.models.model_cost import ModelCost, OperationCategory
 
 __all__ = [
     "User",
@@ -36,4 +37,7 @@ __all__ = [
     "AICache",
     "SystemSetting",
     "AdminLog",
+    # Cost tracking
+    "ModelCost",
+    "OperationCategory",
 ]
