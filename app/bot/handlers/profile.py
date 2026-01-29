@@ -282,7 +282,7 @@ async def cancel_subscription(callback: CallbackQuery, user: User):
 • Платеж не найден
 • Техническая ошибка
 
-Пожалуйста, обратитесь в поддержку: @gigavidacha"""
+Пожалуйста, обратитесь в поддержку: @nova_support_new"""
 
         await callback.message.edit_text(
             text,
@@ -302,7 +302,7 @@ async def cancel_subscription(callback: CallbackQuery, user: User):
             refund_text = f"""
 ⚠️ <b>Возврат средств:</b> Ошибка при возврате
 ❌ {refund_error}
-Пожалуйста, обратитесь в поддержку: @gigavidacha"""
+Пожалуйста, обратитесь в поддержку: @nova_support_new"""
     else:
         refund_text = """
 ℹ️ <b>Возврат средств:</b> Не требуется
