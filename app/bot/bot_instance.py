@@ -29,12 +29,14 @@ async def setup_bot() -> Dispatcher:
 
     from app.bot.middlewares.auth import AuthMiddleware
     from app.bot.middlewares.logging import LoggingMiddleware
+    from app.bot.middlewares.broadcast_tracking import BroadcastTrackingMiddleware
 
     # Register middlewares
     dp.message.middleware(AuthMiddleware())
     dp.callback_query.middleware(AuthMiddleware())
     dp.message.middleware(LoggingMiddleware())
     dp.callback_query.middleware(LoggingMiddleware())
+    dp.callback_query.middleware(BroadcastTrackingMiddleware())
 
     # Register handlers
     from app.bot.handlers import (

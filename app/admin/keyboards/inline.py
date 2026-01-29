@@ -136,3 +136,170 @@ def tariff_selection_keyboard() -> InlineKeyboardMarkup:
 
     builder.adjust(1)
     return builder.as_markup()
+
+
+# ==================== Broadcast Keyboards ====================
+
+
+def broadcast_type_menu() -> InlineKeyboardMarkup:
+    """Broadcast type selection menu."""
+    builder = InlineKeyboardBuilder()
+
+    builder.button(text="📨 Простая рассылка", callback_data="admin:broadcast_type:simple")
+    builder.button(text="📨 Рассылка с кнопками", callback_data="admin:broadcast_type:advanced")
+    builder.button(text="📊 Статистика рассылок", callback_data="admin:broadcast_stats")
+    builder.button(text="🔙 Назад", callback_data="admin:back")
+
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def skip_image_keyboard() -> InlineKeyboardMarkup:
+    """Skip image attachment keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    builder.button(text="⏭ Пропустить", callback_data="admin:broadcast_skip_image")
+    builder.button(text="❌ Отмена", callback_data="admin:cancel")
+
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def button_input_menu() -> InlineKeyboardMarkup:
+    """Button input menu."""
+    builder = InlineKeyboardBuilder()
+
+    builder.button(text="📱 Выбрать готовую кнопку", callback_data="admin:broadcast_preset_buttons")
+    builder.button(text="❌ Без кнопок", callback_data="admin:broadcast_no_buttons")
+    builder.button(text="🔙 Отмена", callback_data="admin:cancel")
+
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def preset_button_categories() -> InlineKeyboardMarkup:
+    """Preset button categories keyboard."""
+    from app.admin.config import get_category_names
+
+    builder = InlineKeyboardBuilder()
+
+    for category_key, category_name in get_category_names():
+        builder.button(text=category_name, callback_data=f"admin:broadcast_category:{category_key}")
+
+    builder.button(text="◀️ Назад", callback_data="admin:broadcast_button_input")
+
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def preset_button_list(category_key: str) -> InlineKeyboardMarkup:
+    """List of preset buttons for category."""
+    from app.admin.config import get_category_buttons
+
+    builder = InlineKeyboardBuilder()
+
+    buttons = get_category_buttons(category_key)
+    for idx, button in enumerate(buttons):
+        builder.button(
+            text=f"✅ {button['text']}",
+            callback_data=f"admin:broadcast_select_btn:{category_key}:{idx}"
+        )
+
+    builder.button(text="◀️ Назад", callback_data="admin:broadcast_preset_buttons")
+
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def button_text_choice(default_text: str) -> InlineKeyboardMarkup:
+    """Choose button text: use default or enter custom."""
+    builder = InlineKeyboardBuilder()
+
+    builder.button(text="✅ Использовать стандартный", callback_data="admin:broadcast_use_default_text")
+    builder.button(text="✏️ Ввести свой текст", callback_data="admin:broadcast_custom_text")
+    builder.button(text="❌ Отмена", callback_data="admin:cancel")
+
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def add_more_buttons_keyboard(current_count: int, max_count: int = 8) -> InlineKeyboardMarkup:
+    """Add more buttons or finish."""
+    builder = InlineKeyboardBuilder()
+
+    if current_count < max_count:
+        builder.button(text="➕ Добавить ещё кнопку", callback_data="admin:broadcast_add_more")
+
+    builder.button(text="✅ Готово", callback_data="admin:broadcast_buttons_done")
+    builder.button(text="❌ Отмена", callback_data="admin:cancel")
+
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def broadcast_filter_keyboard() -> InlineKeyboardMarkup:
+    """Select broadcast recipients filter."""
+    builder = InlineKeyboardBuilder()
+
+    builder.button(text="👤 Все пользователи", callback_data="admin:broadcast_filter:all")
+    builder.button(text="💎 С подпиской", callback_data="admin:broadcast_filter:subscribed")
+    builder.button(text="🆓 Без подписки", callback_data="admin:broadcast_filter:free")
+    builder.button(text="❌ Отмена", callback_data="admin:cancel")
+
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def broadcast_confirmation_keyboard() -> InlineKeyboardMarkup:
+    """Confirm or cancel broadcast."""
+    builder = InlineKeyboardBuilder()
+
+    builder.button(text="✅ ОТПРАВИТЬ", callback_data="admin:broadcast_confirm_send")
+    builder.button(text="❌ Отменить", callback_data="admin:cancel")
+
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def build_user_broadcast_keyboard(buttons_data: list[dict]) -> InlineKeyboardMarkup:
+    """
+    Build inline keyboard for user broadcast message.
+
+    Args:
+        buttons_data: List of dicts with 'text' and 'callback_data'
+
+    Returns:
+        InlineKeyboardMarkup with buttons arranged in 1-2 per row
+    """
+    builder = InlineKeyboardBuilder()
+
+    for button in buttons_data:
+        builder.button(text=button["text"], callback_data=button["callback_data"])
+
+    # Arrange buttons: 1-2 per row based on text length
+    rows = []
+    for button in buttons_data:
+        # If button text is short (< 20 chars), allow 2 per row
+        if len(button["text"]) < 20:
+            rows.append(2)
+        else:
+            rows.append(1)
+
+    builder.adjust(*rows)
+    return builder.as_markup()
+
+
+def broadcast_stats_keyboard(page: int = 0, total_pages: int = 1) -> InlineKeyboardMarkup:
+    """Broadcast statistics list pagination."""
+    builder = InlineKeyboardBuilder()
+
+    # Navigation
+    if page > 0:
+        builder.button(text="◀️ Назад", callback_data=f"admin:broadcast_stats_page:{page-1}")
+    if page < total_pages - 1:
+        builder.button(text="Вперед ▶️", callback_data=f"admin:broadcast_stats_page:{page+1}")
+
+    builder.button(text="🔙 Назад в меню", callback_data="admin:back")
+
+    builder.adjust(2, 1)
+    return builder.as_markup()

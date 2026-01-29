@@ -50,3 +50,12 @@ class ManageUserTariff(StatesGroup):
     waiting_for_tariff_selection = State()
     waiting_for_custom_days = State()
     waiting_for_custom_tokens = State()
+
+
+class BroadcastWithButtons(StatesGroup):
+    """States for advanced broadcast with inline buttons."""
+    waiting_for_text = State()
+    waiting_for_image = State()
+    waiting_for_buttons = State()
+    waiting_for_filter = State()
+    waiting_for_confirmation = State()
