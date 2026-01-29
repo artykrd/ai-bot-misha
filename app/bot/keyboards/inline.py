@@ -462,9 +462,6 @@ def help_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="📋 Платежи", callback_data="help.payments")
     )
     builder.row(
-        InlineKeyboardButton(text="🔒 Политика хранения данных", callback_data="help.privacy")
-    )
-    builder.row(
         InlineKeyboardButton(text="⬅️ Назад", callback_data="bot.profile")
     )
 
