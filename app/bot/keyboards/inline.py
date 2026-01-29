@@ -49,32 +49,40 @@ def back_to_main_keyboard() -> InlineKeyboardMarkup:
 
 
 def ai_models_keyboard() -> InlineKeyboardMarkup:
-    """AI models selection keyboard with all 12 models."""
+    """AI models selection keyboard with groups: ChatGPT, Deepseek, Gemini, Others."""
     builder = InlineKeyboardBuilder()
 
+    # ChatGPT
     builder.row(
         InlineKeyboardButton(text="4️⃣ GPT 4.1 Mini", callback_data="bot.start_chatgpt_dialog_324"),
         InlineKeyboardButton(text="4️⃣ GPT 4o", callback_data="bot.start_chatgpt_dialog_325")
     )
     builder.row(
-        InlineKeyboardButton(text="💫 O3 Mini", callback_data="bot.start_chatgpt_dialog_326"),
-        InlineKeyboardButton(text="🐳 Deepseek Чат", callback_data="bot.start_chatgpt_dialog_327")
+        InlineKeyboardButton(text="🔥 GPT 5 Mini", callback_data="bot.start_chatgpt_dialog_337"),
+        InlineKeyboardButton(text="💫 O3 Mini", callback_data="bot.start_chatgpt_dialog_326")
     )
+
+    # Deepseek
     builder.row(
-        InlineKeyboardButton(text="🐳 Deepseek R1", callback_data="bot.start_chatgpt_dialog_328"),
+        InlineKeyboardButton(text="🐳 Deepseek Чат", callback_data="bot.start_chatgpt_dialog_327"),
+        InlineKeyboardButton(text="🐳 Deepseek R1", callback_data="bot.start_chatgpt_dialog_328")
+    )
+
+    # Gemini
+    builder.row(
         InlineKeyboardButton(text="⚡ Gemini Flash 2.0", callback_data="bot.start_chatgpt_dialog_329")
     )
+
+    # Другие модели
     builder.row(
-        InlineKeyboardButton(text="🛡 nano Banana", callback_data="bot.start_chatgpt_dialog_330"),
+        InlineKeyboardButton(text="📔 Claude 4", callback_data="bot.start_chatgpt_dialog_333"),
         InlineKeyboardButton(text="🌐 Sonar с поиском", callback_data="bot.start_chatgpt_dialog_331")
     )
     builder.row(
-        InlineKeyboardButton(text="💻 Sonar Pro", callback_data="bot.start_chatgpt_dialog_332"),
-        InlineKeyboardButton(text="📔 Claude 4", callback_data="bot.start_chatgpt_dialog_333")
+        InlineKeyboardButton(text="💻 Sonar Pro", callback_data="bot.start_chatgpt_dialog_332")
     )
-    builder.row(
-        InlineKeyboardButton(text="🔥 GPT 5 Mini", callback_data="bot.start_chatgpt_dialog_337")
-    )
+
+    # Инструменты
     builder.row(
         InlineKeyboardButton(text="💬 Выбрать диалог", callback_data="bot.dialogs_chatgpt")
     )
@@ -263,6 +271,9 @@ def create_photo_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🎭 Замена лиц", callback_data="bot.faceswap")
     )
     builder.row(
+        InlineKeyboardButton(text="🛠 Редактировать фото", callback_data="bot.pi")
+    )
+    builder.row(
         InlineKeyboardButton(text="⬅️ В главное меню", callback_data="bot.back")
     )
 
@@ -409,10 +420,13 @@ def profile_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="📦 Мои подписки", callback_data="bot.profile_subscriptions")
     )
     builder.row(
-        InlineKeyboardButton(text="🤝🏼 Партнерство", callback_data="bot.refferal_program")
+        InlineKeyboardButton(text="🤝 Партнерство", callback_data="bot.refferal_program")
     )
     builder.row(
-        InlineKeyboardButton(text="🤔 Помощь", callback_data="page#faq")
+        InlineKeyboardButton(text="🆘 Поддержка", callback_data="page#faq")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🔢 Активировать промокод", callback_data="activate_promocode")
     )
     builder.row(
         InlineKeyboardButton(text="⬅️ В главное меню", callback_data="bot.back")

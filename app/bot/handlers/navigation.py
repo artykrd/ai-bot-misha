@@ -166,7 +166,7 @@ async def show_models(callback: CallbackQuery):
     await callback.answer()
 
 
-@router.message(F.text.in_(["🤖 Выбрать модель", "Выбрать модель"]))
+@router.message(F.text.in_(["💬 AI Чат", "AI Чат", "🤖 Выбрать модель", "Выбрать модель"]))
 async def show_models_message(message: Message, user: User, state: FSMContext):
     """Show AI models selection from reply keyboard."""
     await reset_menu_context(state, user)
@@ -317,7 +317,7 @@ async def show_create_photo(callback: CallbackQuery):
     await callback.answer()
 
 
-@router.message(F.text.in_(["🖼 Создать фото", "Создать фото"]))
+@router.message(F.text.in_(["🎨 Создать фото", "🖼 Создать фото", "Создать фото"]))
 async def show_create_photo_message(message: Message, user: User, state: FSMContext):
     """Show photo creation options from reply keyboard."""
     await reset_menu_context(state, user)
@@ -694,7 +694,7 @@ __ℹ️ Выберите нейросеть для работы с аудио �
     await callback.answer()
 
 
-@router.message(F.text.in_(["🎧 Работа с аудио", "Работа с аудио"]))
+@router.message(F.text.in_(["🎵 Аудио", "Аудио", "🎧 Работа с аудио", "Работа с аудио"]))
 async def show_audio_tools_message(message: Message, user: User, state: FSMContext):
     """Show audio tools from reply keyboard."""
     await reset_menu_context(state, user)
@@ -1203,6 +1203,24 @@ async def show_faq(callback: CallbackQuery):
         if "message is not modified" not in str(e):
             raise
     await callback.answer()
+
+
+@router.message(F.text.in_(["🆘 Поддержка", "Поддержка", "Помощь"]))
+async def show_faq_message(message: Message, user: User, state: FSMContext):
+    """Show FAQ/Help from reply keyboard."""
+    await reset_menu_context(state, user)
+    text = """🆘 <b>Помощь</b>
+
+Добро пожаловать в раздел помощи!
+
+Выберите интересующую вас тему:
+
+💎 <b>Токены</b> — что это и как их получить
+📋 <b>Платежи</b> — информация о платежах
+
+<b>Поддержка:</b>
+Если возникли вопросы, напишите @nova_support_new"""
+    await message.answer(text, reply_markup=help_keyboard(), parse_mode=ParseMode.HTML)
 
 
 @router.callback_query(F.data == "help.tokens")
