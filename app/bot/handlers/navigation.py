@@ -136,20 +136,18 @@ async def show_models(callback: CallbackQuery):
 
     text = (
         "🤖 **Языковые модели**\n\n"
-        "**GPT Models:**\n"
+        "**ChatGPT:**\n"
         f"• {format_text_model_pricing('gpt-4.1-mini')}\n"
         f"• {format_text_model_pricing('gpt-4o')}\n"
         f"• {format_text_model_pricing('gpt-5-mini')}\n"
         f"• {format_text_model_pricing('o3-mini')}\n\n"
-        "**Claude Models:**\n"
-        f"• {format_text_model_pricing('claude-4')}\n\n"
-        "**Google Models:**\n"
-        f"• {format_text_model_pricing('gemini-flash-2.0')}\n"
-        f"• {format_text_model_pricing('nano-banana-text')}\n\n"
-        "**DeepSeek Models:**\n"
+        "**Deepseek:**\n"
         f"• {format_text_model_pricing('deepseek-chat')}\n"
         f"• {format_text_model_pricing('deepseek-r1')}\n\n"
-        "**Perplexity Models:**\n"
+        "**Gemini:**\n"
+        f"• {format_text_model_pricing('gemini-flash-2.0')}\n\n"
+        "**Другие модели:**\n"
+        f"• {format_text_model_pricing('claude-4')}\n"
         f"• {format_text_model_pricing('sonar')}\n"
         f"• {format_text_model_pricing('sonar-pro')}"
     )
@@ -172,15 +170,23 @@ async def show_models_message(message: Message, user: User, state: FSMContext):
     await reset_menu_context(state, user)
     from app.core.billing_config import format_text_model_pricing
 
-    text = f"""🤖 **Выбор AI модели**
-
-Выберите модель для диалога:
-
-• {format_text_model_pricing("gpt-4o")}
-• {format_text_model_pricing("gpt-4.1-mini")}
-• {format_text_model_pricing("claude-4")}
-• {format_text_model_pricing("gemini-flash-2.0")}
-• {format_text_model_pricing("deepseek-chat")}"""
+    text = (
+        "🤖 **Языковые модели**\n\n"
+        "**ChatGPT:**\n"
+        f"• {format_text_model_pricing('gpt-4.1-mini')}\n"
+        f"• {format_text_model_pricing('gpt-4o')}\n"
+        f"• {format_text_model_pricing('gpt-5-mini')}\n"
+        f"• {format_text_model_pricing('o3-mini')}\n\n"
+        "**Deepseek:**\n"
+        f"• {format_text_model_pricing('deepseek-chat')}\n"
+        f"• {format_text_model_pricing('deepseek-r1')}\n\n"
+        "**Gemini:**\n"
+        f"• {format_text_model_pricing('gemini-flash-2.0')}\n\n"
+        "**Другие модели:**\n"
+        f"• {format_text_model_pricing('claude-4')}\n"
+        f"• {format_text_model_pricing('sonar')}\n"
+        f"• {format_text_model_pricing('sonar-pro')}"
+    )
     await message.answer(text, reply_markup=ai_models_keyboard(), parse_mode=ParseMode.MARKDOWN)
 
 
