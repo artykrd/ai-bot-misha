@@ -1,9 +1,10 @@
 """
 AI Request model for logging all AI service requests.
 """
-from typing import TYPE_CHECKING, Optional
+from decimal import Decimal
+from typing import TYPE_CHECKING, Optional, Dict, Any
 
-from sqlalchemy import BigInteger, String, Text, Integer, ForeignKey
+from sqlalchemy import BigInteger, String, Text, Integer, Boolean, Numeric, ForeignKey, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.database import Base
@@ -11,6 +12,7 @@ from app.database.models.base import BaseModel, TimestampMixin
 
 if TYPE_CHECKING:
     from app.database.models.user import User
+    from app.database.models.subscription import Subscription
 
 
 class AIRequest(Base, BaseModel, TimestampMixin):
@@ -76,8 +78,60 @@ class AIRequest(Base, BaseModel, TimestampMixin):
         comment="Processing time in seconds"
     )
 
+    # === NEW FIELDS FOR COST TRACKING ===
+
+    # Real API cost in USD and RUB
+    cost_usd: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(10, 6),
+        nullable=True,
+        comment="Real API cost in USD"
+    )
+
+    cost_rub: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(10, 2),
+        nullable=True,
+        comment="Cost in RUB at request time"
+    )
+
+    # Operation category for analytics
+    operation_category: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        index=True,
+        comment="Category: text, image_gen, image_edit, video_gen, audio_gen, transcription, tts"
+    )
+
+    # Subscription tracking
+    subscription_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger,
+        ForeignKey("subscriptions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="Subscription used for this request"
+    )
+
+    is_unlimited_subscription: Mapped[Optional[bool]] = mapped_column(
+        Boolean,
+        nullable=True,
+        default=False,
+        comment="Was this request made under unlimited subscription"
+    )
+
+    # Additional input data for detailed tracking
+    input_data: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="Input parameters (dimensions, duration, etc.)"
+    )
+
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="ai_requests")
+
+    subscription: Mapped[Optional["Subscription"]] = relationship(
+        "Subscription",
+        foreign_keys=[subscription_id],
+        lazy="selectin"
+    )
 
     @property
     def is_completed(self) -> bool:
