@@ -218,7 +218,7 @@ python main.py
 - Использование: https://ai.dev/usage?tab=rate-limit
 
 ### Поддержка бота:
-- Telegram: @gigavidacha
+- Telegram: @nova_support_new
 - GitHub Issues: https://github.com/artykrd/ai-bot-misha/issues
 
 ---

@@ -310,7 +310,7 @@ For production use, consider:
 - [API Reference](https://ai.google.dev/api/rest)
 
 ### Getting Help
-- Bot support: @gigavidacha
+- Bot support: @nova_support_new
 - Google AI Studio: https://aistudio.google.com/
 - GitHub Issues: Report bugs in the project repository
 

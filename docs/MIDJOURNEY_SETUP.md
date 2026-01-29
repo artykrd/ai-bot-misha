@@ -170,7 +170,7 @@ If official Midjourney is not feasible, consider:
 4. **Leonardo AI**
 
 ## Support
-For setup help: @gigavidacha
+For setup help: @nova_support_new
 
 ## Resources
 - [Midjourney Documentation](https://docs.midjourney.com/)

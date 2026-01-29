@@ -1034,7 +1034,7 @@ async def referral_withdraw(callback: CallbackQuery, user: User):
 
 Доступно для вывода: **{money_balance:.2f} руб.**
 
-Для вывода средств обратитесь в поддержку: @gigavidacha
+Для вывода средств обратитесь в поддержку: @nova_support_new
 
 Укажите:
 • Ваш Telegram ID: `{user.telegram_id}`
@@ -1278,7 +1278,7 @@ async def show_help_payments(callback: CallbackQuery):
 Посмотреть все ваши платежи можно в разделе "Мой профиль" → "Мои платежи"
 
 <b>Возврат средств:</b>
-Если у вас возникли проблемы с платежом, обратитесь в поддержку @gigavidacha"""
+Если у вас возникли проблемы с платежом, обратитесь в поддержку @nova_support_new"""
 
     try:
         await callback.message.edit_text(
