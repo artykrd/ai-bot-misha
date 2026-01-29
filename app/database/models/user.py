@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from app.database.models.dialog import Dialog
     from app.database.models.referral import Referral
     from app.database.models.file import File
+    from app.database.models.video_job import VideoGenerationJob
 
 
 class User(Base, BaseModel, TimestampMixin):
@@ -85,6 +86,12 @@ class User(Base, BaseModel, TimestampMixin):
 
     files: Mapped[List["File"]] = relationship(
         "File",
+        back_populates="user",
+        lazy="selectin"
+    )
+
+    video_jobs: Mapped[List["VideoGenerationJob"]] = relationship(
+        "VideoGenerationJob",
         back_populates="user",
         lazy="selectin"
     )

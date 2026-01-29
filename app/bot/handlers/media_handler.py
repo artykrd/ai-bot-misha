@@ -294,20 +294,51 @@ async def start_kling_choice(callback: CallbackQuery, state: FSMContext, user: U
 # Handler for Kling Image generation
 @router.callback_query(F.data == "bot.kling_image")
 async def start_kling_image(callback: CallbackQuery, state: FSMContext, user: User):
-    """Start Kling image generation - currently under development."""
+    """Start Kling image generation."""
+    # Check if Kling image is active in model_costs
+    from app.database.database import async_session_maker
+    from app.database.models.model_cost import ModelCost
+    from sqlalchemy import select
+
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(ModelCost).where(
+                ModelCost.model_id.like("kling-image%"),
+                ModelCost.is_active == True
+            )
+        )
+        kling_image_model = result.scalar_one_or_none()
+
+    if not kling_image_model:
+        # Not active yet - show "in development"
+        text = (
+            "🎞 **Kling AI - Генерация изображений**\n\n"
+            "⚠️ **Функционал в разработке**\n\n"
+            "Интеграция с Kling Image находится в процессе разработки.\n"
+            "Пожалуйста, используйте альтернативные сервисы:\n\n"
+            "• 🍌 Nano Banana (Gemini 2.5 Flash)\n"
+            "• 🍌✨ Banana PRO (Gemini 3 Pro)\n"
+            "• 🖼 DALL·E 3\n\n"
+            "Следите за обновлениями!"
+        )
+        await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
+        await callback.answer("⚠️ Функционал в разработке", show_alert=False)
+        return
+
+    # Kling image is active - proceed
+    await callback.answer()
+    await state.set_state(MediaState.waiting_for_image_prompt)
+    await state.update_data(service="kling_image")
+
     text = (
         "🎞 **Kling AI - Генерация изображений**\n\n"
-        "⚠️ **Функционал в разработке**\n\n"
-        "Интеграция с Kling Image находится в процессе разработки.\n"
-        "Пожалуйста, используйте альтернативные сервисы:\n\n"
-        "• 🍌 Nano Banana (Gemini 2.5 Flash)\n"
-        "• 🍌✨ Banana PRO (Gemini 3 Pro)\n"
-        "• 🖼 DALL·E 3\n\n"
-        "Следите за обновлениями!"
+        "Отправьте текстовый промпт для генерации изображения.\n\n"
+        "**Примеры:**\n"
+        "• Закат над океаном в стиле аниме\n"
+        "• Футуристический город с летающими машинами\n"
+        "• Портрет кота в королевской одежде"
     )
-
     await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
-    await callback.answer("⚠️ Функционал в разработке", show_alert=False)
 
 
 # Handler for Kling Video generation (renamed from bot.kling)
