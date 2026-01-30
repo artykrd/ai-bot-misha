@@ -2,9 +2,26 @@
 Unified notification messages for media generation.
 """
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiogram.utils.markdown import escape_md
 from typing import Optional
 import uuid
+import re
+
+
+def escape_markdown(text: str) -> str:
+    """
+    Escape special Markdown characters in text.
+
+    Args:
+        text: Text to escape
+
+    Returns:
+        Escaped text safe for Markdown
+    """
+    # Escape special Markdown characters
+    special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+    for char in special_chars:
+        text = text.replace(char, '\\' + char)
+    return text
 
 
 def format_generation_message(
@@ -32,7 +49,7 @@ def format_generation_message(
     mode_info = f" ({mode})" if mode else ""
 
     # Escape special Markdown characters in prompt
-    escaped_prompt = escape_md(prompt[:150])
+    escaped_prompt = escape_markdown(prompt[:150])
     prompt_suffix = '...' if len(prompt) > 150 else ''
 
     message = (
