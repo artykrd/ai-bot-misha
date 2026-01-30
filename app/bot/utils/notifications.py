@@ -2,6 +2,7 @@
 Unified notification messages for media generation.
 """
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.utils.markdown import escape_md
 from typing import Optional
 import uuid
 
@@ -30,11 +31,15 @@ def format_generation_message(
     """
     mode_info = f" ({mode})" if mode else ""
 
+    # Escape special Markdown characters in prompt
+    escaped_prompt = escape_md(prompt[:150])
+    prompt_suffix = '...' if len(prompt) > 150 else ''
+
     message = (
         f"✅ Сгенерировал {content_type} по вашему запросу в {model_name}{mode_info}.\n\n"
         f"💰 Запрос стоил: {tokens_used:,} токенов\n"
         f"📊 Остаток: {user_tokens:,} токенов\n\n"
-        f"📝 Промпт: {prompt[:150]}{'...' if len(prompt) > 150 else ''}"
+        f"📝 Промпт: {escaped_prompt}{prompt_suffix}"
     )
 
     return message
