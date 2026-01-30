@@ -1931,10 +1931,9 @@ async def use_default_button_text(callback: CallbackQuery, state: FSMContext):
         "text": pending_button["text"],
         "callback_data": pending_button["callback_data"]
     })
-    await state.update_data(buttons=buttons)
 
-    # Clear pending button
-    await state.update_data(pending_button=None)
+    # Update state with both buttons and clear pending_button in one call
+    await state.update_data(buttons=buttons, pending_button=None)
 
     from app.admin.keyboards.inline import add_more_buttons_keyboard
 
@@ -1943,6 +1942,15 @@ async def use_default_button_text(callback: CallbackQuery, state: FSMContext):
     text += f"Текущие кнопки ({button_count}/8):\n"
     for idx, btn in enumerate(buttons, 1):
         text += f"{idx}. {btn['text']}\n"
+
+    logger.info(
+        "broadcast_button_added_default",
+        admin_id=callback.from_user.id,
+        button_text=pending_button["text"],
+        callback_data=pending_button["callback_data"],
+        total_buttons=button_count,
+        buttons_list=[b["text"] for b in buttons]
+    )
 
     await callback.message.edit_text(text, reply_markup=add_more_buttons_keyboard(button_count))
     await callback.answer()
@@ -2004,6 +2012,15 @@ async def process_button_input(message: Message, state: FSMContext):
         text += f"Текущие кнопки ({button_count}/8):\n"
         for idx, btn in enumerate(buttons, 1):
             text += f"{idx}. {btn['text']}\n"
+
+        logger.info(
+            "broadcast_button_added_custom",
+            admin_id=message.from_user.id,
+            button_text=custom_text,
+            callback_data=pending_button["callback_data"],
+            total_buttons=button_count,
+            buttons_list=[b["text"] for b in buttons]
+        )
 
         await message.answer(text, reply_markup=add_more_buttons_keyboard(button_count))
         return
@@ -2106,6 +2123,13 @@ async def broadcast_buttons_done(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     buttons = data.get("buttons", [])
 
+    logger.info(
+        "broadcast_buttons_done",
+        admin_id=callback.from_user.id,
+        buttons_count=len(buttons),
+        buttons_list=[b["text"] for b in buttons] if buttons else []
+    )
+
     if not buttons:
         await callback.answer("❌ Добавьте хотя бы одну кнопку или выберите [Без кнопок]")
         return
@@ -2145,6 +2169,15 @@ async def select_broadcast_filter(callback: CallbackQuery, state: FSMContext):
     text = data.get("text", "")
     image_file_id = data.get("image_file_id")
     buttons = data.get("buttons", [])
+
+    logger.info(
+        "broadcast_preview",
+        admin_id=callback.from_user.id,
+        filter_type=filter_type,
+        buttons_count=len(buttons),
+        buttons_list=[b["text"] for b in buttons] if buttons else [],
+        has_image=bool(image_file_id)
+    )
 
     filter_names = {
         "all": "Все пользователи",
@@ -2213,6 +2246,16 @@ async def confirm_broadcast_send(callback: CallbackQuery, state: FSMContext):
     image_file_id = data.get("image_file_id")
     buttons = data.get("buttons", [])
     filter_type = data.get("filter_type", "all")
+
+    logger.info(
+        "broadcast_confirm_send",
+        admin_id=callback.from_user.id,
+        filter_type=filter_type,
+        buttons_count=len(buttons),
+        buttons_list=[b["text"] for b in buttons] if buttons else [],
+        has_image=bool(image_file_id),
+        text_length=len(text)
+    )
 
     try:
         # Create broadcast record
