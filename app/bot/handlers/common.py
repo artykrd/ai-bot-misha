@@ -415,28 +415,20 @@ async def cmd_luma(message: Message, state):
 
 @router.message(Command("kling"))
 async def cmd_kling(message: Message, state):
-    """Kling command - currently under development."""
-    from app.bot.keyboards.inline import back_to_main_keyboard
+    """Kling command - show Kling choice menu (photo or video)."""
+    from app.bot.keyboards.inline import kling_choice_keyboard
 
     await state.clear()  # Clear any previous state
 
     text = (
         "🎞 **Kling AI**\n\n"
-        "⚠️ **Функционал в разработке**\n\n"
-        "Интеграция с Kling находится в процессе разработки.\n"
-        "Пожалуйста, используйте альтернативные сервисы:\n\n"
-        "**Для видео:**\n"
-        "• 🌊 Veo 3.1\n"
-        "• 🎥 Hailuo\n"
-        "• 📹 Luma Dream Machine\n\n"
-        "**Для изображений:**\n"
-        "• 🍌 Nano Banana (Gemini 2.5 Flash)\n"
-        "• 🍌✨ Banana PRO (Gemini 3 Pro)\n"
-        "• 🖼 DALL·E 3\n\n"
-        "Следите за обновлениями!"
+        "Выберите тип генерации:\n\n"
+        "🌄 **Создать фото** - генерация изображений\n"
+        "🎬 **Создать видео** - генерация видео\n\n"
+        "Kling AI создаёт высококачественный контент с помощью передовых алгоритмов."
     )
 
-    await message.answer(text, reply_markup=back_to_main_keyboard())
+    await message.answer(text, reply_markup=kling_choice_keyboard())
 
 
 @router.message(Command("hailuo"))

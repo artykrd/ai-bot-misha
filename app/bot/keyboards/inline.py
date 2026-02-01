@@ -293,9 +293,6 @@ def create_video_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="📹 Luma", callback_data="bot.luma")
     )
     builder.row(
-        InlineKeyboardButton(text="🗾 Midjourney Video", callback_data="bot.mjvideo")
-    )
-    builder.row(
         InlineKeyboardButton(text="⬅️ В главное меню", callback_data="bot.back")
     )
 

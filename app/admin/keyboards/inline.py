@@ -92,6 +92,7 @@ def user_management_keyboard(user_id: int) -> InlineKeyboardMarkup:
     builder.button(text="💰 Выдать токены", callback_data=f"admin:user_give_tokens:{user_id}")
     builder.button(text="📦 Изменить тариф", callback_data=f"admin:user_tariff:{user_id}")
     builder.button(text="📊 История запросов", callback_data=f"admin:user_requests:{user_id}")
+    builder.button(text="✉️ Отправить сообщение", callback_data=f"admin:user_message:{user_id}")
     builder.button(text="🚫 Забанить", callback_data=f"admin:user_ban:{user_id}")
     builder.button(text="🔙 Назад", callback_data="admin:users")
 
