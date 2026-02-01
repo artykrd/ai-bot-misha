@@ -24,7 +24,11 @@ from app.bot.keyboards.inline import (
     kling_auto_translate_keyboard,
     nano_banana_keyboard,
     nano_format_keyboard,
-    nano_multi_images_keyboard
+    nano_multi_images_keyboard,
+    seedream_keyboard,
+    seedream_size_keyboard,
+    seedream_batch_count_keyboard,
+    seedream_back_keyboard
 )
 from app.bot.states import MediaState
 from app.bot.states.media import KlingSettings
@@ -48,7 +52,7 @@ from app.core.billing_config import (
 )
 from app.core.temp_files import get_temp_file_path, cleanup_temp_file
 from app.services.video import VeoService, SoraService, LumaService, HailuoService, KlingService
-from app.services.image import DalleService, GeminiImageService, StabilityService, RemoveBgService, NanoBananaService, KlingImageService, RecraftService
+from app.services.image import DalleService, GeminiImageService, StabilityService, RemoveBgService, NanoBananaService, KlingImageService, RecraftService, SeedreamService
 from app.services.audio import SunoService, OpenAIAudioService
 from app.services.ai.vision_service import VisionService
 from app.services.subscription.subscription_service import SubscriptionService
@@ -1805,6 +1809,8 @@ async def process_image_prompt(message: Message, state: FSMContext, user: User):
         await process_kling_image(message, user, state)
     elif service_name == "recraft":
         await process_recraft_image(message, user, state)
+    elif service_name == "seedream":
+        await process_seedream_image(message, user, state)
     else:
         await message.answer(
             f"Функция генерации изображений находится в разработке.\n"
@@ -4266,5 +4272,313 @@ async def _process_vision_with_path(message: Message, state: FSMContext, user: U
         await progress_msg.delete()
     else:
         await progress_msg.edit_text(f"❌ Ошибка анализа:\n{result.error}")
+
+    await state.clear()
+
+
+# ======================
+# SEEDREAM HANDLERS
+# ======================
+
+@router.callback_query(F.data == "bot.seedream_4.5")
+async def start_seedream_45(callback: CallbackQuery, state: FSMContext, user: User):
+    """Seedream 4.5 image generation."""
+    await cleanup_temp_images(state)
+    await _show_seedream_menu(callback, state, user, model_version="4.5")
+
+
+@router.callback_query(F.data == "bot.seedream_4.0")
+async def start_seedream_40(callback: CallbackQuery, state: FSMContext, user: User):
+    """Seedream 4.0 image generation."""
+    await cleanup_temp_images(state)
+    await _show_seedream_menu(callback, state, user, model_version="4.0")
+
+
+async def _show_seedream_menu(callback: CallbackQuery, state: FSMContext, user: User, model_version: str = "4.5"):
+    """Show Seedream menu with current settings."""
+    # Get current settings from state
+    data = await state.get_data()
+    current_size = data.get("seedream_size", "2K")
+    batch_mode = data.get("seedream_batch_mode", False)
+    batch_count = data.get("seedream_batch_count", 3)
+
+    # Get billing info
+    billing_key = f"seedream-{model_version}"
+    seedream_billing = get_image_model_billing(billing_key)
+    total_tokens = await get_available_tokens(user.id)
+    tokens_per_image = seedream_billing.tokens_per_generation
+    requests_available = int(total_tokens / tokens_per_image) if total_tokens > 0 else 0
+
+    # Model info
+    model_info = SeedreamService.get_model_info(model_version)
+
+    text = (
+        f"✨ **Seedream {model_version}** — генерация изображений\n\n"
+        f"📝 **Описание:** {model_info['description']}\n\n"
+        f"🎯 **Возможности:**\n"
+    )
+
+    for cap in model_info['capabilities']:
+        text += f"• {cap}\n"
+
+    text += (
+        f"\n⚙️ **Текущие настройки:**\n"
+        f"• Разрешение: {current_size}\n"
+        f"• Пакетная генерация: {'ВКЛ (' + str(batch_count) + ' шт.)' if batch_mode else 'ВЫКЛ'}\n\n"
+        f"💰 **Стоимость:** {format_token_amount(tokens_per_image)} токенов за изображение\n"
+        f"🔹 Токенов хватит на **{requests_available}** изображений\n\n"
+        f"📸 **Отправьте:**\n"
+        f"• Текстовое описание — для генерации по тексту\n"
+        f"• Фото + описание — для генерации по фото"
+    )
+
+    await state.set_state(MediaState.waiting_for_image_prompt)
+    await state.update_data(
+        service="seedream",
+        seedream_version=model_version,
+        seedream_size=current_size,
+        seedream_batch_mode=batch_mode,
+        seedream_batch_count=batch_count,
+        reference_image_path=None,
+        photo_caption_prompt=None
+    )
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=seedream_keyboard(model_version, current_size, batch_mode),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("seedream.settings.size|"))
+async def seedream_size_settings(callback: CallbackQuery, state: FSMContext):
+    """Show Seedream size selection."""
+    model_version = callback.data.split("|")[1]
+    data = await state.get_data()
+    current_size = data.get("seedream_size", "2K")
+
+    text = (
+        f"📐 **Выберите разрешение изображения**\n\n"
+        f"• **2K/4K** — автоматический размер по описанию\n"
+        f"• **1:1, 16:9, 9:16...** — конкретное соотношение сторон\n\n"
+        f"Текущий выбор: **{current_size}**"
+    )
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=seedream_size_keyboard(model_version, current_size),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("seedream.set.size|"))
+async def seedream_set_size(callback: CallbackQuery, state: FSMContext, user: User):
+    """Set Seedream size."""
+    parts = callback.data.split("|")
+    model_version = parts[1]
+    new_size = parts[2]
+
+    await state.update_data(seedream_size=new_size)
+    await callback.answer(f"Разрешение установлено: {new_size}")
+
+    await _show_seedream_menu(callback, state, user, model_version)
+
+
+@router.callback_query(F.data.startswith("seedream.toggle.batch|"))
+async def seedream_toggle_batch(callback: CallbackQuery, state: FSMContext, user: User):
+    """Toggle Seedream batch mode."""
+    parts = callback.data.split("|")
+    model_version = parts[1]
+    action = parts[2]
+
+    new_batch_mode = (action == "on")
+    await state.update_data(seedream_batch_mode=new_batch_mode)
+
+    if new_batch_mode:
+        await callback.answer("Пакетная генерация включена")
+    else:
+        await callback.answer("Пакетная генерация выключена")
+
+    await _show_seedream_menu(callback, state, user, model_version)
+
+
+@router.callback_query(F.data.startswith("seedream.settings.batch_count|"))
+async def seedream_batch_count_settings(callback: CallbackQuery, state: FSMContext):
+    """Show Seedream batch count selection."""
+    model_version = callback.data.split("|")[1]
+    data = await state.get_data()
+    current_count = data.get("seedream_batch_count", 3)
+
+    text = (
+        f"🔢 **Количество изображений в пакете**\n\n"
+        f"При пакетной генерации модель создаст серию связанных изображений на основе вашего запроса.\n\n"
+        f"⚠️ Стоимость = количество × цена за 1 изображение\n\n"
+        f"Текущий выбор: **{current_count} шт.**"
+    )
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=seedream_batch_count_keyboard(model_version, current_count),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("seedream.set.batch_count|"))
+async def seedream_set_batch_count(callback: CallbackQuery, state: FSMContext, user: User):
+    """Set Seedream batch count."""
+    parts = callback.data.split("|")
+    model_version = parts[1]
+    new_count = int(parts[2])
+
+    await state.update_data(seedream_batch_count=new_count)
+    await callback.answer(f"Количество изображений: {new_count}")
+
+    await _show_seedream_menu(callback, state, user, model_version)
+
+
+async def process_seedream_image(message: Message, user: User, state: FSMContext):
+    """Process Seedream image generation."""
+    data = await state.get_data()
+    prompt = data.get("photo_caption_prompt") or message.text
+    model_version = data.get("seedream_version", "4.5")
+    size = data.get("seedream_size", "2K")
+    batch_mode = data.get("seedream_batch_mode", False)
+    batch_count = data.get("seedream_batch_count", 3)
+    reference_image_path = data.get("reference_image_path")
+
+    # Get billing info
+    billing_key = f"seedream-{model_version}"
+    seedream_billing = get_image_model_billing(billing_key)
+
+    # Calculate estimated tokens
+    images_count = batch_count if batch_mode else 1
+    estimated_tokens = seedream_billing.tokens_per_generation * images_count
+
+    # Check and reserve tokens
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+        try:
+            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+        except InsufficientTokensError as e:
+            # Clean up reference image if exists
+            if reference_image_path:
+                cleanup_temp_file(reference_image_path)
+
+            await message.answer(
+                f"❌ Недостаточно токенов для генерации!\n\n"
+                f"Требуется: {format_token_amount(estimated_tokens)} токенов\n"
+                f"Доступно: {format_token_amount(e.details['available'])} токенов\n\n"
+                f"Купите подписку: /start → 💎 Подписка"
+            )
+            await state.clear()
+            return
+
+    # Progress message
+    mode_text = "по фото" if reference_image_path else "по тексту"
+    progress_msg = await message.answer(
+        f"✨ Генерирую {'изображения' if batch_mode else 'изображение'} {mode_text} с Seedream {model_version}..."
+    )
+
+    seedream_service = SeedreamService()
+
+    async def update_progress(text: str):
+        try:
+            await progress_msg.edit_text(text, parse_mode=None)
+        except Exception:
+            pass
+
+    # Generate image(s)
+    result = await seedream_service.generate_image(
+        prompt=prompt,
+        progress_callback=update_progress,
+        model_version=model_version,
+        size=size,
+        reference_image=reference_image_path,
+        batch_mode=batch_mode,
+        max_images=batch_count if batch_mode else 1,
+        watermark=False
+    )
+
+    # Clean up reference image
+    if reference_image_path:
+        cleanup_temp_file(reference_image_path)
+
+    if result.success:
+        tokens_used = result.metadata.get("tokens_used", estimated_tokens)
+        images_count = result.metadata.get("images_count", 1)
+        all_images = result.metadata.get("all_images", [{"path": result.image_path}])
+
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            user_tokens = await sub_service.get_available_tokens(user.id)
+
+        # Send all images
+        for idx, img_info in enumerate(all_images):
+            img_path = img_info.get("path")
+            if not img_path:
+                continue
+
+            try:
+                # Generate caption for this image
+                if idx == len(all_images) - 1:
+                    # Last image - show full info
+                    info_text = format_generation_message(
+                        content_type=CONTENT_TYPES["image"],
+                        model_name=f"Seedream {model_version}",
+                        tokens_used=tokens_used,
+                        user_tokens=user_tokens,
+                        prompt=prompt
+                    )
+                    if images_count > 1:
+                        info_text = f"📸 Изображение {idx + 1}/{images_count}\n\n" + info_text
+
+                    # Create action keyboard
+                    builder = create_action_keyboard(
+                        action_text="✨ Создать новое изображение",
+                        action_callback=f"bot.seedream_{model_version}",
+                        file_path=img_path,
+                        file_type="image"
+                    )
+
+                    photo = FSInputFile(img_path)
+                    await message.answer_photo(
+                        photo=photo,
+                        caption=info_text,
+                        reply_markup=builder.as_markup()
+                    )
+                else:
+                    # Not the last image - simple caption
+                    photo = FSInputFile(img_path)
+                    await message.answer_photo(
+                        photo=photo,
+                        caption=f"📸 Изображение {idx + 1}/{images_count}"
+                    )
+
+            except Exception as send_error:
+                logger.error("seedream_image_send_failed", error=str(send_error), idx=idx)
+                try:
+                    doc_file = FSInputFile(img_path)
+                    await message.answer_document(
+                        document=doc_file,
+                        caption=f"📸 Изображение {idx + 1}/{images_count}"
+                    )
+                except Exception:
+                    pass
+
+        await progress_msg.delete()
+
+    else:
+        # Refund tokens on error
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            await sub_service.refund_tokens(user.id, estimated_tokens)
+
+        await progress_msg.edit_text(
+            f"❌ Ошибка генерации Seedream {model_version}:\n\n{result.error}\n\n"
+            f"💰 Токены возвращены на баланс."
+        )
 
     await state.clear()
