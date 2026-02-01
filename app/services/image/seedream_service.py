@@ -30,8 +30,10 @@ logger = get_logger(__name__)
 
 
 # Model IDs
+# Note: Model IDs have format: seedream-{version}-{release_date}
+# Check https://console.byteplus.com/ark/openManagement for available models
 SEEDREAM_4_5_MODEL = "seedream-4-5-251128"
-SEEDREAM_4_0_MODEL = "seedream-4-0-241114"
+SEEDREAM_4_0_MODEL = "seedream-4-0-250115"  # May need adjustment based on available models
 
 # Available sizes for each model
 SEEDREAM_4_5_SIZES = {
@@ -359,11 +361,23 @@ class SeedreamService(BaseImageProvider):
                     try:
                         import json
                         error_data = json.loads(error_text)
+                        error_code = error_data.get("error", {}).get("code", "")
                         error_message = error_data.get("error", {}).get("message", error_text)
                     except:
+                        error_code = ""
                         error_message = error_text
 
-                    raise Exception(f"Seedream API error {response.status}: {error_message}")
+                    # Handle specific error codes
+                    if response.status == 404 or "NotFound" in error_code:
+                        raise Exception(
+                            f"Модель {model} недоступна. Проверьте, что модель активирована в вашем аккаунте BytePlus."
+                        )
+                    elif "SensitiveContent" in error_code:
+                        raise Exception(
+                            "Изображение содержит запрещённый контент. Попробуйте изменить промпт."
+                        )
+                    else:
+                        raise Exception(f"Seedream API error {response.status}: {error_message}")
 
                 data = await response.json()
 
