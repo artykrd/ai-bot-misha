@@ -37,7 +37,8 @@ from app.admin.states import (
     Broadcast,
     BroadcastWithButtons,
     SearchUser,
-    ManageUserTariff
+    ManageUserTariff,
+    SendUserMessage
 )
 
 logger = get_logger(__name__)
@@ -78,7 +79,7 @@ def safe_text(text: str) -> str:
         "]+", flags=re.UNICODE)
     text = emoji_pattern.sub('', text)
 
-    # Replace problematic characters
+    # Replace problematic characters for Markdown
     replacements = {
         '<': '',
         '>': '',
@@ -93,11 +94,27 @@ def safe_text(text: str) -> str:
         '{': '(',
         '}': ')',
         '|': '-',
+        '\\': '',
     }
     for old, new in replacements.items():
         text = text.replace(old, new)
 
     return text.strip()
+
+
+def escape_markdown(text: str) -> str:
+    """Escape special Markdown characters for safe display."""
+    if not text:
+        return ""
+
+    # Characters that need escaping in MarkdownV2 and Markdown
+    escape_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!', '\\']
+
+    result = str(text)
+    for char in escape_chars:
+        result = result.replace(char, '\\' + char)
+
+    return result
 
 
 # ==================== START COMMAND ====================
@@ -273,13 +290,13 @@ async def user_view_callback(callback: CallbackQuery):
         text = f"👤 Информация о пользователе\n\n"
         text += f"ID: {user['telegram_id']}\n"
         text += f"Имя: {safe_text(user['full_name'])}\n"
-        if safe_text(user['username']):
-            text += f"Username: @{safe_text(safe_text(user['username']))}\n"
+        if user['username']:
+            text += f"Username: @{safe_text(user['username'])}\n"
         text += f"Статус: {'🚫 Забанен' if user['is_banned'] else '✅ Активен'}\n"
         text += f"Токенов: {user['total_tokens']:,}\n"
 
         if user['has_active_subscription']:
-            text += f"\n📦 Подписка: {user['subscription_type']}\n"
+            text += f"\n📦 Подписка: {safe_text(str(user['subscription_type']))}\n"
             if user['subscription_expires_at']:
                 text += f"Истекает: {user['subscription_expires_at'].strftime('%d.%m.%Y %H:%M')}\n"
         else:
@@ -289,7 +306,7 @@ async def user_view_callback(callback: CallbackQuery):
         if user['last_activity']:
             text += f"Последняя активность: {user['last_activity'].strftime('%d.%m.%Y %H:%M')}\n"
 
-        await callback.message.edit_text(text, reply_markup=user_management_keyboard(telegram_id))
+        await callback.message.edit_text(text, reply_markup=user_management_keyboard(telegram_id), parse_mode=None)
         await callback.answer()
 
     except Exception as e:
@@ -317,7 +334,7 @@ async def start_search_user(callback: CallbackQuery, state: FSMContext):
 
 @admin_router.message(StateFilter(SearchUser.waiting_for_query))
 async def process_search_query(message: Message, state: FSMContext):
-    """Process search query."""
+    """Process search query - search by ID, username, or name."""
     if not is_admin(message.from_user.id):
         return
 
@@ -329,25 +346,32 @@ async def process_search_query(message: Message, state: FSMContext):
 
     try:
         async with async_session_maker() as session:
-            # Try to search by telegram_id or username
+            # Try to search by telegram_id first
             if query.isdigit():
                 telegram_id = int(query)
                 result = await session.execute(
                     select(User).where(User.telegram_id == telegram_id)
                 )
             else:
-                # Remove @ if present
-                username = query.lstrip('@')
+                # Remove @ if present and search by username, first_name, or full_name
+                search_term = query.lstrip('@')
                 result = await session.execute(
-                    select(User).where(User.username.ilike(f"%{username}%"))
+                    select(User).where(
+                        or_(
+                            User.username.ilike(f"%{search_term}%"),
+                            User.first_name.ilike(f"%{search_term}%"),
+                            User.full_name.ilike(f"%{search_term}%")
+                        )
+                    ).limit(50)
                 )
 
             users = result.scalars().all()
 
             if not users:
                 await message.answer(
-                    "❌ Пользователи не найдены.",
-                    reply_markup=back_keyboard()
+                    "❌ Пользователи не найдены.\n\nПопробуйте:\n• Telegram ID (число)\n• Username (без @)\n• Имя пользователя",
+                    reply_markup=back_keyboard(),
+                    parse_mode=None
                 )
             elif len(users) == 1:
                 # Show single user directly
@@ -358,20 +382,20 @@ async def process_search_query(message: Message, state: FSMContext):
 
                 text = f"👤 Найден пользователь\n\n"
                 text += f"ID: {stats['telegram_id']}\n"
-                text += f"Имя: {stats['full_name']}\n"
+                text += f"Имя: {safe_text(stats['full_name'])}\n"
                 if stats['username']:
-                    text += f"Username: @{stats['username']}\n"
+                    text += f"Username: @{safe_text(stats['username'])}\n"
                 text += f"Статус: {'🚫 Забанен' if stats['is_banned'] else '✅ Активен'}\n"
                 text += f"Токенов: {stats['total_tokens']:,}\n"
 
                 if stats['has_active_subscription']:
-                    text += f"\n📦 Подписка: {stats['subscription_type']}\n"
+                    text += f"\n📦 Подписка: {safe_text(str(stats['subscription_type']))}\n"
                     if stats['subscription_expires_at']:
                         text += f"Истекает: {stats['subscription_expires_at'].strftime('%d.%m.%Y %H:%M')}\n"
                 else:
                     text += f"\n📦 Подписка: Нет активной\n"
 
-                await message.answer(text, reply_markup=user_management_keyboard(user.telegram_id))
+                await message.answer(text, reply_markup=user_management_keyboard(user.telegram_id), parse_mode=None)
             else:
                 # Show list of found users
                 text = f"🔍 Найдено пользователей: {len(users)}\n\n"
@@ -379,7 +403,7 @@ async def process_search_query(message: Message, state: FSMContext):
                 builder = InlineKeyboardBuilder()
 
                 for user in users[:20]:  # Limit to 20
-                    button_text = f"{safe_text(user.full_name)} (ID: {user.telegram_id})"
+                    button_text = f"{safe_text(user.full_name or 'Без имени')} (ID: {user.telegram_id})"
                     builder.button(
                         text=button_text[:64],
                         callback_data=f"admin:user_view:{user.telegram_id}"
@@ -388,7 +412,7 @@ async def process_search_query(message: Message, state: FSMContext):
                 builder.button(text="🔙 Назад", callback_data="admin:users")
                 builder.adjust(1)
 
-                await message.answer(text, reply_markup=builder.as_markup())
+                await message.answer(text, reply_markup=builder.as_markup(), parse_mode=None)
 
     except Exception as e:
         logger.error("admin_search_error", error=str(e))
@@ -443,16 +467,16 @@ async def user_details_callback(callback: CallbackQuery):
             text += f"Имя: {safe_text(user.full_name)}\n"
             if user.username:
                 text += f"Username: @{safe_text(user.username)}\n"
-            text += f"Язык: {user.language_code}\n"
+            text += f"Язык: {user.language_code or 'не указан'}\n"
             text += f"Статус: {'🚫 Забанен' if user.is_banned else '✅ Активен'}\n"
             if user.is_banned and user.ban_reason:
-                text += f"Причина бана: {user.ban_reason}\n"
+                text += f"Причина бана: {safe_text(user.ban_reason)}\n"
 
             text += f"\n💎 Токенов всего: {user.get_total_tokens():,}\n"
 
             if active_sub:
                 text += f"\n📦 Активная подписка:\n"
-                text += f"   Тип: {active_sub.subscription_type}\n"
+                text += f"   Тип: {safe_text(str(active_sub.subscription_type))}\n"
                 text += f"   Токенов: {active_sub.tokens_remaining:,} из {active_sub.tokens_amount:,}\n"
                 if active_sub.expires_at:
                     text += f"   Истекает: {active_sub.expires_at.strftime('%d.%m.%Y %H:%M')}\n"
@@ -470,7 +494,7 @@ async def user_details_callback(callback: CallbackQuery):
             if user.last_activity:
                 text += f"Последняя активность: {user.last_activity.strftime('%d.%m.%Y %H:%M')}\n"
 
-            await callback.message.edit_text(text, reply_markup=user_management_keyboard(telegram_id))
+            await callback.message.edit_text(text, reply_markup=user_management_keyboard(telegram_id), parse_mode=None)
             await callback.answer()
 
     except Exception as e:
@@ -582,6 +606,92 @@ async def user_ban_shortcut(callback: CallbackQuery, state: FSMContext):
         reply_markup=cancel_keyboard()
     )
     await callback.answer()
+
+
+# ==================== SEND MESSAGE TO USER ====================
+
+@admin_router.callback_query(F.data.startswith("admin:user_message:"))
+async def start_user_message(callback: CallbackQuery, state: FSMContext):
+    """Start sending message to specific user."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    telegram_id = int(callback.data.split(":")[-1])
+    await state.update_data(target_user_id=telegram_id)
+    await state.set_state(SendUserMessage.waiting_for_message)
+
+    await callback.message.edit_text(
+        f"✉️ Отправка сообщения пользователю\n"
+        f"User ID: {telegram_id}\n\n"
+        "Введите текст сообщения:\n\n"
+        "💡 Можете прикрепить фото к сообщению.",
+        reply_markup=cancel_keyboard()
+    )
+    await callback.answer()
+
+
+@admin_router.message(StateFilter(SendUserMessage.waiting_for_message))
+async def process_user_message(message: Message, state: FSMContext):
+    """Process and send message to specific user."""
+    if not is_admin(message.from_user.id):
+        return
+
+    from aiogram import Bot
+    from aiogram.client.default import DefaultBotProperties
+
+    data = await state.get_data()
+    target_user_id = data.get("target_user_id")
+
+    if not target_user_id:
+        await message.answer("❌ Ошибка: ID пользователя не найден", reply_markup=back_keyboard())
+        await state.clear()
+        return
+
+    try:
+        # Create main bot without default parse_mode
+        main_bot = Bot(token=settings.telegram_bot_token, default=DefaultBotProperties())
+
+        # Check if message has photo
+        if message.photo:
+            photo = message.photo[-1]
+            caption = message.caption or ""
+            await main_bot.send_photo(
+                chat_id=target_user_id,
+                photo=photo.file_id,
+                caption=caption,
+                parse_mode=None
+            )
+        else:
+            await main_bot.send_message(
+                chat_id=target_user_id,
+                text=message.text,
+                parse_mode=None
+            )
+
+        await main_bot.session.close()
+
+        logger.info(
+            "admin_user_message_sent",
+            admin_id=message.from_user.id,
+            target_user_id=target_user_id,
+            has_photo=bool(message.photo)
+        )
+
+        await message.answer(
+            f"✅ Сообщение отправлено пользователю {target_user_id}!",
+            reply_markup=back_keyboard()
+        )
+
+    except Exception as e:
+        error_msg = str(e)
+        logger.error("admin_user_message_error", target_user_id=target_user_id, error=error_msg)
+        await message.answer(
+            f"❌ Ошибка отправки: {error_msg}",
+            reply_markup=back_keyboard()
+        )
+
+    await state.clear()
 
 
 @admin_router.callback_query(F.data.startswith("admin:user_tariff:"))
@@ -1652,9 +1762,10 @@ async def process_broadcast_message(message: Message, state: FSMContext):
     filter_type = data.get('broadcast_filter', 'all')
 
     try:
-        # Get main bot instance
+        # Get main bot instance - without default parse_mode to avoid Markdown issues
         from app.core.config import settings
-        main_bot = Bot(token=settings.telegram_bot_token)
+        from aiogram.client.default import DefaultBotProperties
+        main_bot = Bot(token=settings.telegram_bot_token, default=DefaultBotProperties())
 
         async with async_session_maker() as session:
             # Build query based on filter
@@ -1693,7 +1804,8 @@ async def process_broadcast_message(message: Message, state: FSMContext):
                 try:
                     await main_bot.send_message(
                         chat_id=user.telegram_id,
-                        text=broadcast_text
+                        text=broadcast_text,
+                        parse_mode=None
                     )
                     success_count += 1
                 except Exception as e:
@@ -2272,8 +2384,9 @@ async def confirm_broadcast_send(callback: CallbackQuery, state: FSMContext):
             # Get recipients
             recipients = await get_recipients(session, filter_type)
 
-        # Send broadcast
-        main_bot = Bot(token=settings.telegram_bot_token)
+        # Send broadcast - create bot without default parse_mode to avoid Markdown issues
+        from aiogram.client.default import DefaultBotProperties
+        main_bot = Bot(token=settings.telegram_bot_token, default=DefaultBotProperties())
         keyboard = build_user_broadcast_keyboard(buttons) if buttons else None
 
         total_users = len(recipients)
@@ -2291,13 +2404,15 @@ async def confirm_broadcast_send(callback: CallbackQuery, state: FSMContext):
                         chat_id=user.telegram_id,
                         photo=image_file_id,
                         caption=text,
-                        reply_markup=keyboard
+                        reply_markup=keyboard,
+                        parse_mode=None
                     )
                 else:
                     await main_bot.send_message(
                         chat_id=user.telegram_id,
                         text=text,
-                        reply_markup=keyboard
+                        reply_markup=keyboard,
+                        parse_mode=None
                     )
                 success_count += 1
             except Exception as e:

@@ -59,3 +59,8 @@ class BroadcastWithButtons(StatesGroup):
     waiting_for_buttons = State()
     waiting_for_filter = State()
     waiting_for_confirmation = State()
+
+
+class SendUserMessage(StatesGroup):
+    """States for sending message to specific user."""
+    waiting_for_message = State()
