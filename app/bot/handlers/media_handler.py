@@ -4284,18 +4284,11 @@ async def _process_vision_with_path(message: Message, state: FSMContext, user: U
 async def start_seedream_45(callback: CallbackQuery, state: FSMContext, user: User):
     """Seedream 4.5 image generation."""
     await cleanup_temp_images(state)
-    await _show_seedream_menu(callback, state, user, model_version="4.5")
+    await _show_seedream_menu(callback, state, user)
 
 
-@router.callback_query(F.data == "bot.seedream_4.0")
-async def start_seedream_40(callback: CallbackQuery, state: FSMContext, user: User):
-    """Seedream 4.0 image generation."""
-    await cleanup_temp_images(state)
-    await _show_seedream_menu(callback, state, user, model_version="4.0")
-
-
-async def _show_seedream_menu(callback: CallbackQuery, state: FSMContext, user: User, model_version: str = "4.5"):
-    """Show Seedream menu with current settings."""
+async def _show_seedream_menu(callback: CallbackQuery, state: FSMContext, user: User):
+    """Show Seedream 4.5 menu with current settings."""
     # Get current settings from state
     data = await state.get_data()
     current_size = data.get("seedream_size", "2K")
@@ -4303,17 +4296,16 @@ async def _show_seedream_menu(callback: CallbackQuery, state: FSMContext, user: 
     batch_count = data.get("seedream_batch_count", 3)
 
     # Get billing info
-    billing_key = f"seedream-{model_version}"
-    seedream_billing = get_image_model_billing(billing_key)
+    seedream_billing = get_image_model_billing("seedream-4.5")
     total_tokens = await get_available_tokens(user.id)
     tokens_per_image = seedream_billing.tokens_per_generation
     requests_available = int(total_tokens / tokens_per_image) if total_tokens > 0 else 0
 
     # Model info
-    model_info = SeedreamService.get_model_info(model_version)
+    model_info = SeedreamService.get_model_info()
 
     text = (
-        f"✨ **Seedream {model_version}** — генерация изображений\n\n"
+        f"✨ **Seedream 4.5** — генерация изображений\n\n"
         f"📝 **Описание:** {model_info['description']}\n\n"
         f"🎯 **Возможности:**\n"
     )
@@ -4335,7 +4327,7 @@ async def _show_seedream_menu(callback: CallbackQuery, state: FSMContext, user: 
     await state.set_state(MediaState.waiting_for_image_prompt)
     await state.update_data(
         service="seedream",
-        seedream_version=model_version,
+        seedream_version="4.5",
         seedream_size=current_size,
         seedream_batch_mode=batch_mode,
         seedream_batch_count=batch_count,
@@ -4349,29 +4341,28 @@ async def _show_seedream_menu(callback: CallbackQuery, state: FSMContext, user: 
             # Message is a photo - send new message instead of editing
             await callback.message.answer(
                 text,
-                reply_markup=seedream_keyboard(model_version, current_size, batch_mode),
+                reply_markup=seedream_keyboard(current_size, batch_mode),
                 parse_mode="Markdown"
             )
         else:
             await callback.message.edit_text(
                 text,
-                reply_markup=seedream_keyboard(model_version, current_size, batch_mode),
+                reply_markup=seedream_keyboard(current_size, batch_mode),
                 parse_mode="Markdown"
             )
     except Exception:
         # Fallback: send new message if edit fails
         await callback.message.answer(
             text,
-            reply_markup=seedream_keyboard(model_version, current_size, batch_mode),
+            reply_markup=seedream_keyboard(current_size, batch_mode),
             parse_mode="Markdown"
         )
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("seedream.settings.size|"))
+@router.callback_query(F.data == "seedream.settings.size")
 async def seedream_size_settings(callback: CallbackQuery, state: FSMContext):
     """Show Seedream size selection."""
-    model_version = callback.data.split("|")[1]
     data = await state.get_data()
     current_size = data.get("seedream_size", "2K")
 
@@ -4384,7 +4375,7 @@ async def seedream_size_settings(callback: CallbackQuery, state: FSMContext):
 
     await callback.message.edit_text(
         text,
-        reply_markup=seedream_size_keyboard(model_version, current_size),
+        reply_markup=seedream_size_keyboard(current_size),
         parse_mode="Markdown"
     )
     await callback.answer()
@@ -4394,21 +4385,19 @@ async def seedream_size_settings(callback: CallbackQuery, state: FSMContext):
 async def seedream_set_size(callback: CallbackQuery, state: FSMContext, user: User):
     """Set Seedream size."""
     parts = callback.data.split("|")
-    model_version = parts[1]
-    new_size = parts[2]
+    new_size = parts[1]
 
     await state.update_data(seedream_size=new_size)
     await callback.answer(f"Разрешение установлено: {new_size}")
 
-    await _show_seedream_menu(callback, state, user, model_version)
+    await _show_seedream_menu(callback, state, user)
 
 
 @router.callback_query(F.data.startswith("seedream.toggle.batch|"))
 async def seedream_toggle_batch(callback: CallbackQuery, state: FSMContext, user: User):
     """Toggle Seedream batch mode."""
     parts = callback.data.split("|")
-    model_version = parts[1]
-    action = parts[2]
+    action = parts[1]
 
     new_batch_mode = (action == "on")
     await state.update_data(seedream_batch_mode=new_batch_mode)
@@ -4418,13 +4407,12 @@ async def seedream_toggle_batch(callback: CallbackQuery, state: FSMContext, user
     else:
         await callback.answer("Пакетная генерация выключена")
 
-    await _show_seedream_menu(callback, state, user, model_version)
+    await _show_seedream_menu(callback, state, user)
 
 
-@router.callback_query(F.data.startswith("seedream.settings.batch_count|"))
+@router.callback_query(F.data == "seedream.settings.batch_count")
 async def seedream_batch_count_settings(callback: CallbackQuery, state: FSMContext):
     """Show Seedream batch count selection."""
-    model_version = callback.data.split("|")[1]
     data = await state.get_data()
     current_count = data.get("seedream_batch_count", 3)
 
@@ -4437,7 +4425,7 @@ async def seedream_batch_count_settings(callback: CallbackQuery, state: FSMConte
 
     await callback.message.edit_text(
         text,
-        reply_markup=seedream_batch_count_keyboard(model_version, current_count),
+        reply_markup=seedream_batch_count_keyboard(current_count),
         parse_mode="Markdown"
     )
     await callback.answer()
@@ -4447,28 +4435,25 @@ async def seedream_batch_count_settings(callback: CallbackQuery, state: FSMConte
 async def seedream_set_batch_count(callback: CallbackQuery, state: FSMContext, user: User):
     """Set Seedream batch count."""
     parts = callback.data.split("|")
-    model_version = parts[1]
-    new_count = int(parts[2])
+    new_count = int(parts[1])
 
     await state.update_data(seedream_batch_count=new_count)
     await callback.answer(f"Количество изображений: {new_count}")
 
-    await _show_seedream_menu(callback, state, user, model_version)
+    await _show_seedream_menu(callback, state, user)
 
 
 async def process_seedream_image(message: Message, user: User, state: FSMContext):
-    """Process Seedream image generation."""
+    """Process Seedream 4.5 image generation."""
     data = await state.get_data()
     prompt = data.get("photo_caption_prompt") or message.text
-    model_version = data.get("seedream_version", "4.5")
     size = data.get("seedream_size", "2K")
     batch_mode = data.get("seedream_batch_mode", False)
     batch_count = data.get("seedream_batch_count", 3)
     reference_image_path = data.get("reference_image_path")
 
     # Get billing info
-    billing_key = f"seedream-{model_version}"
-    seedream_billing = get_image_model_billing(billing_key)
+    seedream_billing = get_image_model_billing("seedream-4.5")
 
     # Calculate estimated tokens
     images_count = batch_count if batch_mode else 1
@@ -4496,7 +4481,7 @@ async def process_seedream_image(message: Message, user: User, state: FSMContext
     # Progress message
     mode_text = "по фото" if reference_image_path else "по тексту"
     progress_msg = await message.answer(
-        f"✨ Генерирую {'изображения' if batch_mode else 'изображение'} {mode_text} с Seedream {model_version}..."
+        f"✨ Генерирую {'изображения' if batch_mode else 'изображение'} {mode_text} с Seedream 4.5..."
     )
 
     seedream_service = SeedreamService()
@@ -4511,7 +4496,6 @@ async def process_seedream_image(message: Message, user: User, state: FSMContext
     result = await seedream_service.generate_image(
         prompt=prompt,
         progress_callback=update_progress,
-        model_version=model_version,
         size=size,
         reference_image=reference_image_path,
         batch_mode=batch_mode,
@@ -4544,7 +4528,7 @@ async def process_seedream_image(message: Message, user: User, state: FSMContext
                     # Last image - show full info
                     info_text = format_generation_message(
                         content_type=CONTENT_TYPES["image"],
-                        model_name=f"Seedream {model_version}",
+                        model_name="Seedream 4.5",
                         tokens_used=tokens_used,
                         user_tokens=user_tokens,
                         prompt=prompt
@@ -4555,7 +4539,7 @@ async def process_seedream_image(message: Message, user: User, state: FSMContext
                     # Create action keyboard
                     builder = create_action_keyboard(
                         action_text="✨ Создать новое изображение",
-                        action_callback=f"bot.seedream_{model_version}",
+                        action_callback="bot.seedream_4.5",
                         file_path=img_path,
                         file_type="image"
                     )
@@ -4594,7 +4578,7 @@ async def process_seedream_image(message: Message, user: User, state: FSMContext
             await sub_service.add_eternal_tokens(user.id, estimated_tokens, "refund")
 
         await progress_msg.edit_text(
-            f"❌ Ошибка генерации Seedream {model_version}:\n\n{result.error}\n\n"
+            f"❌ Ошибка генерации Seedream 4.5:\n\n{result.error}\n\n"
             f"💰 Токены возвращены на баланс."
         )
 
