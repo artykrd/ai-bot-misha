@@ -4343,11 +4343,28 @@ async def _show_seedream_menu(callback: CallbackQuery, state: FSMContext, user: 
         photo_caption_prompt=None
     )
 
-    await callback.message.edit_text(
-        text,
-        reply_markup=seedream_keyboard(model_version, current_size, batch_mode),
-        parse_mode="Markdown"
-    )
+    # Check if message has photo (can't edit_text on photo messages)
+    try:
+        if callback.message.photo:
+            # Message is a photo - send new message instead of editing
+            await callback.message.answer(
+                text,
+                reply_markup=seedream_keyboard(model_version, current_size, batch_mode),
+                parse_mode="Markdown"
+            )
+        else:
+            await callback.message.edit_text(
+                text,
+                reply_markup=seedream_keyboard(model_version, current_size, batch_mode),
+                parse_mode="Markdown"
+            )
+    except Exception:
+        # Fallback: send new message if edit fails
+        await callback.message.answer(
+            text,
+            reply_markup=seedream_keyboard(model_version, current_size, batch_mode),
+            parse_mode="Markdown"
+        )
     await callback.answer()
 
 
@@ -4574,7 +4591,7 @@ async def process_seedream_image(message: Message, user: User, state: FSMContext
         # Refund tokens on error
         async with async_session_maker() as session:
             sub_service = SubscriptionService(session)
-            await sub_service.refund_tokens(user.id, estimated_tokens)
+            await sub_service.add_eternal_tokens(user.id, estimated_tokens, "refund")
 
         await progress_msg.edit_text(
             f"❌ Ошибка генерации Seedream {model_version}:\n\n{result.error}\n\n"
