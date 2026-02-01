@@ -8,6 +8,7 @@ from app.services.image.gemini_image_service import GeminiImageService
 from app.services.image.nano_banana_service import NanoBananaService
 from app.services.image.kling_image_service import KlingImageService
 from app.services.image.recraft_service import RecraftService
+from app.services.image.seedream_service import SeedreamService
 
 __all__ = [
     "RemoveBgService",
@@ -16,5 +17,6 @@ __all__ = [
     "GeminiImageService",
     "NanoBananaService",
     "KlingImageService",
-    "RecraftService"
+    "RecraftService",
+    "SeedreamService"
 ]

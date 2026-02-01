@@ -264,6 +264,10 @@ def create_photo_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🎨 Recraft", callback_data="bot.recraft")
     )
     builder.row(
+        InlineKeyboardButton(text="✨ Seedream 4.5", callback_data="bot.seedream_4.5"),
+        InlineKeyboardButton(text="🌟 Seedream 4.0", callback_data="bot.seedream_4.0")
+    )
+    builder.row(
         InlineKeyboardButton(text="🖌 Stable Diffusion", callback_data="bot_stable_diffusion"),
         InlineKeyboardButton(text="🎞 Kling AI", callback_data="bot.kling_image")
     )
@@ -854,5 +858,167 @@ def suno_final_keyboard() -> InlineKeyboardMarkup:
     )
     builder.row(
         InlineKeyboardButton(text="⬅️ Вернуться к Suno", callback_data="bot.suno")
+    )
+    return builder.as_markup()
+
+
+# =============================================
+# SEEDREAM KEYBOARDS
+# =============================================
+
+def seedream_keyboard(model_version: str = "4.5", current_size: str = "2K", batch_mode: bool = False) -> InlineKeyboardMarkup:
+    """Seedream main keyboard with settings."""
+    builder = InlineKeyboardBuilder()
+
+    # Size selection
+    builder.row(
+        InlineKeyboardButton(
+            text=f"📐 Разрешение: {current_size}",
+            callback_data=f"seedream.settings.size|{model_version}"
+        )
+    )
+
+    # Batch mode toggle
+    if batch_mode:
+        builder.row(
+            InlineKeyboardButton(
+                text="📦 Пакетная генерация: ВКЛ",
+                callback_data=f"seedream.toggle.batch|{model_version}|off"
+            )
+        )
+        builder.row(
+            InlineKeyboardButton(
+                text="🔢 Количество изображений",
+                callback_data=f"seedream.settings.batch_count|{model_version}"
+            )
+        )
+    else:
+        builder.row(
+            InlineKeyboardButton(
+                text="📦 Пакетная генерация: ВЫКЛ",
+                callback_data=f"seedream.toggle.batch|{model_version}|on"
+            )
+        )
+
+    # Switch version
+    if model_version == "4.5":
+        builder.row(
+            InlineKeyboardButton(
+                text="🔄 Переключить на Seedream 4.0",
+                callback_data="bot.seedream_4.0"
+            )
+        )
+    else:
+        builder.row(
+            InlineKeyboardButton(
+                text="🔄 Переключить на Seedream 4.5",
+                callback_data="bot.seedream_4.5"
+            )
+        )
+
+    builder.row(
+        InlineKeyboardButton(text="⬅️ В главное меню", callback_data="bot.back")
+    )
+
+    return builder.as_markup()
+
+
+def seedream_size_keyboard(model_version: str = "4.5", current_size: str = "2K") -> InlineKeyboardMarkup:
+    """Seedream size selection keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    # Different sizes for different models
+    if model_version == "4.5":
+        sizes = [
+            ("2K", "2K"),
+            ("4K", "4K"),
+            ("1:1", "1:1"),
+            ("4:3", "4:3"),
+            ("3:4", "3:4"),
+            ("16:9", "16:9"),
+            ("9:16", "9:16"),
+        ]
+    else:  # 4.0
+        sizes = [
+            ("1K", "1K"),
+            ("2K", "2K"),
+            ("4K", "4K"),
+            ("1:1", "1:1"),
+            ("4:3", "4:3"),
+            ("3:4", "3:4"),
+            ("16:9", "16:9"),
+            ("9:16", "9:16"),
+        ]
+
+    # Add checkmark to current size
+    def format_button_text(size: str) -> str:
+        return f"✅ {size}" if size == current_size else size
+
+    # Build in rows of 3
+    for i in range(0, len(sizes), 3):
+        row_buttons = []
+        for j in range(3):
+            if i + j < len(sizes):
+                size_name, size_value = sizes[i + j]
+                row_buttons.append(
+                    InlineKeyboardButton(
+                        text=format_button_text(size_name),
+                        callback_data=f"seedream.set.size|{model_version}|{size_value}"
+                    )
+                )
+        builder.row(*row_buttons)
+
+    builder.row(
+        InlineKeyboardButton(
+            text="⬅️ Назад к Seedream",
+            callback_data=f"bot.seedream_{model_version}"
+        )
+    )
+
+    return builder.as_markup()
+
+
+def seedream_batch_count_keyboard(model_version: str = "4.5", current_count: int = 3) -> InlineKeyboardMarkup:
+    """Seedream batch image count selection keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    counts = [2, 3, 4, 5, 6, 8, 10, 15]
+
+    def format_button_text(count: int) -> str:
+        text = f"{count} шт."
+        return f"✅ {text}" if count == current_count else text
+
+    # Build in rows of 4
+    for i in range(0, len(counts), 4):
+        row_buttons = []
+        for j in range(4):
+            if i + j < len(counts):
+                count = counts[i + j]
+                row_buttons.append(
+                    InlineKeyboardButton(
+                        text=format_button_text(count),
+                        callback_data=f"seedream.set.batch_count|{model_version}|{count}"
+                    )
+                )
+        builder.row(*row_buttons)
+
+    builder.row(
+        InlineKeyboardButton(
+            text="⬅️ Назад к Seedream",
+            callback_data=f"bot.seedream_{model_version}"
+        )
+    )
+
+    return builder.as_markup()
+
+
+def seedream_back_keyboard(model_version: str = "4.5") -> InlineKeyboardMarkup:
+    """Simple back to Seedream keyboard."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text="⬅️ Назад к Seedream",
+            callback_data=f"bot.seedream_{model_version}"
+        )
     )
     return builder.as_markup()
