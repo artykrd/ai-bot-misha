@@ -65,7 +65,8 @@ class Settings(BaseSettings):
     kling_secret_key: Optional[str] = Field(None, description="Kling AI secret key for official API")
     aimlapi_key: Optional[str] = Field(None, description="AI/ML API unified key (fallback for multiple services)")
     removebg_api_key: Optional[str] = Field(None, description="Remove.bg API key")
-    ark_api_key: Optional[str] = Field(None, description="BytePlus/ByteDance ARK API key for Seedream")
+    ark_api_key: Optional[str] = Field(None, description="BytePlus ARK API key for Seedream")
+    seedream_endpoint_id: Optional[str] = Field(None, description="BytePlus Seedream customized inference endpoint ID")
 
     # =====================================
     # GOOGLE CLOUD / VERTEX AI

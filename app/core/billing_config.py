@@ -198,12 +198,6 @@ IMAGE_MODELS: Dict[str, FixedModelBilling] = {
         description_suffix="Стоимость генерации: 19 300 токенов за изображение",
         model_type=ModelType.IMAGE
     ),
-    "seedream-4.0": FixedModelBilling(
-        tokens_per_generation=14500,
-        display_name="Seedream 4.0",
-        description_suffix="Стоимость генерации: 14 500 токенов за изображение",
-        model_type=ModelType.IMAGE
-    ),
 }
 
 

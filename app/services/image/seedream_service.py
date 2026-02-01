@@ -2,9 +2,8 @@
 Seedream AI image generation service (ByteDance).
 Documentation: https://docs.byteplus.com/en/docs/ModelArk/1666945
 
-Models:
+Model:
 - seedream-4-5-251128 (Seedream 4.5) - Latest version with best quality
-- seedream-4-0-241114 (Seedream 4.0) - Previous generation
 
 Features:
 - Text-to-Image generation
@@ -13,6 +12,8 @@ Features:
 - Multiple resolution options (2K, 4K, custom sizes)
 - Streaming support
 - Watermark control
+
+Uses customized inference endpoint for API calls.
 """
 import time
 import base64
@@ -29,28 +30,13 @@ from app.services.image.base import BaseImageProvider, ImageResponse
 logger = get_logger(__name__)
 
 
-# Model IDs
+# Model ID
 # Note: Model IDs have format: seedream-{version}-{release_date}
 # Check https://console.byteplus.com/ark/openManagement for available models
-SEEDREAM_4_5_MODEL = "seedream-4-5-251128"
-SEEDREAM_4_0_MODEL = "seedream-4-0-250115"  # May need adjustment based on available models
+SEEDREAM_MODEL = "seedream-4-5-251128"
 
-# Available sizes for each model
-SEEDREAM_4_5_SIZES = {
-    "2K": "2K",
-    "4K": "4K",
-    "1:1": "2048x2048",
-    "4:3": "2304x1728",
-    "3:4": "1728x2304",
-    "16:9": "2560x1440",
-    "9:16": "1440x2560",
-    "3:2": "2496x1664",
-    "2:3": "1664x2496",
-    "21:9": "3024x1296",
-}
-
-SEEDREAM_4_0_SIZES = {
-    "1K": "1K",
+# Available sizes for Seedream 4.5
+SEEDREAM_SIZES = {
     "2K": "2K",
     "4K": "4K",
     "1:1": "2048x2048",
@@ -76,15 +62,19 @@ class SeedreamService(BaseImageProvider):
 
     Pricing (in tokens):
     - Seedream 4.5: 19,300 tokens per image
-    - Seedream 4.0: 14,500 tokens per image
+
+    Uses customized inference endpoint (not preset endpoint).
     """
 
     BASE_URL = "https://ark.ap-southeast.bytepluses.com/api/v3"
 
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, endpoint_id: Optional[str] = None):
         super().__init__(api_key or getattr(settings, 'ark_api_key', None))
+        self.endpoint_id = endpoint_id or getattr(settings, 'seedream_endpoint_id', None)
         if not self.api_key:
             logger.warning("ark_api_key_missing", message="ARK_API_KEY not configured")
+        if not self.endpoint_id:
+            logger.warning("seedream_endpoint_id_missing", message="SEEDREAM_ENDPOINT_ID not configured")
 
     async def generate_image(
         self,
@@ -99,7 +89,6 @@ class SeedreamService(BaseImageProvider):
             prompt: Text description for image generation
             progress_callback: Optional async callback for progress updates
             **kwargs: Additional parameters:
-                - model_version: "4.5" or "4.0" (default: "4.5")
                 - size: Image size (default: "2K")
                 - reference_image: Optional reference image path or URL
                 - reference_images: Optional list of reference images
@@ -120,9 +109,15 @@ class SeedreamService(BaseImageProvider):
                 processing_time=time.time() - start_time
             )
 
+        if not self.endpoint_id:
+            return ImageResponse(
+                success=False,
+                error="Seedream endpoint не настроен. Добавьте SEEDREAM_ENDPOINT_ID в .env файл.",
+                processing_time=time.time() - start_time
+            )
+
         try:
             # Get parameters
-            model_version = kwargs.get("model_version", "4.5")
             size = kwargs.get("size", "2K")
             reference_image = kwargs.get("reference_image")
             reference_images = kwargs.get("reference_images", [])
@@ -131,22 +126,16 @@ class SeedreamService(BaseImageProvider):
             max_images = kwargs.get("max_images", 1)
             optimize_prompt = kwargs.get("optimize_prompt")
 
-            # Select model
-            if model_version == "4.5":
-                model_id = SEEDREAM_4_5_MODEL
-                sizes_map = SEEDREAM_4_5_SIZES
-                billing_key = "seedream-4.5"
-            else:
-                model_id = SEEDREAM_4_0_MODEL
-                sizes_map = SEEDREAM_4_0_SIZES
-                billing_key = "seedream-4.0"
+            # Use Seedream 4.5 model
+            model_id = SEEDREAM_MODEL
+            billing_key = "seedream-4.5"
 
             # Resolve size
-            resolved_size = sizes_map.get(size, size)
+            resolved_size = SEEDREAM_SIZES.get(size, size)
 
             if progress_callback:
                 mode_text = "по фото" if reference_image or reference_images else "по тексту"
-                await progress_callback(f"🎨 Генерирую изображение {mode_text} с Seedream {model_version}...")
+                await progress_callback(f"🎨 Генерирую изображение {mode_text} с Seedream 4.5...")
 
             # Prepare reference images
             images_data = []
@@ -230,7 +219,7 @@ class SeedreamService(BaseImageProvider):
                 metadata={
                     "provider": "seedream",
                     "model": model_id,
-                    "model_version": model_version,
+                    "model_version": "4.5",
                     "size": resolved_size,
                     "prompt": prompt,
                     "images_count": len(saved_images),
@@ -308,12 +297,14 @@ class SeedreamService(BaseImageProvider):
         """
         Call Seedream API to generate image.
 
-        API Endpoint: POST /images/generations
+        API Endpoint: POST /api/v3/inference/{endpoint_id}/images/generations
+        Uses customized inference endpoint (not preset endpoint).
 
         Returns:
             API response with image data
         """
-        url = f"{self.BASE_URL}/images/generations"
+        # Use customized inference endpoint URL
+        url = f"{self.BASE_URL}/inference/{self.endpoint_id}/images/generations"
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -422,46 +413,26 @@ class SeedreamService(BaseImageProvider):
         )
 
     @staticmethod
-    def get_available_sizes(model_version: str = "4.5") -> dict:
-        """Get available sizes for a model version."""
-        if model_version == "4.5":
-            return SEEDREAM_4_5_SIZES
-        return SEEDREAM_4_0_SIZES
+    def get_available_sizes() -> dict:
+        """Get available sizes for Seedream 4.5."""
+        return SEEDREAM_SIZES
 
     @staticmethod
-    def get_model_info(model_version: str = "4.5") -> dict:
+    def get_model_info() -> dict:
         """Get model information including capabilities and pricing."""
-        if model_version == "4.5":
-            return {
-                "id": SEEDREAM_4_5_MODEL,
-                "name": "Seedream 4.5",
-                "description": "Последняя версия с лучшим качеством генерации",
-                "capabilities": [
-                    "Генерация по тексту",
-                    "Генерация по фото + текст",
-                    "Смешивание нескольких фото (2-14)",
-                    "Пакетная генерация (до 15 изображений)",
-                    "Разрешение 2K и 4K"
-                ],
-                "tokens_per_image": 19300,
-                "max_reference_images": 14,
-                "max_batch_images": 15,
-                "sizes": list(SEEDREAM_4_5_SIZES.keys())
-            }
-        else:
-            return {
-                "id": SEEDREAM_4_0_MODEL,
-                "name": "Seedream 4.0",
-                "description": "Стабильная версия с отличным качеством",
-                "capabilities": [
-                    "Генерация по тексту",
-                    "Генерация по фото + текст",
-                    "Смешивание нескольких фото (2-14)",
-                    "Пакетная генерация (до 15 изображений)",
-                    "Разрешение 1K, 2K и 4K"
-                ],
-                "tokens_per_image": 14500,
-                "max_reference_images": 14,
-                "max_batch_images": 15,
-                "sizes": list(SEEDREAM_4_0_SIZES.keys())
-            }
+        return {
+            "id": SEEDREAM_MODEL,
+            "name": "Seedream 4.5",
+            "description": "Последняя версия с лучшим качеством генерации",
+            "capabilities": [
+                "Генерация по тексту",
+                "Генерация по фото + текст",
+                "Смешивание нескольких фото (2-14)",
+                "Пакетная генерация (до 15 изображений)",
+                "Разрешение 2K и 4K"
+            ],
+            "tokens_per_image": 19300,
+            "max_reference_images": 14,
+            "max_batch_images": 15,
+            "sizes": list(SEEDREAM_SIZES.keys())
+        }
