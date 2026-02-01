@@ -127,7 +127,8 @@ class SeedreamService(BaseImageProvider):
             optimize_prompt = kwargs.get("optimize_prompt")
 
             # Use Seedream 4.5 model
-            model_id = SEEDREAM_MODEL
+            # When using customized endpoint, model should be the endpoint_id
+            model_id = self.endpoint_id
             billing_key = "seedream-4.5"
 
             # Resolve size
