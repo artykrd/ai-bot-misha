@@ -298,14 +298,14 @@ class SeedreamService(BaseImageProvider):
         """
         Call Seedream API to generate image.
 
-        API Endpoint: POST /api/v3/inference/{endpoint_id}/images/generations
-        Uses customized inference endpoint (not preset endpoint).
+        API Endpoint: POST /api/v3/images/generations
+        Uses endpoint_id in model field for customized inference.
 
         Returns:
             API response with image data
         """
-        # Use customized inference endpoint URL
-        url = f"{self.BASE_URL}/inference/{self.endpoint_id}/images/generations"
+        # Standard images endpoint - endpoint_id is passed in model field
+        url = f"{self.BASE_URL}/images/generations"
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
