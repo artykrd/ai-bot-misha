@@ -1714,7 +1714,10 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
         photos_count = len(reference_image_paths)
         service_display = {
             "nano_banana": "Nano Banana",
-            "dalle": "DALL-E"
+            "dalle": "DALL-E",
+            "seedream": "Seedream 4.5",
+            "gemini_image": "Gemini",
+            "recraft": "Recraft"
         }.get(service_name, service_name)
 
         # Check if photo has caption (description) - if yes, process immediately
@@ -1726,6 +1729,12 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
                 await process_nano_image(message, user, state)
             elif service_name == "dalle":
                 await process_dalle_image(message, user, state)
+            elif service_name == "seedream":
+                await process_seedream_image(message, user, state)
+            elif service_name == "recraft":
+                await process_recraft_image(message, user, state)
+            elif service_name == "gemini_image":
+                await process_gemini_image(message, user, state)
         else:
             # No caption - show status and ask for more photos or prompt
             await message.answer(
@@ -1750,7 +1759,10 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
 
         service_display = {
             "nano_banana": "Nano Banana",
-            "dalle": "DALL-E"
+            "dalle": "DALL-E",
+            "seedream": "Seedream 4.5",
+            "gemini_image": "Gemini",
+            "recraft": "Recraft"
         }.get(service_name, service_name)
 
         # Check if photo has caption (description)
@@ -1766,6 +1778,10 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
                 await process_gemini_image(message, user, state)
             elif service_name == "nano_banana":
                 await process_nano_image(message, user, state)
+            elif service_name == "seedream":
+                await process_seedream_image(message, user, state)
+            elif service_name == "recraft":
+                await process_recraft_image(message, user, state)
         else:
             # No caption - ask for description
             await message.answer(
