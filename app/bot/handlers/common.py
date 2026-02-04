@@ -414,14 +414,24 @@ async def cmd_luma(message: Message, state):
 
 
 @router.message(Command("kling"))
-async def cmd_kling(message: Message, state):
-    """Kling command - open Kling AI image generation directly."""
-    from app.bot.keyboards.inline import back_to_main_keyboard
-    from app.bot.handlers.media_handler import MediaState
+async def cmd_kling(message: Message, state, user: User):
+    """Kling command - open Kling AI image generation with settings."""
+    from app.bot.keyboards.inline import kling_image_main_keyboard
+    from app.bot.handlers.media_handler import MediaState, get_available_tokens, format_token_amount
+    from app.bot.states.media import KlingImageSettings
+    from app.core.billing_config import get_image_model_billing
 
     await state.clear()  # Clear any previous state
-    await state.set_state(MediaState.waiting_for_image_prompt)
-    await state.update_data(service="kling_image", reference_image_path=None)
+
+    # Get or create Kling Image settings from FSM
+    data = await state.get_data()
+    kling_image_settings = KlingImageSettings.from_dict(data)
+
+    # Calculate available generations
+    total_tokens = await get_available_tokens(user.id)
+    kling_image_billing = get_image_model_billing("kling-image")
+    tokens_per_request = kling_image_billing.tokens_per_generation
+    images_available = int(total_tokens / tokens_per_request) if total_tokens > 0 else 0
 
     text = (
         "🎞 **Kling AI - Генерация изображений**\n\n"
@@ -430,10 +440,23 @@ async def cmd_kling(message: Message, state):
         "**Примеры:**\n"
         "• Закат над океаном в стиле аниме\n"
         "• Футуристический город с летающими машинами\n"
-        "• Портрет кота в королевской одежде"
+        "• Портрет кота в королевской одежде\n\n"
+        f"⚙️ **Текущие настройки:**\n"
+        f"{kling_image_settings.get_display_settings()}\n\n"
+        f"🔹 Токенов хватит на {images_available} изображений.\n"
+        f"1 изображение = {format_token_amount(tokens_per_request)} токенов."
     )
 
-    await message.answer(text, reply_markup=back_to_main_keyboard())
+    await state.set_state(MediaState.waiting_for_image_prompt)
+    # Save settings to state
+    settings_dict = kling_image_settings.to_dict()
+    await state.update_data(
+        service="kling_image",
+        reference_image_path=None,
+        **settings_dict
+    )
+
+    await message.answer(text, reply_markup=kling_image_main_keyboard())
 
 
 @router.message(Command("hailuo"))

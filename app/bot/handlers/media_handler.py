@@ -22,6 +22,12 @@ from app.bot.keyboards.inline import (
     kling_duration_keyboard,
     kling_version_keyboard,
     kling_auto_translate_keyboard,
+    kling_image_main_keyboard,
+    kling_image_settings_keyboard,
+    kling_image_aspect_ratio_keyboard,
+    kling_image_model_keyboard,
+    kling_image_resolution_keyboard,
+    kling_image_auto_translate_keyboard,
     nano_banana_keyboard,
     nano_format_keyboard,
     nano_multi_images_keyboard,
@@ -31,7 +37,7 @@ from app.bot.keyboards.inline import (
     seedream_back_keyboard
 )
 from app.bot.states import MediaState
-from app.bot.states.media import KlingSettings
+from app.bot.states.media import KlingSettings, KlingImageSettings
 from app.bot.utils.notifications import (
     format_generation_message,
     create_action_keyboard,
@@ -278,36 +284,29 @@ async def start_kling_effects(callback: CallbackQuery, state: FSMContext, user: 
     await callback.answer()
 
 
-# Handler for when user clicks "Kling" from main menu - go directly to image generation
+# Handler for when user clicks "Kling" from main menu - redirect to Kling image
 @router.callback_query(F.data == "bot.kling_main")
 async def start_kling_choice(callback: CallbackQuery, state: FSMContext, user: User):
-    """Open Kling AI image generation directly (video is not available)."""
-    await callback.answer()
-    await state.set_state(MediaState.waiting_for_image_prompt)
-    await state.update_data(service="kling_image", reference_image_path=None)
-
-    text = (
-        "🎞 **Kling AI - Генерация изображений**\n\n"
-        "Отправьте текстовый промпт для генерации изображения.\n\n"
-        "📷 Вы также можете отправить фото с подписью для режима image-to-image.\n\n"
-        "**Примеры:**\n"
-        "• Закат над океаном в стиле аниме\n"
-        "• Футуристический город с летающими машинами\n"
-        "• Портрет кота в королевской одежде"
-    )
-    try:
-        await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
-    except Exception:
-        await callback.message.answer(text, reply_markup=back_to_main_keyboard())
+    """Open Kling AI image generation with settings (video is not available)."""
+    # Redirect to Kling Image handler
+    await start_kling_image(callback, state, user)
 
 
 # Handler for Kling Image generation
 @router.callback_query(F.data == "bot.kling_image")
 async def start_kling_image(callback: CallbackQuery, state: FSMContext, user: User):
-    """Start Kling image generation."""
+    """Start Kling image generation with settings display."""
     await callback.answer()
-    await state.set_state(MediaState.waiting_for_image_prompt)
-    await state.update_data(service="kling_image", reference_image_path=None)
+
+    # Get or create Kling Image settings from FSM
+    data = await state.get_data()
+    kling_image_settings = KlingImageSettings.from_dict(data)
+
+    # Calculate available generations
+    total_tokens = await get_available_tokens(user.id)
+    kling_image_billing = get_image_model_billing("kling-image")
+    tokens_per_request = kling_image_billing.tokens_per_generation
+    images_available = int(total_tokens / tokens_per_request) if total_tokens > 0 else 0
 
     text = (
         "🎞 **Kling AI - Генерация изображений**\n\n"
@@ -316,12 +315,26 @@ async def start_kling_image(callback: CallbackQuery, state: FSMContext, user: Us
         "**Примеры:**\n"
         "• Закат над океаном в стиле аниме\n"
         "• Футуристический город с летающими машинами\n"
-        "• Портрет кота в королевской одежде"
+        "• Портрет кота в королевской одежде\n\n"
+        f"⚙️ **Текущие настройки:**\n"
+        f"{kling_image_settings.get_display_settings()}\n\n"
+        f"🔹 Токенов хватит на {images_available} изображений.\n"
+        f"1 изображение = {format_token_amount(tokens_per_request)} токенов."
     )
+
+    await state.set_state(MediaState.waiting_for_image_prompt)
+    # Save settings to state
+    settings_dict = kling_image_settings.to_dict()
+    await state.update_data(
+        service="kling_image",
+        reference_image_path=None,
+        **settings_dict
+    )
+
     try:
-        await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
+        await callback.message.edit_text(text, reply_markup=kling_image_main_keyboard())
     except Exception:
-        await callback.message.answer(text, reply_markup=back_to_main_keyboard())
+        await callback.message.answer(text, reply_markup=kling_image_main_keyboard())
 
 
 # Handler for Kling Video generation (renamed from bot.kling)
@@ -534,6 +547,180 @@ async def kling_set_auto_translate(callback: CallbackQuery, state: FSMContext, u
     await callback.answer(f"✅ Автоперевод {status}")
     # Return to main Kling menu
     await start_kling_video(callback, state, user)
+
+
+# ======================
+# KLING IMAGE SETTINGS HANDLERS
+# ======================
+
+@router.callback_query(F.data == "kling_image.settings")
+async def kling_image_settings_menu(callback: CallbackQuery, state: FSMContext, user: User):
+    """Show Kling image settings menu."""
+    text = (
+        "⚙️ **Настройки генерации изображений Kling**\n\n"
+        "Выберите параметр для изменения:"
+    )
+
+    try:
+        await callback.message.edit_text(text, reply_markup=kling_image_settings_keyboard())
+    except Exception:
+        await callback.message.answer(text, reply_markup=kling_image_settings_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "kling_image.settings.aspect_ratio")
+async def kling_image_settings_aspect_ratio(callback: CallbackQuery, state: FSMContext, user: User):
+    """Show aspect ratio selection for Kling image."""
+    data = await state.get_data()
+    kling_image_settings = KlingImageSettings.from_dict(data)
+
+    text = (
+        "📐 **Выберите формат изображения**\n\n"
+        "• 1:1 — квадратный\n"
+        "• 16:9 — широкоформатный\n"
+        "• 9:16 — вертикальный\n"
+        "• 4:3 — классический\n"
+        "• 3:4 — портретный"
+    )
+
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=kling_image_aspect_ratio_keyboard(kling_image_settings.aspect_ratio)
+        )
+    except Exception:
+        await callback.message.answer(
+            text,
+            reply_markup=kling_image_aspect_ratio_keyboard(kling_image_settings.aspect_ratio)
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("kling_image.set.aspect_ratio:"))
+async def kling_image_set_aspect_ratio(callback: CallbackQuery, state: FSMContext, user: User):
+    """Set Kling image aspect ratio."""
+    ratio = callback.data.split(":")[1]
+
+    await state.update_data(kling_image_aspect_ratio=ratio)
+
+    await callback.answer(f"✅ Формат: {ratio}")
+    # Return to main Kling image menu
+    await start_kling_image(callback, state, user)
+
+
+@router.callback_query(F.data == "kling_image.settings.model")
+async def kling_image_settings_model(callback: CallbackQuery, state: FSMContext, user: User):
+    """Show model selection for Kling image."""
+    data = await state.get_data()
+    kling_image_settings = KlingImageSettings.from_dict(data)
+
+    text = (
+        "🔢 **Выберите версию модели**\n\n"
+        "• **Kling v1** — базовая версия\n"
+        "• **Kling v1.5** — поддержка референсов (лицо/объект)\n"
+        "• **Kling v2** — улучшенное качество"
+    )
+
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=kling_image_model_keyboard(kling_image_settings.model)
+        )
+    except Exception:
+        await callback.message.answer(
+            text,
+            reply_markup=kling_image_model_keyboard(kling_image_settings.model)
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("kling_image.set.model:"))
+async def kling_image_set_model(callback: CallbackQuery, state: FSMContext, user: User):
+    """Set Kling image model."""
+    model = callback.data.split(":")[1]
+
+    await state.update_data(kling_image_model=model)
+
+    model_names = {
+        "kling-v1": "Kling v1",
+        "kling-v1-5": "Kling v1.5",
+        "kling-v2": "Kling v2",
+    }
+    await callback.answer(f"✅ Модель: {model_names.get(model, model)}")
+    # Return to main Kling image menu
+    await start_kling_image(callback, state, user)
+
+
+@router.callback_query(F.data == "kling_image.settings.resolution")
+async def kling_image_settings_resolution(callback: CallbackQuery, state: FSMContext, user: User):
+    """Show resolution selection for Kling image."""
+    data = await state.get_data()
+    kling_image_settings = KlingImageSettings.from_dict(data)
+
+    text = (
+        "📏 **Выберите разрешение**\n\n"
+        "• **1K** — стандартное разрешение (быстрее)\n"
+        "• **2K** — высокое разрешение (больше деталей)"
+    )
+
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=kling_image_resolution_keyboard(kling_image_settings.resolution)
+        )
+    except Exception:
+        await callback.message.answer(
+            text,
+            reply_markup=kling_image_resolution_keyboard(kling_image_settings.resolution)
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("kling_image.set.resolution:"))
+async def kling_image_set_resolution(callback: CallbackQuery, state: FSMContext, user: User):
+    """Set Kling image resolution."""
+    resolution = callback.data.split(":")[1]
+
+    await state.update_data(kling_image_resolution=resolution)
+
+    res_names = {"1k": "1K", "2k": "2K"}
+    await callback.answer(f"✅ Разрешение: {res_names.get(resolution, resolution)}")
+    # Return to main Kling image menu
+    await start_kling_image(callback, state, user)
+
+
+@router.callback_query(F.data == "kling_image.settings.auto_translate")
+async def kling_image_settings_auto_translate(callback: CallbackQuery, state: FSMContext, user: User):
+    """Show auto-translate selection for Kling image."""
+    data = await state.get_data()
+    kling_image_settings = KlingImageSettings.from_dict(data)
+
+    text = "🔤 **Автоперевод**\n\nПереводить ваш запрос на английский автоматически?"
+
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=kling_image_auto_translate_keyboard(kling_image_settings.auto_translate)
+        )
+    except Exception:
+        await callback.message.answer(
+            text,
+            reply_markup=kling_image_auto_translate_keyboard(kling_image_settings.auto_translate)
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("kling_image.set.auto_translate:"))
+async def kling_image_set_auto_translate(callback: CallbackQuery, state: FSMContext, user: User):
+    """Set Kling image auto-translate."""
+    value = callback.data.split(":")[1] == "yes"
+
+    await state.update_data(kling_image_auto_translate=value)
+
+    status = "включен" if value else "выключен"
+    await callback.answer(f"✅ Автоперевод {status}")
+    # Return to main Kling image menu
+    await start_kling_image(callback, state, user)
 
 
 # ======================
@@ -2525,8 +2712,22 @@ async def process_kling_image(message: Message, user: User, state: FSMContext):
     """Process Kling AI image generation."""
     data = await state.get_data()
 
+    # Get settings from FSM state
+    kling_image_settings = KlingImageSettings.from_dict(data)
+
     prompt = data.get("photo_caption_prompt") or message.text
     reference_image_path = data.get("reference_image_path", None)
+
+    # Auto-translate if enabled
+    if kling_image_settings.auto_translate and prompt:
+        from app.services.ai.openai_service import OpenAIService
+        try:
+            openai_service = OpenAIService()
+            translated = await openai_service.translate_to_english(prompt)
+            if translated:
+                prompt = translated
+        except Exception as e:
+            logger.warning("kling_image_translate_failed", error=str(e))
 
     kling_image_billing = get_image_model_billing("kling-image")
     estimated_tokens = kling_image_billing.tokens_per_generation
@@ -2551,8 +2752,10 @@ async def process_kling_image(message: Message, user: User, state: FSMContext):
 
     # Progress message
     mode_text = "image-to-image" if reference_image_path else "text-to-image"
+    model_names = {"kling-v1": "v1", "kling-v1-5": "v1.5", "kling-v2": "v2"}
+    model_display = model_names.get(kling_image_settings.model, kling_image_settings.model)
     progress_msg = await message.answer(
-        f"🎞 Генерирую изображение с Kling AI ({mode_text})..."
+        f"🎞 Генерирую изображение с Kling AI {model_display} ({mode_text})..."
     )
 
     kling_service = KlingImageService()
@@ -2563,13 +2766,13 @@ async def process_kling_image(message: Message, user: User, state: FSMContext):
         except Exception:
             pass
 
-    # Generate image (with optional reference image for image-to-image)
+    # Generate image with user settings
     result = await kling_service.generate_image(
         prompt=prompt,
-        model="kling-v1",  # Default model
+        model=kling_image_settings.model,
         progress_callback=update_progress,
-        aspect_ratio="1:1",  # Default aspect ratio
-        resolution="1k",  # Default resolution
+        aspect_ratio=kling_image_settings.aspect_ratio,
+        resolution=kling_image_settings.resolution,
         image_path=reference_image_path  # For image-to-image mode (None for text-to-image)
     )
 
