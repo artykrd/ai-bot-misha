@@ -28,6 +28,10 @@ from app.bot.keyboards.inline import (
     kling_image_model_keyboard,
     kling_image_resolution_keyboard,
     kling_image_auto_translate_keyboard,
+    kling_effects_main_keyboard,
+    kling_effects_categories_keyboard,
+    kling_effects_list_keyboard,
+    kling_effects_confirm_keyboard,
     nano_banana_keyboard,
     nano_format_keyboard,
     nano_multi_images_keyboard,
@@ -58,6 +62,7 @@ from app.core.billing_config import (
 )
 from app.core.temp_files import get_temp_file_path, cleanup_temp_file
 from app.services.video import VeoService, SoraService, LumaService, HailuoService, KlingService
+from app.services.video.kling_effects_service import KlingEffectsService
 from app.services.image import DalleService, GeminiImageService, StabilityService, RemoveBgService, NanoBananaService, KlingImageService, RecraftService, SeedreamService
 from app.services.audio import SunoService, OpenAIAudioService
 from app.services.ai.vision_service import VisionService
@@ -268,19 +273,187 @@ async def start_hailuo(callback: CallbackQuery, state: FSMContext, user: User):
 
 @router.callback_query(F.data == "bot.kling_effects")
 async def start_kling_effects(callback: CallbackQuery, state: FSMContext, user: User):
+    """Show Kling Effects main menu with instructions."""
     kling_effects_billing = get_video_model_billing("kling-effects")
+    total_tokens = await get_available_tokens(user.id)
+    videos_available = int(total_tokens / kling_effects_billing.tokens_per_generation) if total_tokens > 0 else 0
+
     text = (
-        "Kling Effects\n\n"
-        "Создание видео с эффектами от Kling AI.\n\n"
-        f"Стоимость: {format_token_amount(kling_effects_billing.tokens_per_generation)} токенов за видео\n\n"
-        "Отправьте текстовое описание видео с эффектом."
+        "✨ **Kling Эффекты**\n\n"
+        "Создавайте потрясающие видео с 199+ эффектами!\n\n"
+        "**Как использовать:**\n"
+        "1️⃣ Выберите эффект из категорий\n"
+        "2️⃣ Загрузите фото (1 или 2 в зависимости от эффекта)\n"
+        "3️⃣ Получите видео с эффектом!\n\n"
+        "**Категории эффектов:**\n"
+        "• ⭐ Популярные — лучшие эффекты\n"
+        "• 💃 Танцы — танцевальные движения\n"
+        "• 🐾 Питомцы — для ваших любимцев\n"
+        "• 🦸 Трансформации — превращения\n"
+        "• 🪽 Крылья и магия — фантастика\n"
+        "• 🎬 Кино эффекты — bullet time и др.\n"
+        "• 👫 Для двоих — эффекты для 2 фото\n"
+        "• 🎨 Стили — аниме, комиксы, 3D\n"
+        "• 😂 Забавные — весёлые эффекты\n"
+        "• 🎉 Праздники — день рождения и др.\n"
+        "• 🎄 Рождество — зимняя тематика\n"
+        "• 🎬 Действия — спорт и движение\n\n"
+        f"💰 Стоимость: {format_token_amount(kling_effects_billing.tokens_per_generation)} токенов\n"
+        f"🔹 Доступно: {videos_available} видео"
     )
 
-    await state.set_state(MediaState.waiting_for_video_prompt)
-    # Clear old data when starting fresh session
-    await state.update_data(service="kling_effects", image_path=None, photo_caption_prompt=None)
+    await state.clear()
+    await state.update_data(service="kling_effects")
 
-    await callback.message.answer(text, reply_markup=back_to_main_keyboard())
+    try:
+        await callback.message.edit_text(text, reply_markup=kling_effects_main_keyboard())
+    except Exception:
+        await callback.message.answer(text, reply_markup=kling_effects_main_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "kling_effects.categories")
+async def kling_effects_categories(callback: CallbackQuery, state: FSMContext, user: User):
+    """Show effect categories."""
+    text = (
+        "📁 **Выберите категорию эффектов**\n\n"
+        "Эффекты сгруппированы по темам для удобного поиска."
+    )
+
+    try:
+        await callback.message.edit_text(text, reply_markup=kling_effects_categories_keyboard())
+    except Exception:
+        await callback.message.answer(text, reply_markup=kling_effects_categories_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("kling_effects.category:"))
+async def kling_effects_show_category(callback: CallbackQuery, state: FSMContext, user: User):
+    """Show effects in a category."""
+    from app.services.video.kling_effects_service import EFFECT_CATEGORIES
+
+    category = callback.data.split(":")[1]
+    cat_data = EFFECT_CATEGORIES.get(category, {})
+    cat_name = cat_data.get("name", category)
+
+    text = f"🎭 **{cat_name}**\n\nВыберите эффект:"
+
+    try:
+        await callback.message.edit_text(text, reply_markup=kling_effects_list_keyboard(category, page=0))
+    except Exception:
+        await callback.message.answer(text, reply_markup=kling_effects_list_keyboard(category, page=0))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("kling_effects.page:"))
+async def kling_effects_page(callback: CallbackQuery, state: FSMContext, user: User):
+    """Navigate effect pages."""
+    from app.services.video.kling_effects_service import EFFECT_CATEGORIES
+
+    parts = callback.data.split(":")
+    category = parts[1]
+    page = int(parts[2])
+
+    cat_data = EFFECT_CATEGORIES.get(category, {})
+    cat_name = cat_data.get("name", category)
+
+    text = f"🎭 **{cat_name}**\n\nВыберите эффект:"
+
+    try:
+        await callback.message.edit_text(text, reply_markup=kling_effects_list_keyboard(category, page=page))
+    except Exception:
+        await callback.message.answer(text, reply_markup=kling_effects_list_keyboard(category, page=page))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("kling_effects.select:"))
+async def kling_effects_select(callback: CallbackQuery, state: FSMContext, user: User):
+    """Select an effect and show instructions."""
+    from app.services.video.kling_effects_service import (
+        is_dual_image_effect,
+        get_effect_display_name,
+        DUAL_IMAGE_EFFECTS
+    )
+
+    effect_id = callback.data.split(":")[1]
+    effect_name = get_effect_display_name(effect_id)
+    is_dual = is_dual_image_effect(effect_id)
+
+    kling_effects_billing = get_video_model_billing("kling-effects")
+
+    if is_dual:
+        text = (
+            f"🎭 **Эффект: {effect_name}**\n\n"
+            f"⚠️ Этот эффект требует **2 фотографии**!\n\n"
+            f"После подтверждения отправьте 2 фото:\n"
+            f"• Первое фото — левая сторона\n"
+            f"• Второе фото — правая сторона\n\n"
+            f"💰 Стоимость: {format_token_amount(kling_effects_billing.tokens_per_generation)} токенов"
+        )
+    else:
+        text = (
+            f"🎭 **Эффект: {effect_name}**\n\n"
+            f"После подтверждения отправьте **1 фотографию**.\n\n"
+            f"📋 Требования к фото:\n"
+            f"• Формат: JPG, JPEG, PNG\n"
+            f"• Размер: до 10 МБ\n"
+            f"• Мин. размер: 300x300 px\n"
+            f"• Соотношение сторон: от 1:2.5 до 2.5:1\n\n"
+            f"💰 Стоимость: {format_token_amount(kling_effects_billing.tokens_per_generation)} токенов"
+        )
+
+    # Save selected effect to state
+    await state.update_data(
+        service="kling_effects",
+        kling_effect_id=effect_id,
+        kling_effect_name=effect_name,
+        kling_effect_is_dual=is_dual,
+        kling_effect_images=[]
+    )
+
+    try:
+        await callback.message.edit_text(text, reply_markup=kling_effects_confirm_keyboard(effect_id))
+    except Exception:
+        await callback.message.answer(text, reply_markup=kling_effects_confirm_keyboard(effect_id))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("kling_effects.confirm:"))
+async def kling_effects_confirm(callback: CallbackQuery, state: FSMContext, user: User):
+    """Confirm effect and wait for photo(s)."""
+    from app.services.video.kling_effects_service import is_dual_image_effect, get_effect_display_name
+
+    effect_id = callback.data.split(":")[1]
+    effect_name = get_effect_display_name(effect_id)
+    is_dual = is_dual_image_effect(effect_id)
+
+    # Set state to wait for photos
+    await state.set_state(MediaState.waiting_for_video_prompt)
+    await state.update_data(
+        service="kling_effects",
+        kling_effect_id=effect_id,
+        kling_effect_name=effect_name,
+        kling_effect_is_dual=is_dual,
+        kling_effect_images=[]
+    )
+
+    if is_dual:
+        text = (
+            f"📸 **Отправьте 2 фотографии**\n\n"
+            f"Эффект: {effect_name}\n\n"
+            f"Отправьте фото по одному. Первое фото будет слева, второе — справа."
+        )
+    else:
+        text = (
+            f"📸 **Отправьте 1 фотографию**\n\n"
+            f"Эффект: {effect_name}\n\n"
+            f"После загрузки начнётся генерация видео."
+        )
+
+    try:
+        await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
+    except Exception:
+        await callback.message.answer(text, reply_markup=back_to_main_keyboard())
     await callback.answer()
 
 
@@ -1085,15 +1258,20 @@ async def process_video_photo(message: Message, state: FSMContext, user: User):
         elif service_name == "kling_effects":
             await process_kling_effects(message, user, state)
     else:
-        # No caption - ask for description
-        await message.answer(
-            "✅ Фото получено!\n\n"
-            "📝 Теперь отправьте описание видео, которое вы хотите создать на основе этого фото.\n\n"
-            "**Примеры:**\n"
-            "• \"Оживи это фото, добавь плавное движение\"\n"
-            "• \"Сделай так, чтобы волосы развевались на ветру\"\n"
-            "• \"Добавь падающие снежинки и плавное движение камеры\""
-        )
+        # No caption
+        # For kling_effects, we don't need a caption - the effect ID is the action
+        if service_name == "kling_effects":
+            await process_kling_effects(message, user, state)
+        else:
+            # Ask for description for other services
+            await message.answer(
+                "✅ Фото получено!\n\n"
+                "📝 Теперь отправьте описание видео, которое вы хотите создать на основе этого фото.\n\n"
+                "**Примеры:**\n"
+                "• \"Оживи это фото, добавь плавное движение\"\n"
+                "• \"Сделай так, чтобы волосы развевались на ветру\"\n"
+                "• \"Добавь падающие снежинки и плавное движение камеры\""
+            )
 
 
 @router.message(MediaState.waiting_for_video_prompt, F.text)
@@ -1837,6 +2015,130 @@ async def process_kling_video(message: Message, user: User, state: FSMContext, i
     else:
         # Clean up input images
         for img_path in images:
+            cleanup_temp_file(img_path)
+
+        try:
+            await progress_msg.edit_text(f"❌ Ошибка: {result.error}", parse_mode=None)
+        except Exception:
+            pass
+
+    await state.clear()
+
+
+async def process_kling_effects(message: Message, user: User, state: FSMContext):
+    """Process Kling Effects video generation from photo(s)."""
+    data = await state.get_data()
+
+    # Get effect settings from state
+    effect_id = data.get("kling_effect_id")
+    effect_name = data.get("kling_effect_name", effect_id)
+    is_dual = data.get("kling_effect_is_dual", False)
+    kling_effect_images = data.get("kling_effect_images", [])
+
+    if not effect_id:
+        await message.answer("❌ Эффект не выбран. Пожалуйста, выберите эффект заново.")
+        await state.clear()
+        return
+
+    # Get the image path from state (saved by process_video_photo)
+    image_path = data.get("image_path")
+    if not image_path:
+        await message.answer("❌ Фото не найдено. Попробуйте отправить снова.")
+        return
+
+    # Add new image to the list
+    kling_effect_images.append(image_path)
+    await state.update_data(kling_effect_images=kling_effect_images)
+
+    # Check if we have enough images
+    required_images = 2 if is_dual else 1
+    if len(kling_effect_images) < required_images:
+        # Need more images
+        await message.answer(
+            f"✅ Получено {len(kling_effect_images)}/{required_images} фото\n\n"
+            f"📸 Отправьте ещё {required_images - len(kling_effect_images)} фото"
+        )
+        return
+
+    # We have all required images - proceed with generation
+    kling_effects_billing = get_video_model_billing("kling-effects")
+    estimated_tokens = kling_effects_billing.tokens_per_generation
+
+    # Check if user has enough tokens
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+        try:
+            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+        except InsufficientTokensError as e:
+            # Clean up images
+            for img_path in kling_effect_images:
+                cleanup_temp_file(img_path)
+
+            await message.answer(
+                f"❌ Недостаточно токенов!\n\n"
+                f"Требуется: {format_token_amount(estimated_tokens)} токенов\n"
+                f"Доступно: {format_token_amount(e.details['available'])} токенов"
+            )
+            await state.clear()
+            return
+
+    progress_msg = await message.answer(f"🎬 Начинаю создание видео с эффектом «{effect_name}»...")
+
+    async def update_progress(text: str):
+        try:
+            await progress_msg.edit_text(text, parse_mode=None)
+        except Exception:
+            pass
+
+    # Generate video with Kling Effects
+    effects_service = KlingEffectsService()
+    result = await effects_service.generate_effect_video(
+        effect_scene=effect_id,
+        image_paths=kling_effect_images,
+        progress_callback=update_progress
+    )
+
+    if result.success:
+        # Get user's remaining tokens
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            user_tokens = await sub_service.get_available_tokens(user.id)
+
+        tokens_used = estimated_tokens
+
+        # Generate unified notification message
+        caption = format_generation_message(
+            content_type=CONTENT_TYPES["video"],
+            model_name=f"Kling Effects ({effect_name})",
+            tokens_used=tokens_used,
+            user_tokens=user_tokens,
+            prompt=f"Эффект: {effect_name}",
+            mode="effect-video"
+        )
+
+        # Create action keyboard
+        builder = create_action_keyboard(
+            action_text=MODEL_ACTIONS["kling_effects"]["text"],
+            action_callback=MODEL_ACTIONS["kling_effects"]["callback"],
+            file_path=result.video_path,
+            file_type="video"
+        )
+
+        video_file = FSInputFile(result.video_path)
+        await message.answer_video(
+            video=video_file,
+            caption=caption,
+            reply_markup=builder.as_markup()
+        )
+
+        # Clean up input images
+        for img_path in kling_effect_images:
+            cleanup_temp_file(img_path)
+
+        await progress_msg.delete()
+    else:
+        # Clean up input images
+        for img_path in kling_effect_images:
             cleanup_temp_file(img_path)
 
         try:
