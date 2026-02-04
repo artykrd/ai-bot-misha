@@ -629,6 +629,131 @@ def kling_auto_translate_keyboard(current_value: bool = True) -> InlineKeyboardM
 
 
 # ======================
+# KLING IMAGE KEYBOARDS
+# ======================
+
+def kling_image_main_keyboard() -> InlineKeyboardMarkup:
+    """Main Kling image keyboard with settings button."""
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(text="⚙️ Настройки", callback_data="kling_image.settings")
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ В главное меню", callback_data="bot.back")
+    )
+
+    return builder.as_markup()
+
+
+def kling_image_settings_keyboard() -> InlineKeyboardMarkup:
+    """Kling image settings menu keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(text="📐 Формат изображения", callback_data="kling_image.settings.aspect_ratio")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🔢 Версия модели", callback_data="kling_image.settings.model")
+    )
+    builder.row(
+        InlineKeyboardButton(text="📏 Разрешение", callback_data="kling_image.settings.resolution")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🔤 Автоперевод", callback_data="kling_image.settings.auto_translate")
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад к Kling", callback_data="bot.kling_image")
+    )
+
+    return builder.as_markup()
+
+
+def kling_image_aspect_ratio_keyboard(current_ratio: str = "1:1") -> InlineKeyboardMarkup:
+    """Kling image aspect ratio selection keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    ratios = ["1:1", "16:9", "9:16", "4:3", "3:4"]
+
+    for ratio in ratios:
+        text = f"✅ {ratio}" if ratio == current_ratio else ratio
+        builder.row(
+            InlineKeyboardButton(text=text, callback_data=f"kling_image.set.aspect_ratio:{ratio}")
+        )
+
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад", callback_data="kling_image.settings")
+    )
+
+    return builder.as_markup()
+
+
+def kling_image_model_keyboard(current_model: str = "kling-v1") -> InlineKeyboardMarkup:
+    """Kling image model selection keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    models = [
+        ("kling-v1", "Kling v1"),
+        ("kling-v1-5", "Kling v1.5 (face/subject reference)"),
+        ("kling-v2", "Kling v2"),
+    ]
+
+    for model_id, model_name in models:
+        text = f"✅ {model_name}" if model_id == current_model else model_name
+        builder.row(
+            InlineKeyboardButton(text=text, callback_data=f"kling_image.set.model:{model_id}")
+        )
+
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад", callback_data="kling_image.settings")
+    )
+
+    return builder.as_markup()
+
+
+def kling_image_resolution_keyboard(current_resolution: str = "1k") -> InlineKeyboardMarkup:
+    """Kling image resolution selection keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    resolutions = [
+        ("1k", "1K (стандартное)"),
+        ("2k", "2K (высокое)"),
+    ]
+
+    for res_id, res_name in resolutions:
+        text = f"✅ {res_name}" if res_id == current_resolution else res_name
+        builder.row(
+            InlineKeyboardButton(text=text, callback_data=f"kling_image.set.resolution:{res_id}")
+        )
+
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад", callback_data="kling_image.settings")
+    )
+
+    return builder.as_markup()
+
+
+def kling_image_auto_translate_keyboard(current_value: bool = True) -> InlineKeyboardMarkup:
+    """Kling image auto-translate toggle keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    yes_text = "✅ Да" if current_value else "Да"
+    no_text = "✅ Нет" if not current_value else "Нет"
+
+    builder.row(
+        InlineKeyboardButton(text=yes_text, callback_data="kling_image.set.auto_translate:yes")
+    )
+    builder.row(
+        InlineKeyboardButton(text=no_text, callback_data="kling_image.set.auto_translate:no")
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад", callback_data="kling_image.settings")
+    )
+
+    return builder.as_markup()
+
+
+# ======================
 # SUNO KEYBOARDS
 # ======================
 

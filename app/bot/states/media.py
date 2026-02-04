@@ -46,6 +46,48 @@ class KlingSettings:
         return "\n".join(parts)
 
 
+@dataclass
+class KlingImageSettings:
+    """Kling image generation settings stored in FSM."""
+    model: str = "kling-v1"  # Model: "kling-v1", "kling-v1-5", "kling-v2"
+    aspect_ratio: str = "1:1"  # "1:1", "16:9", "9:16", "4:3", "3:4"
+    resolution: str = "1k"  # "1k", "2k"
+    auto_translate: bool = True  # Auto-translate prompt to English
+
+    def to_dict(self) -> dict:
+        """Convert to dict for FSM storage."""
+        return {
+            "kling_image_model": self.model,
+            "kling_image_aspect_ratio": self.aspect_ratio,
+            "kling_image_resolution": self.resolution,
+            "kling_image_auto_translate": self.auto_translate,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "KlingImageSettings":
+        """Create from FSM data dict."""
+        return cls(
+            model=data.get("kling_image_model", "kling-v1"),
+            aspect_ratio=data.get("kling_image_aspect_ratio", "1:1"),
+            resolution=data.get("kling_image_resolution", "1k"),
+            auto_translate=data.get("kling_image_auto_translate", True),
+        )
+
+    def get_display_settings(self) -> str:
+        """Get formatted settings string for display."""
+        model_names = {
+            "kling-v1": "Kling v1",
+            "kling-v1-5": "Kling v1.5",
+            "kling-v2": "Kling v2",
+        }
+        parts = []
+        parts.append(f"Модель: {model_names.get(self.model, self.model)}")
+        parts.append(f"Формат: {self.aspect_ratio}")
+        parts.append(f"Разрешение: {self.resolution}")
+        parts.append(f"Автоперевод: {'включен' if self.auto_translate else 'выключен'}")
+        return "\n".join(parts)
+
+
 class MediaState(StatesGroup):
     """States for media generation."""
     waiting_for_video_prompt = State()
