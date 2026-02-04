@@ -267,8 +267,7 @@ def create_photo_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="✨ Seedream 4.5", callback_data="bot.seedream_4.5")
     )
     builder.row(
-        InlineKeyboardButton(text="🖌 Stable Diffusion", callback_data="bot_stable_diffusion"),
-        InlineKeyboardButton(text="🎞 Kling AI", callback_data="bot.kling_image")
+        InlineKeyboardButton(text="🖌 Stable Diffusion", callback_data="bot_stable_diffusion")
     )
     builder.row(
         InlineKeyboardButton(text="🎭 Замена лиц", callback_data="bot.faceswap")
@@ -294,6 +293,9 @@ def create_video_keyboard() -> InlineKeyboardMarkup:
     builder.row(
         InlineKeyboardButton(text="🌊 Veo 3.1", callback_data="bot.veo"),
         InlineKeyboardButton(text="📹 Luma", callback_data="bot.luma")
+    )
+    builder.row(
+        InlineKeyboardButton(text="✨ Kling Эффекты", callback_data="bot.kling_effects")
     )
     builder.row(
         InlineKeyboardButton(text="⬅️ В главное меню", callback_data="bot.back")
@@ -748,6 +750,123 @@ def kling_image_auto_translate_keyboard(current_value: bool = True) -> InlineKey
     )
     builder.row(
         InlineKeyboardButton(text="⬅️ Назад", callback_data="kling_image.settings")
+    )
+
+    return builder.as_markup()
+
+
+# ======================
+# KLING EFFECTS KEYBOARDS
+# ======================
+
+def kling_effects_main_keyboard() -> InlineKeyboardMarkup:
+    """Main Kling effects keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(text="🎭 Выбрать эффект", callback_data="kling_effects.categories")
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ В главное меню", callback_data="bot.back")
+    )
+
+    return builder.as_markup()
+
+
+def kling_effects_categories_keyboard() -> InlineKeyboardMarkup:
+    """Kling effects categories selection keyboard."""
+    from app.services.video.kling_effects_service import EFFECT_CATEGORIES
+
+    builder = InlineKeyboardBuilder()
+
+    # Add category buttons in rows of 2
+    categories = list(EFFECT_CATEGORIES.items())
+    for i in range(0, len(categories), 2):
+        row_items = categories[i:i+2]
+        buttons = [
+            InlineKeyboardButton(
+                text=cat_data["name"],
+                callback_data=f"kling_effects.category:{cat_id}"
+            )
+            for cat_id, cat_data in row_items
+        ]
+        builder.row(*buttons)
+
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад", callback_data="bot.kling_effects")
+    )
+
+    return builder.as_markup()
+
+
+def kling_effects_list_keyboard(category: str, page: int = 0, per_page: int = 8) -> InlineKeyboardMarkup:
+    """Kling effects list for a category with pagination."""
+    from app.services.video.kling_effects_service import get_effects_by_category
+
+    builder = InlineKeyboardBuilder()
+    effects = get_effects_by_category(category)
+
+    # Paginate effects
+    start = page * per_page
+    end = start + per_page
+    page_effects = effects[start:end]
+
+    # Add effect buttons
+    for effect in page_effects:
+        effect_id = effect[0]
+        effect_name = effect[1]
+        is_dual = len(effect) > 2 and effect[2] is True
+
+        builder.row(
+            InlineKeyboardButton(
+                text=effect_name,
+                callback_data=f"kling_effects.select:{effect_id}"
+            )
+        )
+
+    # Pagination buttons
+    total_pages = (len(effects) + per_page - 1) // per_page
+    if total_pages > 1:
+        nav_buttons = []
+        if page > 0:
+            nav_buttons.append(
+                InlineKeyboardButton(
+                    text="◀️ Назад",
+                    callback_data=f"kling_effects.page:{category}:{page-1}"
+                )
+            )
+        if page < total_pages - 1:
+            nav_buttons.append(
+                InlineKeyboardButton(
+                    text="Вперёд ▶️",
+                    callback_data=f"kling_effects.page:{category}:{page+1}"
+                )
+            )
+        if nav_buttons:
+            builder.row(*nav_buttons)
+
+    builder.row(
+        InlineKeyboardButton(text="📁 Категории", callback_data="kling_effects.categories")
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ В главное меню", callback_data="bot.back")
+    )
+
+    return builder.as_markup()
+
+
+def kling_effects_confirm_keyboard(effect_id: str) -> InlineKeyboardMarkup:
+    """Confirm effect selection keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"kling_effects.confirm:{effect_id}")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🔄 Выбрать другой эффект", callback_data="kling_effects.categories")
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ В главное меню", callback_data="bot.back")
     )
 
     return builder.as_markup()
