@@ -196,11 +196,11 @@ class CostGuard:
         if self.redis:
             try:
                 # Используем Redis для rate limiting
-                count = await self.redis.incr(user_key)
+                count = await self.redis.increment(user_key)
                 if count == 1:
                     await self.redis.expire(user_key, window)
 
-                ttl = await self.redis.ttl(user_key)
+                ttl = await self.redis.get_ttl(user_key)
 
                 if count > limits["per_user"]:
                     hours = ttl // 3600
@@ -215,7 +215,7 @@ class CostGuard:
 
                 # Проверяем global limit
                 global_key = f"cost_guard:rate:{model_key}:global"
-                global_count = await self.redis.incr(global_key)
+                global_count = await self.redis.increment(global_key)
                 if global_count == 1:
                     await self.redis.expire(global_key, window)
 
