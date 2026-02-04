@@ -278,71 +278,50 @@ async def start_kling_effects(callback: CallbackQuery, state: FSMContext, user: 
     await callback.answer()
 
 
-# Handler for when user clicks "Kling" from main menu - show choice
+# Handler for when user clicks "Kling" from main menu - go directly to image generation
 @router.callback_query(F.data == "bot.kling_main")
 async def start_kling_choice(callback: CallbackQuery, state: FSMContext, user: User):
-    """Show Kling AI choice menu (photo or video)."""
-    text = (
-        "🎞 **Kling AI**\n\n"
-        "Выберите тип генерации:\n\n"
-        "🌄 **Создать фото** - генерация изображений\n"
-        "🎬 **Создать видео** - генерация видео\n\n"
-        "Kling AI создаёт высококачественный контент с помощью передовых алгоритмов."
-    )
-
-    await state.clear()  # Clear any previous state
-    await callback.message.answer(text, reply_markup=kling_choice_keyboard())
+    """Open Kling AI image generation directly (video is not available)."""
     await callback.answer()
+    await state.set_state(MediaState.waiting_for_image_prompt)
+    await state.update_data(service="kling_image", reference_image_path=None)
+
+    text = (
+        "🎞 **Kling AI - Генерация изображений**\n\n"
+        "Отправьте текстовый промпт для генерации изображения.\n\n"
+        "📷 Вы также можете отправить фото с подписью для режима image-to-image.\n\n"
+        "**Примеры:**\n"
+        "• Закат над океаном в стиле аниме\n"
+        "• Футуристический город с летающими машинами\n"
+        "• Портрет кота в королевской одежде"
+    )
+    try:
+        await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
+    except Exception:
+        await callback.message.answer(text, reply_markup=back_to_main_keyboard())
 
 
 # Handler for Kling Image generation
 @router.callback_query(F.data == "bot.kling_image")
 async def start_kling_image(callback: CallbackQuery, state: FSMContext, user: User):
     """Start Kling image generation."""
-    # Check if Kling image is active in model_costs
-    from app.database.database import async_session_maker
-    from app.database.models.model_cost import ModelCost
-    from sqlalchemy import select
-
-    async with async_session_maker() as session:
-        result = await session.execute(
-            select(ModelCost).where(
-                ModelCost.model_id.like("kling-image%"),
-                ModelCost.is_active == True
-            )
-        )
-        kling_image_model = result.scalar_one_or_none()
-
-    if not kling_image_model:
-        # Not active yet - show "in development"
-        text = (
-            "🎞 **Kling AI - Генерация изображений**\n\n"
-            "⚠️ **Функционал в разработке**\n\n"
-            "Интеграция с Kling Image находится в процессе разработки.\n"
-            "Пожалуйста, используйте альтернативные сервисы:\n\n"
-            "• 🍌 Nano Banana (Gemini 2.5 Flash)\n"
-            "• 🍌✨ Banana PRO (Gemini 3 Pro)\n"
-            "• 🖼 DALL·E 3\n\n"
-            "Следите за обновлениями!"
-        )
-        await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
-        await callback.answer("⚠️ Функционал в разработке", show_alert=False)
-        return
-
-    # Kling image is active - proceed
     await callback.answer()
     await state.set_state(MediaState.waiting_for_image_prompt)
-    await state.update_data(service="kling_image")
+    await state.update_data(service="kling_image", reference_image_path=None)
 
     text = (
         "🎞 **Kling AI - Генерация изображений**\n\n"
         "Отправьте текстовый промпт для генерации изображения.\n\n"
+        "📷 Вы также можете отправить фото с подписью для режима image-to-image.\n\n"
         "**Примеры:**\n"
         "• Закат над океаном в стиле аниме\n"
         "• Футуристический город с летающими машинами\n"
         "• Портрет кота в королевской одежде"
     )
-    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
+    try:
+        await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
+    except Exception:
+        await callback.message.answer(text, reply_markup=back_to_main_keyboard())
 
 
 # Handler for Kling Video generation (renamed from bot.kling)
@@ -1717,7 +1696,8 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
             "dalle": "DALL-E",
             "seedream": "Seedream 4.5",
             "gemini_image": "Gemini",
-            "recraft": "Recraft"
+            "recraft": "Recraft",
+            "kling_image": "Kling AI"
         }.get(service_name, service_name)
 
         # Check if photo has caption (description) - if yes, process immediately
@@ -1735,6 +1715,8 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
                 await process_recraft_image(message, user, state)
             elif service_name == "gemini_image":
                 await process_gemini_image(message, user, state)
+            elif service_name == "kling_image":
+                await process_kling_image(message, user, state)
         else:
             # No caption - show status and ask for more photos or prompt
             await message.answer(
@@ -1762,7 +1744,8 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
             "dalle": "DALL-E",
             "seedream": "Seedream 4.5",
             "gemini_image": "Gemini",
-            "recraft": "Recraft"
+            "recraft": "Recraft",
+            "kling_image": "Kling AI"
         }.get(service_name, service_name)
 
         # Check if photo has caption (description)
@@ -1782,6 +1765,8 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
                 await process_seedream_image(message, user, state)
             elif service_name == "recraft":
                 await process_recraft_image(message, user, state)
+            elif service_name == "kling_image":
+                await process_kling_image(message, user, state)
         else:
             # No caption - ask for description
             await message.answer(
@@ -2578,13 +2563,14 @@ async def process_kling_image(message: Message, user: User, state: FSMContext):
         except Exception:
             pass
 
-    # Generate image
+    # Generate image (with optional reference image for image-to-image)
     result = await kling_service.generate_image(
         prompt=prompt,
         model="kling-v1",  # Default model
         progress_callback=update_progress,
         aspect_ratio="1:1",  # Default aspect ratio
-        resolution="1k"  # Default resolution
+        resolution="1k",  # Default resolution
+        image_path=reference_image_path  # For image-to-image mode (None for text-to-image)
     )
 
     if result.success:

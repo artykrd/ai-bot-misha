@@ -3,6 +3,8 @@ Kling AI image generation service.
 """
 import time
 import asyncio
+import base64
+from pathlib import Path
 from typing import Optional, Callable, Awaitable
 
 import aiohttp
@@ -36,6 +38,17 @@ class KlingImageService(BaseImageProvider):
         if not self.api_key:
             logger.warning("kling_api_key_missing")
 
+    async def _image_to_base64(self, image_path: str) -> str:
+        """Convert local image file to base64 string."""
+        path = Path(image_path)
+        if not path.exists():
+            raise FileNotFoundError(f"Image not found: {image_path}")
+
+        with open(path, "rb") as f:
+            image_data = f.read()
+
+        return base64.b64encode(image_data).decode("utf-8")
+
     async def generate_image(
         self,
         prompt: str,
@@ -52,7 +65,8 @@ class KlingImageService(BaseImageProvider):
             progress_callback: Optional async callback for progress updates
             **kwargs: Additional parameters:
                 - negative_prompt: Negative prompt (optional)
-                - image_url: Reference image for image-to-image (optional)
+                - image_url: Reference image URL for image-to-image (optional)
+                - image_path: Local reference image path for image-to-image (optional, will be converted to base64)
                 - image_reference: Reference type (subject, face) for kling-v1-5 (optional)
                 - resolution: Image resolution (1k, 2k, default: 1k)
                 - aspect_ratio: Aspect ratio (16:9, 9:16, 1:1, 4:3, 3:4, 3:2, 2:3, 21:9)
@@ -161,8 +175,13 @@ class KlingImageService(BaseImageProvider):
         if "negative_prompt" in kwargs:
             payload["negative_prompt"] = kwargs["negative_prompt"]
 
+        # Support both image_url (direct URL) and image_path (local file -> base64)
         if "image_url" in kwargs:
             payload["image"] = kwargs["image_url"]
+        elif "image_path" in kwargs and kwargs["image_path"]:
+            # Convert local file to base64
+            image_base64 = await self._image_to_base64(kwargs["image_path"])
+            payload["image"] = image_base64
 
         if "image_reference" in kwargs and model == "kling-v1-5":
             payload["image_reference"] = kwargs["image_reference"]

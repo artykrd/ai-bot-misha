@@ -415,20 +415,25 @@ async def cmd_luma(message: Message, state):
 
 @router.message(Command("kling"))
 async def cmd_kling(message: Message, state):
-    """Kling command - show Kling choice menu (photo or video)."""
-    from app.bot.keyboards.inline import kling_choice_keyboard
+    """Kling command - open Kling AI image generation directly."""
+    from app.bot.keyboards.inline import back_to_main_keyboard
+    from app.bot.handlers.media_handler import MediaState
 
     await state.clear()  # Clear any previous state
+    await state.set_state(MediaState.waiting_for_image_prompt)
+    await state.update_data(service="kling_image", reference_image_path=None)
 
     text = (
-        "🎞 **Kling AI**\n\n"
-        "Выберите тип генерации:\n\n"
-        "🌄 **Создать фото** - генерация изображений\n"
-        "🎬 **Создать видео** - генерация видео\n\n"
-        "Kling AI создаёт высококачественный контент с помощью передовых алгоритмов."
+        "🎞 **Kling AI - Генерация изображений**\n\n"
+        "Отправьте текстовый промпт для генерации изображения.\n\n"
+        "📷 Вы также можете отправить фото с подписью для режима image-to-image.\n\n"
+        "**Примеры:**\n"
+        "• Закат над океаном в стиле аниме\n"
+        "• Футуристический город с летающими машинами\n"
+        "• Портрет кота в королевской одежде"
     )
 
-    await message.answer(text, reply_markup=kling_choice_keyboard())
+    await message.answer(text, reply_markup=back_to_main_keyboard())
 
 
 @router.message(Command("hailuo"))
