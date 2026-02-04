@@ -112,7 +112,12 @@ async def back_to_main(callback: CallbackQuery, user: User, state: FSMContext):
 – Whisper — расшифровка голосовых сообщений;
 – TTS — озвучка текста."""
 
-    await callback.message.delete()
+    try:
+        await callback.message.delete()
+    except TelegramBadRequest as e:
+        # Ignore errors if message can't be deleted (too old, already deleted, etc.)
+        if "message can't be deleted" not in str(e) and "message to delete not found" not in str(e):
+            raise
     await callback.message.answer(
         text,
         reply_markup=main_menu_reply_keyboard()

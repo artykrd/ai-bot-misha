@@ -374,8 +374,8 @@ class NanoBananaService(BaseImageProvider):
                                         blocked=rating.blocked if hasattr(rating, 'blocked') else False
                                     )
                             else:
-                                # safety_ratings exists but is falsy - log details
-                                logger.warning(
+                                # safety_ratings exists but is falsy - this is normal for some responses
+                                logger.debug(
                                     "nano_banana_safety_ratings_empty",
                                     candidate_index=idx,
                                     safety_ratings_type=type(candidate.safety_ratings).__name__,
@@ -501,87 +501,95 @@ class NanoBananaService(BaseImageProvider):
                 filename = self._generate_filename("png")
                 image_path = self.storage_path / filename
 
-                # Try to use as_image() method first (most reliable)
+                # Try to save image using multiple methods
+                from PIL import Image
+                import io
+                import base64
+
+                saved = False
+
+                # Method 1: Try as_image() method first
                 try:
-                    from PIL import Image
-                    import io
-
                     pil_image = image_part.as_image()
-
                     logger.info("nano_banana_using_as_image", image_type=type(pil_image).__name__)
 
                     # Check if it's a real PIL Image or a custom object
                     if isinstance(pil_image, Image.Image):
                         # Standard PIL Image - save directly
                         pil_image.save(str(image_path), format='PNG')
+                        saved = True
+                        logger.info("nano_banana_saved_as_pil_image")
                     else:
-                        # Custom image object - convert to real PIL Image via buffer
-                        # Try different methods to save custom image object
+                        # Custom image object - try different save approaches
                         buffer = io.BytesIO()
-                        saved = False
 
-                        # Try different save methods in order of likelihood
+                        # Try 1a: with positional argument (Gemini's custom Image)
                         try:
-                            # Method 1: Try with positional argument (Gemini's custom Image)
                             pil_image.save(buffer, 'PNG')
+                            buffer.seek(0)
+                            real_pil_image = Image.open(buffer)
+                            real_pil_image.save(str(image_path), format='PNG')
                             saved = True
+                            logger.info("nano_banana_saved_via_custom_save")
                         except (TypeError, AttributeError) as e:
                             logger.debug("nano_banana_save_method1_failed", error=str(e))
 
+                        # Try 1b: without format argument
                         if not saved:
-                            # Method 2: Try without format argument
                             buffer = io.BytesIO()
                             try:
                                 pil_image.save(buffer)
+                                buffer.seek(0)
+                                real_pil_image = Image.open(buffer)
+                                real_pil_image.save(str(image_path), format='PNG')
                                 saved = True
+                                logger.info("nano_banana_saved_via_custom_save_no_format")
                             except Exception as e:
                                 logger.debug("nano_banana_save_method2_failed", error=str(e))
 
-                        if not saved:
-                            # Method 3: Try to get _pil_image attribute (if it's a wrapper)
-                            buffer = io.BytesIO()
+                        # Try 1c: get _pil_image attribute (if it's a wrapper)
+                        if not saved and hasattr(pil_image, '_pil_image'):
                             try:
-                                if hasattr(pil_image, '_pil_image'):
-                                    pil_image._pil_image.save(buffer, 'PNG')
-                                    saved = True
+                                pil_image._pil_image.save(str(image_path), format='PNG')
+                                saved = True
+                                logger.info("nano_banana_saved_via_pil_image_attr")
                             except Exception as e:
                                 logger.debug("nano_banana_save_method3_failed", error=str(e))
 
-                        if not saved:
-                            # If all methods failed, raise the original error
-                            raise Exception("Failed to save custom image object with any method")
-
-                        buffer.seek(0)
-
-                        # Load as real PIL Image
-                        real_pil_image = Image.open(buffer)
-
-                        # Save as PNG
-                        real_pil_image.save(str(image_path), format='PNG')
-
-                        logger.info("nano_banana_converted_custom_to_pil")
+                        # Try 1d: get image data attribute directly
+                        if not saved and hasattr(pil_image, 'data'):
+                            try:
+                                data = pil_image.data
+                                if isinstance(data, bytes):
+                                    with open(image_path, 'wb') as f:
+                                        f.write(data)
+                                    saved = True
+                                    logger.info("nano_banana_saved_via_data_attr")
+                            except Exception as e:
+                                logger.debug("nano_banana_save_method4_failed", error=str(e))
 
                 except Exception as as_image_error:
-                    # Fallback: try to get data from inline_data
-                    logger.warning("nano_banana_as_image_failed", error=str(as_image_error))
+                    logger.debug("nano_banana_as_image_failed", error=str(as_image_error))
 
-                    if image_part.inline_data:
-                        # Check if data is base64-encoded or raw bytes
-                        import base64
+                # Method 2: Try inline_data if as_image() didn't work
+                if not saved and image_part.inline_data:
+                    try:
                         data = image_part.inline_data.data
-
                         logger.info("nano_banana_using_inline_data",
                                   data_type=type(data).__name__,
-                                  data_size=len(data))
+                                  data_size=len(data) if data else 0)
 
-                        # Try to decode if it's base64
-                        try:
-                            if isinstance(data, str):
-                                # It's a base64 string
-                                decoded_data = base64.b64decode(data)
-                            elif isinstance(data, bytes):
-                                # It might be already decoded or might be base64 bytes
-                                # Try to decode first
+                        if isinstance(data, str):
+                            # It's a base64 string
+                            decoded_data = base64.b64decode(data)
+                        elif isinstance(data, bytes):
+                            # Check if it looks like valid image data (PNG/JPEG magic bytes)
+                            if data[:8] == b'\x89PNG\r\n\x1a\n' or data[:2] == b'\xff\xd8':
+                                # Already decoded image data
+                                decoded_data = data
+                                logger.info("nano_banana_using_raw_image_bytes", size=len(decoded_data))
+                            else:
+                                # Try to decode as base64
                                 try:
                                     decoded_data = base64.b64decode(data)
                                     logger.info("nano_banana_decoded_base64", size=len(decoded_data))
@@ -589,18 +597,32 @@ class NanoBananaService(BaseImageProvider):
                                     # Not base64, use as is
                                     decoded_data = data
                                     logger.info("nano_banana_using_raw_bytes", size=len(decoded_data))
-                            else:
-                                decoded_data = data
+                        else:
+                            decoded_data = data
 
-                            # Write decoded data
+                        # Write decoded data
+                        with open(image_path, 'wb') as f:
+                            f.write(decoded_data)
+                        saved = True
+                        logger.info("nano_banana_saved_via_inline_data")
+
+                    except Exception as inline_error:
+                        logger.debug("nano_banana_inline_data_failed", error=str(inline_error))
+
+                # Method 3: Try to get raw bytes from part directly
+                if not saved and hasattr(image_part, 'data'):
+                    try:
+                        data = image_part.data
+                        if isinstance(data, bytes):
                             with open(image_path, 'wb') as f:
-                                f.write(decoded_data)
+                                f.write(data)
+                            saved = True
+                            logger.info("nano_banana_saved_via_part_data")
+                    except Exception as e:
+                        logger.debug("nano_banana_part_data_failed", error=str(e))
 
-                        except Exception as decode_error:
-                            logger.error("nano_banana_decode_failed", error=str(decode_error))
-                            raise
-                    else:
-                        raise ValueError("No valid image data found in response")
+                if not saved:
+                    raise ValueError("No valid image data found in response - all save methods failed")
 
                 logger.info(
                     "nano_banana_image_saved",
