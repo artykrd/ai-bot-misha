@@ -279,9 +279,9 @@ VIDEO_MODELS: Dict[str, FixedModelBilling] = {
         model_type=ModelType.VIDEO
     ),
     "kling-effects": FixedModelBilling(
-        tokens_per_generation=99000,
+        tokens_per_generation=135000,
         display_name="Kling Effects",
-        description_suffix="Стоимость применения эффекта: 99 000 токенов",
+        description_suffix="Стоимость применения эффекта: 135 000 токенов",
         model_type=ModelType.VIDEO
     ),
     "hailuo": FixedModelBilling(
