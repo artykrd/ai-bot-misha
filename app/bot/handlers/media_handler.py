@@ -1734,26 +1734,32 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
 
 
 async def process_sora_video(message: Message, user: User, state: FSMContext):
-    """Process Sora 2 video generation."""
+    """Process Sora 2 video generation using callback-based flow.
+
+    1. Reserve tokens
+    2. Send createTask to Kie.ai with callBackUrl
+    3. Save job to DB
+    4. Return immediately — callback handler delivers the result
+    """
     from app.bot.states.media import SoraSettings
     from app.core.billing_config import get_sora_tokens_cost
+    from app.services.video_job_service import VideoJobService
 
     # Get state data
     data = await state.get_data()
     sora_settings = SoraSettings.from_dict(data)
 
-    # Get prompt from caption if available, otherwise from message text
     prompt = data.get("photo_caption_prompt") or message.text
     image_path = data.get("image_path", None)
 
-    # Determine API model based on settings and whether image is provided
     api_model = sora_settings.get_api_model(has_image=bool(image_path))
     estimated_tokens = get_sora_tokens_cost(sora_settings.quality, sora_settings.duration)
 
+    # Step 1: Reserve tokens
     async with async_session_maker() as session:
         sub_service = SubscriptionService(session)
         try:
-            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+            await sub_service.reserve_tokens(user.id, estimated_tokens)
         except InsufficientTokensError as e:
             if image_path:
                 cleanup_temp_file(image_path)
@@ -1765,27 +1771,12 @@ async def process_sora_video(message: Message, user: User, state: FSMContext):
             await state.clear()
             return
 
-    mode_text = "image-to-video" if image_path else "text-to-video"
     quality_text = "Pro" if sora_settings.quality == "pro" else "Stable"
-    progress_msg = await message.answer(
-        f"🎬 Генерирую видео с Sora 2 {quality_text} ({mode_text}, {sora_settings.duration}с)..."
-    )
-    sora_service = SoraService()
 
-    async def update_progress(text: str):
-        try:
-            await progress_msg.edit_text(text, parse_mode=None)
-        except Exception:
-            pass
-
-    # For image-to-video, we need to upload the image first
-    # The Kie.ai API expects a publicly accessible URL
-    image_url = None
+    # Image-to-video not supported yet (needs CDN upload)
     if image_path:
-        # For now, we skip i2v if no upload mechanism
-        # TODO: implement image upload to get URL
         cleanup_temp_file(image_path)
-        await progress_msg.edit_text(
+        await message.answer(
             "⚠️ **Image-to-Video для Sora 2 временно недоступен**\n\n"
             "Sora 2 API требует загрузки изображения на CDN сервер.\n\n"
             "Используйте text-to-video режим или альтернативные сервисы:\n"
@@ -1793,134 +1784,93 @@ async def process_sora_video(message: Message, user: User, state: FSMContext):
             "• 🎥 Hailuo (поддерживает image-to-video)",
             parse_mode="Markdown"
         )
-        # Refund tokens
         async with async_session_maker() as session:
             sub_service = SubscriptionService(session)
-            await sub_service.add_eternal_tokens(user.id, estimated_tokens, "refund")
+            await sub_service.rollback_tokens(user.id, estimated_tokens)
         await state.update_data(image_path=None, photo_caption_prompt=None)
         return
 
-    # Run generation in background to not block the bot
-    asyncio.create_task(
-        _sora_generation_task(
-            bot=message.bot,
-            chat_id=message.chat.id,
-            user_id=user.id,
-            prompt=prompt,
-            api_model=api_model,
-            sora_settings=sora_settings,
-            estimated_tokens=estimated_tokens,
-            quality_text=quality_text,
-            progress_msg_id=progress_msg.message_id,
-            sora_service=sora_service,
-        )
+    # Step 2: Send progress message
+    mode_text = "text-to-video"
+    progress_msg = await message.answer(
+        f"⏳ Ваше видео Sora 2 {quality_text} ({mode_text}, {sora_settings.duration}с) "
+        f"добавлено в очередь на генерацию!\n\n"
+        f"Мы отправим вам результат, как только он будет готов. "
+        f"Это может занять несколько минут.\n\n"
+        f"Вы можете продолжать пользоваться ботом."
     )
 
-    await state.update_data(image_path=None, photo_caption_prompt=None)
-
-
-async def _sora_generation_task(
-    bot,
-    chat_id: int,
-    user_id: int,
-    prompt: str,
-    api_model: str,
-    sora_settings,
-    estimated_tokens: int,
-    quality_text: str,
-    progress_msg_id: int,
-    sora_service,
-):
-    """Background task for Sora 2 video generation. Runs without blocking the bot."""
+    # Step 3: Create task via Kie.ai API with callback
+    sora_service = SoraService()
     try:
-        async def update_progress(text: str):
-            try:
-                await bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=progress_msg_id,
-                    text=text,
-                    parse_mode=None,
-                )
-            except Exception:
-                pass
-
-        result = await sora_service.generate_video(
+        task_id = await sora_service.create_task(
             prompt=prompt,
             model=api_model,
-            progress_callback=update_progress,
             aspect_ratio=sora_settings.aspect_ratio,
             n_frames=str(sora_settings.duration),
         )
-
-        if result.success:
-            # Get user's remaining tokens
-            async with async_session_maker() as session:
-                sub_service = SubscriptionService(session)
-                user_tokens = await sub_service.get_available_tokens(user_id)
-
-            caption = format_generation_message(
-                content_type=CONTENT_TYPES["video"],
-                model_name=f"Sora 2 {quality_text}",
-                tokens_used=estimated_tokens,
-                user_tokens=user_tokens,
-                prompt=prompt,
-            )
-
-            builder = create_action_keyboard(
-                action_text=MODEL_ACTIONS["sora"]["text"],
-                action_callback=MODEL_ACTIONS["sora"]["callback"],
-                file_path=result.video_path,
-                file_type="video",
-            )
-
-            video_file = FSInputFile(result.video_path)
-            await bot.send_video(
-                chat_id=chat_id,
-                video=video_file,
-                caption=caption,
-                reply_markup=builder.as_markup(),
-            )
-            try:
-                await bot.delete_message(chat_id=chat_id, message_id=progress_msg_id)
-            except Exception:
-                pass
-        else:
-            # Refund tokens on failure
-            async with async_session_maker() as session:
-                sub_service = SubscriptionService(session)
-                await sub_service.add_eternal_tokens(user_id, estimated_tokens, "refund")
-
-            try:
-                await bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=progress_msg_id,
-                    text=f"❌ Ошибка генерации видео:\n{result.error}\n\n"
-                         f"💰 Токены возвращены на баланс.",
-                    parse_mode=None,
-                )
-            except Exception:
-                pass
-
     except Exception as e:
-        logger.error("sora_background_task_failed", error=str(e), user_id=user_id)
-        # Refund tokens on unexpected error
-        try:
-            async with async_session_maker() as session:
-                sub_service = SubscriptionService(session)
-                await sub_service.add_eternal_tokens(user_id, estimated_tokens, "refund")
-        except Exception:
-            pass
+        logger.error("sora_create_task_failed", error=str(e), user_id=user.id)
+        # Rollback tokens on API failure
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            await sub_service.rollback_tokens(user.id, estimated_tokens)
+        await progress_msg.edit_text(
+            f"❌ Ошибка создания задачи Sora 2:\n{str(e)[:200]}\n\n"
+            f"💰 Токены возвращены на баланс.",
+            parse_mode=None,
+        )
+        await state.update_data(image_path=None, photo_caption_prompt=None)
+        return
 
-        try:
-            await bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=progress_msg_id,
-                text=f"❌ Ошибка генерации видео:\n{str(e)[:200]}\n\n"
-                     f"💰 Токены возвращены на баланс.",
-                parse_mode=None,
+    # Step 4: Save job to database
+    try:
+        async with async_session_maker() as session:
+            job_service = VideoJobService(session)
+            job = await job_service.create_job(
+                user_id=user.id,
+                provider="sora",
+                model_id=api_model,
+                prompt=prompt,
+                input_data={
+                    "aspect_ratio": sora_settings.aspect_ratio,
+                    "n_frames": str(sora_settings.duration),
+                    "quality": sora_settings.quality,
+                    "quality_text": quality_text,
+                },
+                chat_id=message.chat.id,
+                tokens_cost=estimated_tokens,
+                progress_message_id=progress_msg.message_id,
             )
-        except Exception:
-            pass
+            # Store task_id from Kie.ai
+            await job_service.update_job_status(
+                job.id,
+                "processing",
+                task_id=task_id,
+            )
+            logger.info(
+                "sora_job_created",
+                job_id=job.id,
+                task_id=task_id,
+                user_id=user.id,
+                model=api_model,
+                tokens=estimated_tokens,
+            )
+    except Exception as e:
+        logger.error("sora_job_save_failed", error=str(e), user_id=user.id)
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            await sub_service.rollback_tokens(user.id, estimated_tokens)
+        await progress_msg.edit_text(
+            f"❌ Ошибка сохранения задачи:\n{str(e)[:200]}\n\n"
+            f"💰 Токены возвращены на баланс.",
+            parse_mode=None,
+        )
+        await state.update_data(image_path=None, photo_caption_prompt=None)
+        return
+
+    # Done — handler returns, callback will deliver the result
+    await state.update_data(image_path=None, photo_caption_prompt=None)
 
 
 async def process_luma_video(message: Message, user: User, state: FSMContext):
