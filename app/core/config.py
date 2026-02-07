@@ -91,6 +91,7 @@ class Settings(BaseSettings):
 
     app_host: str = Field("127.0.0.1", description="FastAPI host")
     port: Optional[int] = Field(None, description="FastAPI port (ENV: PORT)")
+    callback_base_url: Optional[str] = Field(None, description="Base URL for API callbacks (e.g. https://77.110.98.173)")
 
     @property
     def app_port(self) -> int:

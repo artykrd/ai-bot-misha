@@ -49,6 +49,11 @@ app.add_middleware(
 )
 
 
+# Register API callback routers
+from app.api.sora_callback import router as sora_callback_router
+app.include_router(sora_callback_router)
+
+
 @app.get("/")
 async def root():
     """Root endpoint."""

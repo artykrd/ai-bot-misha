@@ -54,6 +54,10 @@ class VideoJobService:
         """Get job by ID."""
         return await self.repository.get_by_id(job_id)
 
+    async def get_job_by_task_id(self, task_id: str) -> Optional[VideoGenerationJob]:
+        """Get job by provider task ID."""
+        return await self.repository.get_by_task_id(task_id)
+
     async def update_job_status(
         self,
         job_id: int,

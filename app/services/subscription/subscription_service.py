@@ -250,6 +250,59 @@ class SubscriptionService:
 
         return subscription
 
+    async def reserve_tokens(
+        self,
+        user_id: int,
+        tokens_required: int,
+        model_id: Optional[str] = None
+    ) -> "Subscription":
+        """
+        Reserve tokens for a pending operation (deducts immediately).
+        Use commit_tokens() on success or rollback_tokens() on failure.
+
+        Args:
+            user_id: User ID
+            tokens_required: Number of tokens to reserve
+            model_id: Optional model ID for unlimited limits check
+
+        Returns:
+            Subscription that was used
+
+        Raises:
+            InsufficientTokensError: If not enough tokens
+        """
+        subscription = await self.check_and_use_tokens(user_id, tokens_required, model_id)
+        logger.info(
+            "tokens_reserved",
+            user_id=user_id,
+            amount=tokens_required,
+        )
+        return subscription
+
+    async def commit_tokens(self, user_id: int, tokens: int) -> None:
+        """
+        Commit previously reserved tokens (no-op — tokens already deducted).
+
+        Args:
+            user_id: User ID
+            tokens: Reserved token amount (for logging only)
+        """
+        logger.info("tokens_committed", user_id=user_id, amount=tokens)
+
+    async def rollback_tokens(self, user_id: int, tokens: int) -> "Subscription":
+        """
+        Rollback previously reserved tokens (refund on failure).
+
+        Args:
+            user_id: User ID
+            tokens: Number of tokens to return
+
+        Returns:
+            Created refund Subscription
+        """
+        logger.info("tokens_rollback", user_id=user_id, amount=tokens)
+        return await self.add_eternal_tokens(user_id, tokens, "refund")
+
     async def add_subscription_tokens(
         self,
         user_id: int,
