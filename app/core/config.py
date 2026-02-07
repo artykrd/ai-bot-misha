@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     kling_api_key: Optional[str] = Field(None, description="Kling AI API key (legacy)")
     kling_access_key: Optional[str] = Field(None, description="Kling AI access key for official API")
     kling_secret_key: Optional[str] = Field(None, description="Kling AI secret key for official API")
+    kie_api_key: Optional[str] = Field(None, description="Kie.ai API key for Sora 2 and Midjourney")
     aimlapi_key: Optional[str] = Field(None, description="AI/ML API unified key (fallback for multiple services)")
     removebg_api_key: Optional[str] = Field(None, description="Remove.bg API key")
     ark_api_key: Optional[str] = Field(None, description="BytePlus ARK API key for Seedream")

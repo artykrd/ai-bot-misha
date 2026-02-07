@@ -358,9 +358,10 @@ __ℹ️ Выберите нейросеть для генерации виде�
 
 
 @router.callback_query(F.data == "bot.mjvideo")
-async def show_midjourney_video(callback: CallbackQuery):
-    """Route Midjourney Video menu button to video creation options."""
-    await show_create_video(callback)
+async def show_midjourney_video(callback: CallbackQuery, state, user):
+    """Route Midjourney Video to its handler in media_handler."""
+    from app.bot.handlers.media_handler import start_midjourney_video
+    await start_midjourney_video(callback, state, user)
 
 
 @router.message(F.text.in_(["🎬 Создать видео", "Создать видео"]))
