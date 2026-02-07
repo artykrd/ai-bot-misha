@@ -236,6 +236,8 @@ class SoraService(BaseVideoProvider):
 
         start_time = time.time()
         last_status = None
+        # Wait before first poll to let the task initialize
+        await asyncio.sleep(5)
 
         async with aiohttp.ClientSession() as session:
             while True:
@@ -246,8 +248,15 @@ class SoraService(BaseVideoProvider):
                     data = await response.json()
 
                     if data.get("code") != 200:
-                        error_msg = data.get("message", "Unknown error")
-                        raise Exception(f"Status check failed: {error_msg}")
+                        task_data = data.get("data", {})
+                        # Check for explicit failure
+                        if isinstance(task_data, dict) and task_data.get("state") == "fail":
+                            fail_msg = task_data.get("failMsg", data.get("message", "Unknown error"))
+                            raise Exception(f"Генерация не удалась: {fail_msg}")
+                        # Non-200 codes are expected while task is initializing/processing - continue polling
+                        logger.debug("sora_poll_non200", code=data.get("code"), message=data.get("message", ""))
+                        await asyncio.sleep(poll_interval)
+                        continue
 
                     task_data = data.get("data", {})
                     state = task_data.get("state", "unknown")

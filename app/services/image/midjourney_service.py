@@ -227,6 +227,8 @@ class MidjourneyService:
 
         start_time = time.time()
         last_status = None
+        # Wait before first poll to let the task initialize
+        await asyncio.sleep(5)
 
         async with aiohttp.ClientSession() as session:
             while True:
@@ -238,15 +240,14 @@ class MidjourneyService:
 
                     if data.get("code") != 200:
                         task_data = data.get("data", {})
-                        state = task_data.get("state", "unknown") if isinstance(task_data, dict) else "unknown"
-                        if state == "fail":
+                        # Check for explicit failure state
+                        if isinstance(task_data, dict) and task_data.get("state") == "fail":
                             fail_msg = task_data.get("failMsg", data.get("msg", "Unknown error"))
                             raise Exception(f"Генерация не удалась: {fail_msg}")
-                        # Some status codes are expected while processing
-                        if data.get("code") not in (200, 201, 202):
-                            error_msg = data.get("msg", "Unknown error")
-                            if "processing" not in error_msg.lower() and "pending" not in error_msg.lower():
-                                raise Exception(f"Status check failed: {error_msg}")
+                        # Non-200 codes are expected while task is initializing/processing - continue polling
+                        logger.debug("midjourney_poll_non200", code=data.get("code"), msg=data.get("msg", ""))
+                        await asyncio.sleep(poll_interval)
+                        continue
 
                     task_data = data.get("data", {})
                     if isinstance(task_data, dict):
