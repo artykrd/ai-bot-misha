@@ -1794,7 +1794,7 @@ async def process_sora_video(message: Message, user: User, state: FSMContext):
         # Refund tokens
         async with async_session_maker() as session:
             sub_service = SubscriptionService(session)
-            await sub_service.add_tokens(user.id, estimated_tokens)
+            await sub_service.add_eternal_tokens(user.id, estimated_tokens, "refund")
         await state.update_data(image_path=None, photo_caption_prompt=None)
         return
 
@@ -1840,7 +1840,7 @@ async def process_sora_video(message: Message, user: User, state: FSMContext):
         # Refund tokens on failure
         async with async_session_maker() as session:
             sub_service = SubscriptionService(session)
-            await sub_service.add_tokens(user.id, estimated_tokens)
+            await sub_service.add_eternal_tokens(user.id, estimated_tokens, "refund")
 
         try:
             await progress_msg.edit_text(
@@ -5342,7 +5342,7 @@ async def process_midjourney_image(message: Message, user: User, state: FSMConte
         # Refund tokens
         async with async_session_maker() as session:
             sub_service = SubscriptionService(session)
-            await sub_service.add_tokens(user.id, estimated_tokens)
+            await sub_service.add_eternal_tokens(user.id, estimated_tokens, "refund")
 
         try:
             await progress_msg.edit_text(
@@ -5413,6 +5413,6 @@ async def process_midjourney_video(message: Message, user: User, state: FSMConte
     # Refund tokens
     async with async_session_maker() as session:
         sub_service = SubscriptionService(session)
-        await sub_service.add_tokens(user.id, estimated_tokens)
+        await sub_service.add_eternal_tokens(user.id, estimated_tokens, "refund")
 
     await state.update_data(image_path=None, photo_caption_prompt=None)
