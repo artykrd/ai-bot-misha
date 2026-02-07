@@ -238,6 +238,8 @@ class MidjourneyService:
                 async with session.get(url, headers=headers, params=params) as response:
                     data = await response.json()
 
+                    elapsed = int(time.time() - start_time)
+
                     if data.get("code") != 200:
                         task_data = data.get("data", {})
                         # Check for explicit failure state
@@ -245,7 +247,7 @@ class MidjourneyService:
                             fail_msg = task_data.get("failMsg", data.get("msg", "Unknown error"))
                             raise Exception(f"Генерация не удалась: {fail_msg}")
                         # Non-200 codes are expected while task is initializing/processing - continue polling
-                        logger.debug("midjourney_poll_non200", code=data.get("code"), msg=data.get("msg", ""))
+                        logger.info("midjourney_poll_non200", task_id=task_id, code=data.get("code"), msg=data.get("msg", ""), elapsed=elapsed)
                         await asyncio.sleep(poll_interval)
                         continue
 
@@ -254,6 +256,7 @@ class MidjourneyService:
                         state = task_data.get("state", "unknown")
                     else:
                         state = "processing"
+                    logger.info("midjourney_poll_status", task_id=task_id, state=state, elapsed=elapsed)
 
                     if progress_callback and state != last_status:
                         if state == "pending":

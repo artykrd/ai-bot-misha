@@ -247,6 +247,8 @@ class SoraService(BaseVideoProvider):
                 async with session.get(url, headers=headers, params=params) as response:
                     data = await response.json()
 
+                    elapsed = int(time.time() - start_time)
+
                     if data.get("code") != 200:
                         task_data = data.get("data", {})
                         # Check for explicit failure
@@ -254,12 +256,13 @@ class SoraService(BaseVideoProvider):
                             fail_msg = task_data.get("failMsg", data.get("message", "Unknown error"))
                             raise Exception(f"Генерация не удалась: {fail_msg}")
                         # Non-200 codes are expected while task is initializing/processing - continue polling
-                        logger.debug("sora_poll_non200", code=data.get("code"), message=data.get("message", ""))
+                        logger.info("sora_poll_non200", task_id=task_id, code=data.get("code"), message=data.get("message", ""), elapsed=elapsed)
                         await asyncio.sleep(poll_interval)
                         continue
 
                     task_data = data.get("data", {})
                     state = task_data.get("state", "unknown")
+                    logger.info("sora_poll_status", task_id=task_id, state=state, elapsed=elapsed)
 
                     if progress_callback and state != last_status:
                         if state == "pending":

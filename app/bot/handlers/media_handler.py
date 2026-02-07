@@ -5,6 +5,8 @@
 Media handlers for video, audio, and image generation.
 """
 
+import asyncio
+
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message, FSInputFile, BufferedInputFile
 from aiogram.fsm.context import FSMContext
@@ -1798,59 +1800,127 @@ async def process_sora_video(message: Message, user: User, state: FSMContext):
         await state.update_data(image_path=None, photo_caption_prompt=None)
         return
 
-    result = await sora_service.generate_video(
-        prompt=prompt,
-        model=api_model,
-        progress_callback=update_progress,
-        aspect_ratio=sora_settings.aspect_ratio,
-        n_frames=str(sora_settings.duration),
+    # Run generation in background to not block the bot
+    asyncio.create_task(
+        _sora_generation_task(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            user_id=user.id,
+            prompt=prompt,
+            api_model=api_model,
+            sora_settings=sora_settings,
+            estimated_tokens=estimated_tokens,
+            quality_text=quality_text,
+            progress_msg_id=progress_msg.message_id,
+            sora_service=sora_service,
+        )
     )
 
-    if result.success:
-        # Get user's remaining tokens
-        async with async_session_maker() as session:
-            sub_service = SubscriptionService(session)
-            user_tokens = await sub_service.get_available_tokens(user.id)
+    await state.update_data(image_path=None, photo_caption_prompt=None)
 
-        # Generate unified notification message
-        caption = format_generation_message(
-            content_type=CONTENT_TYPES["video"],
-            model_name=f"Sora 2 {quality_text}",
-            tokens_used=estimated_tokens,
-            user_tokens=user_tokens,
-            prompt=prompt
+
+async def _sora_generation_task(
+    bot,
+    chat_id: int,
+    user_id: int,
+    prompt: str,
+    api_model: str,
+    sora_settings,
+    estimated_tokens: int,
+    quality_text: str,
+    progress_msg_id: int,
+    sora_service,
+):
+    """Background task for Sora 2 video generation. Runs without blocking the bot."""
+    try:
+        async def update_progress(text: str):
+            try:
+                await bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=progress_msg_id,
+                    text=text,
+                    parse_mode=None,
+                )
+            except Exception:
+                pass
+
+        result = await sora_service.generate_video(
+            prompt=prompt,
+            model=api_model,
+            progress_callback=update_progress,
+            aspect_ratio=sora_settings.aspect_ratio,
+            n_frames=str(sora_settings.duration),
         )
 
-        # Create action keyboard
-        builder = create_action_keyboard(
-            action_text=MODEL_ACTIONS["sora"]["text"],
-            action_callback=MODEL_ACTIONS["sora"]["callback"],
-            file_path=result.video_path,
-            file_type="video"
-        )
+        if result.success:
+            # Get user's remaining tokens
+            async with async_session_maker() as session:
+                sub_service = SubscriptionService(session)
+                user_tokens = await sub_service.get_available_tokens(user_id)
 
-        video_file = FSInputFile(result.video_path)
-        await message.answer_video(
-            video=video_file,
-            caption=caption,
-            reply_markup=builder.as_markup()
-        )
-        await progress_msg.delete()
-    else:
-        # Refund tokens on failure
-        async with async_session_maker() as session:
-            sub_service = SubscriptionService(session)
-            await sub_service.add_eternal_tokens(user.id, estimated_tokens, "refund")
-
-        try:
-            await progress_msg.edit_text(
-                f"❌ Ошибка генерации видео:\n{result.error}",
-                parse_mode=None
+            caption = format_generation_message(
+                content_type=CONTENT_TYPES["video"],
+                model_name=f"Sora 2 {quality_text}",
+                tokens_used=estimated_tokens,
+                user_tokens=user_tokens,
+                prompt=prompt,
             )
+
+            builder = create_action_keyboard(
+                action_text=MODEL_ACTIONS["sora"]["text"],
+                action_callback=MODEL_ACTIONS["sora"]["callback"],
+                file_path=result.video_path,
+                file_type="video",
+            )
+
+            video_file = FSInputFile(result.video_path)
+            await bot.send_video(
+                chat_id=chat_id,
+                video=video_file,
+                caption=caption,
+                reply_markup=builder.as_markup(),
+            )
+            try:
+                await bot.delete_message(chat_id=chat_id, message_id=progress_msg_id)
+            except Exception:
+                pass
+        else:
+            # Refund tokens on failure
+            async with async_session_maker() as session:
+                sub_service = SubscriptionService(session)
+                await sub_service.add_eternal_tokens(user_id, estimated_tokens, "refund")
+
+            try:
+                await bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=progress_msg_id,
+                    text=f"❌ Ошибка генерации видео:\n{result.error}\n\n"
+                         f"💰 Токены возвращены на баланс.",
+                    parse_mode=None,
+                )
+            except Exception:
+                pass
+
+    except Exception as e:
+        logger.error("sora_background_task_failed", error=str(e), user_id=user_id)
+        # Refund tokens on unexpected error
+        try:
+            async with async_session_maker() as session:
+                sub_service = SubscriptionService(session)
+                await sub_service.add_eternal_tokens(user_id, estimated_tokens, "refund")
         except Exception:
             pass
 
-    await state.update_data(image_path=None, photo_caption_prompt=None)
+        try:
+            await bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=progress_msg_id,
+                text=f"❌ Ошибка генерации видео:\n{str(e)[:200]}\n\n"
+                     f"💰 Токены возвращены на баланс.",
+                parse_mode=None,
+            )
+        except Exception:
+            pass
 
 
 async def process_luma_video(message: Message, user: User, state: FSMContext):
@@ -5292,68 +5362,121 @@ async def process_midjourney_image(message: Message, user: User, state: FSMConte
             await state.clear()
             return
 
-    task_type = "mj_txt2img"
     progress_msg = await message.answer("🎨 Генерирую изображение с Midjourney...")
-
     mj_service = MidjourneyService()
 
-    async def update_progress(text: str):
+    # Run generation in background to not block the bot
+    asyncio.create_task(
+        _midjourney_generation_task(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            user_id=user.id,
+            prompt=prompt,
+            estimated_tokens=estimated_tokens,
+            progress_msg_id=progress_msg.message_id,
+            mj_service=mj_service,
+        )
+    )
+
+    await state.clear()
+
+
+async def _midjourney_generation_task(
+    bot,
+    chat_id: int,
+    user_id: int,
+    prompt: str,
+    estimated_tokens: int,
+    progress_msg_id: int,
+    mj_service,
+):
+    """Background task for Midjourney image generation. Runs without blocking the bot."""
+    try:
+        async def update_progress(text: str):
+            try:
+                await bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=progress_msg_id,
+                    text=text,
+                    parse_mode=None,
+                )
+            except Exception:
+                pass
+
+        result = await mj_service.generate_image(
+            prompt=prompt,
+            task_type="mj_txt2img",
+            progress_callback=update_progress,
+            aspect_ratio="16:9",
+        )
+
+        if result.success and result.image_paths:
+            async with async_session_maker() as session:
+                sub_service = SubscriptionService(session)
+                user_tokens = await sub_service.get_available_tokens(user_id)
+
+            caption = format_generation_message(
+                content_type=CONTENT_TYPES["image"],
+                model_name="Midjourney",
+                tokens_used=estimated_tokens,
+                user_tokens=user_tokens,
+                prompt=prompt,
+            )
+
+            builder = create_action_keyboard(
+                action_text=MODEL_ACTIONS["midjourney"]["text"],
+                action_callback=MODEL_ACTIONS["midjourney"]["callback"],
+                file_path=result.image_paths[0],
+                file_type="image",
+            )
+
+            image_file = FSInputFile(result.image_paths[0])
+            await bot.send_photo(
+                chat_id=chat_id,
+                photo=image_file,
+                caption=caption,
+                reply_markup=builder.as_markup(),
+            )
+            try:
+                await bot.delete_message(chat_id=chat_id, message_id=progress_msg_id)
+            except Exception:
+                pass
+        else:
+            # Refund tokens
+            async with async_session_maker() as session:
+                sub_service = SubscriptionService(session)
+                await sub_service.add_eternal_tokens(user_id, estimated_tokens, "refund")
+
+            try:
+                await bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=progress_msg_id,
+                    text=f"❌ Ошибка генерации Midjourney:\n{result.error}\n\n"
+                         f"💰 Токены возвращены на баланс.",
+                    parse_mode=None,
+                )
+            except Exception:
+                pass
+
+    except Exception as e:
+        logger.error("midjourney_background_task_failed", error=str(e), user_id=user_id)
         try:
-            await progress_msg.edit_text(text, parse_mode=None)
+            async with async_session_maker() as session:
+                sub_service = SubscriptionService(session)
+                await sub_service.add_eternal_tokens(user_id, estimated_tokens, "refund")
         except Exception:
             pass
 
-    result = await mj_service.generate_image(
-        prompt=prompt,
-        task_type=task_type,
-        progress_callback=update_progress,
-        aspect_ratio="16:9",
-    )
-
-    if result.success and result.image_paths:
-        # Get user's remaining tokens
-        async with async_session_maker() as session:
-            sub_service = SubscriptionService(session)
-            user_tokens = await sub_service.get_available_tokens(user.id)
-
-        caption = format_generation_message(
-            content_type=CONTENT_TYPES["image"],
-            model_name="Midjourney",
-            tokens_used=estimated_tokens,
-            user_tokens=user_tokens,
-            prompt=prompt
-        )
-
-        builder = create_action_keyboard(
-            action_text=MODEL_ACTIONS["midjourney"]["text"],
-            action_callback=MODEL_ACTIONS["midjourney"]["callback"],
-            file_path=result.image_paths[0],
-            file_type="image"
-        )
-
-        image_file = FSInputFile(result.image_paths[0])
-        await message.answer_photo(
-            photo=image_file,
-            caption=caption,
-            reply_markup=builder.as_markup()
-        )
-        await progress_msg.delete()
-    else:
-        # Refund tokens
-        async with async_session_maker() as session:
-            sub_service = SubscriptionService(session)
-            await sub_service.add_eternal_tokens(user.id, estimated_tokens, "refund")
-
         try:
-            await progress_msg.edit_text(
-                f"❌ Ошибка генерации Midjourney:\n{result.error}\n\n"
-                f"💰 Токены возвращены на баланс.",
-                parse_mode=None
+            await bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=progress_msg_id,
+                text=f"❌ Ошибка генерации Midjourney:\n{str(e)[:200]}\n\n"
+                     f"💰 Токены возвращены на баланс.",
+                parse_mode=None,
             )
         except Exception:
             pass
-
-    await state.clear()
 
 
 # ======================
