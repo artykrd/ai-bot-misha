@@ -135,6 +135,14 @@ MODEL_ACTIONS = {
         "text": "🎬 Создать новое видео",
         "callback": "bot.kling_effects"
     },
+    "midjourney": {
+        "text": "🎨 Создать новое изображение",
+        "callback": "bot.midjourney"
+    },
+    "midjourney_video": {
+        "text": "🎬 Создать новое видео",
+        "callback": "bot.mjvideo"
+    },
     "gpt_image": {
         "text": "🎨 Создать новое изображение",
         "callback": "bot.gpt_image"

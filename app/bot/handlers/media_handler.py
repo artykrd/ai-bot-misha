@@ -63,7 +63,7 @@ from app.core.billing_config import (
 from app.core.temp_files import get_temp_file_path, cleanup_temp_file
 from app.services.video import VeoService, SoraService, LumaService, HailuoService, KlingService
 from app.services.video.kling_effects_service import KlingEffectsService
-from app.services.image import DalleService, GeminiImageService, StabilityService, RemoveBgService, NanoBananaService, KlingImageService, RecraftService, SeedreamService
+from app.services.image import DalleService, GeminiImageService, StabilityService, RemoveBgService, NanoBananaService, KlingImageService, RecraftService, SeedreamService, MidjourneyService
 from app.services.audio import SunoService, OpenAIAudioService
 from app.services.ai.vision_service import VisionService
 from app.services.subscription.subscription_service import SubscriptionService
@@ -197,9 +197,17 @@ async def start_veo(callback: CallbackQuery, state: FSMContext, user: User):
 
 @router.callback_query(F.data == "bot.sora")
 async def start_sora(callback: CallbackQuery, state: FSMContext, user: User):
+    from app.bot.keyboards.inline import sora_main_keyboard
+    from app.bot.states.media import SoraSettings
+    from app.core.billing_config import get_sora_tokens_cost
+
+    # Get or create Sora settings from FSM
+    data = await state.get_data()
+    sora_settings = SoraSettings.from_dict(data)
+
     total_tokens = await get_available_tokens(user.id)
-    sora_billing = get_video_model_billing("sora2")
-    videos_available = int(total_tokens / sora_billing.tokens_per_generation) if total_tokens > 0 else 0
+    tokens_per_video = get_sora_tokens_cost(sora_settings.quality, sora_settings.duration)
+    videos_available = int(total_tokens / tokens_per_video) if total_tokens > 0 else 0
 
     text = (
         "☁️ **Sora 2 · вирусные ролики с озвучкой**\n\n"
@@ -208,16 +216,97 @@ async def start_sora(callback: CallbackQuery, state: FSMContext, user: User):
         "📸 При желании можно прикрепить 1 фото с промптом и создать видео на его основе.\n\n"
         "⛔️ Sora не может озвучивать людей на фото и делать так, чтобы они учавствовали в кадре. "
         "Отправляйте фото без людей в кадре.\n\n"
-        "⚙️ **Параметры**\n"
-        "Длительность: 10 сек.\n"
-        "Качество: стандартное\n"
-        "Формат: 16:9\n\n"
-        f"🔹 Баланса хватит на {videos_available} видео. 1 видео = {format_token_amount(sora_billing.tokens_per_generation)} токенов\n\n"
-        "⚠️ Функционал в разработке."
+        f"⚙️ **Параметры**\n"
+        f"{sora_settings.get_display_settings()}\n\n"
+        "💰 **Стоимость:** Sora 2 — 7 000т./1 сек., Sora 2 Pro (720P) — 20 000т./1 сек.\n\n"
+        f"🔹 Баланса хватит на {videos_available} видео. "
+        f"1 видео = {format_token_amount(tokens_per_video)} токенов"
     )
 
-    await callback.message.answer(text, reply_markup=back_to_main_keyboard())
+    await state.set_state(MediaState.waiting_for_video_prompt)
+    settings_dict = sora_settings.to_dict()
+    await state.update_data(service="sora", image_path=None, photo_caption_prompt=None, **settings_dict)
+
+    try:
+        await callback.message.edit_text(text, reply_markup=sora_main_keyboard())
+    except Exception:
+        await callback.message.answer(text, reply_markup=sora_main_keyboard())
     await callback.answer()
+
+
+# Sora 2 settings handlers
+@router.callback_query(F.data == "sora.settings")
+async def sora_settings_menu(callback: CallbackQuery, state: FSMContext, user: User):
+    from app.bot.keyboards.inline import sora_settings_keyboard
+    text = "⚙️ **Настройки Sora 2**\n\nВыберите параметр для изменения:"
+    try:
+        await callback.message.edit_text(text, reply_markup=sora_settings_keyboard())
+    except Exception:
+        await callback.message.answer(text, reply_markup=sora_settings_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "sora.settings.duration")
+async def sora_duration_setting(callback: CallbackQuery, state: FSMContext, user: User):
+    from app.bot.keyboards.inline import sora_duration_keyboard
+    from app.bot.states.media import SoraSettings
+    data = await state.get_data()
+    sora_settings = SoraSettings.from_dict(data)
+    text = "🕓 **Длительность видео**\n\nВыберите длительность:"
+    try:
+        await callback.message.edit_text(text, reply_markup=sora_duration_keyboard(sora_settings.duration))
+    except Exception:
+        await callback.message.answer(text, reply_markup=sora_duration_keyboard(sora_settings.duration))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("sora.set.duration:"))
+async def sora_set_duration(callback: CallbackQuery, state: FSMContext, user: User):
+    duration = int(callback.data.split(":")[1])
+    await state.update_data(sora_duration=duration)
+    await start_sora(callback, state, user)
+
+
+@router.callback_query(F.data == "sora.settings.quality")
+async def sora_quality_setting(callback: CallbackQuery, state: FSMContext, user: User):
+    from app.bot.keyboards.inline import sora_quality_keyboard
+    from app.bot.states.media import SoraSettings
+    data = await state.get_data()
+    sora_settings = SoraSettings.from_dict(data)
+    text = "🎯 **Качество видео**\n\nВыберите качество:"
+    try:
+        await callback.message.edit_text(text, reply_markup=sora_quality_keyboard(sora_settings.quality))
+    except Exception:
+        await callback.message.answer(text, reply_markup=sora_quality_keyboard(sora_settings.quality))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("sora.set.quality:"))
+async def sora_set_quality(callback: CallbackQuery, state: FSMContext, user: User):
+    quality = callback.data.split(":")[1]
+    await state.update_data(sora_quality=quality)
+    await start_sora(callback, state, user)
+
+
+@router.callback_query(F.data == "sora.settings.aspect_ratio")
+async def sora_aspect_ratio_setting(callback: CallbackQuery, state: FSMContext, user: User):
+    from app.bot.keyboards.inline import sora_aspect_ratio_keyboard
+    from app.bot.states.media import SoraSettings
+    data = await state.get_data()
+    sora_settings = SoraSettings.from_dict(data)
+    text = "📐 **Формат видео**\n\nВыберите формат:"
+    try:
+        await callback.message.edit_text(text, reply_markup=sora_aspect_ratio_keyboard(sora_settings.aspect_ratio))
+    except Exception:
+        await callback.message.answer(text, reply_markup=sora_aspect_ratio_keyboard(sora_settings.aspect_ratio))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("sora.set.aspect_ratio:"))
+async def sora_set_aspect_ratio(callback: CallbackQuery, state: FSMContext, user: User):
+    aspect_ratio = callback.data.split(":")[1]
+    await state.update_data(sora_aspect_ratio=aspect_ratio)
+    await start_sora(callback, state, user)
 
 
 @router.callback_query(F.data == "bot.luma")
@@ -1024,35 +1113,70 @@ async def start_nano_pro(callback: CallbackQuery, state: FSMContext, user: User)
 
 
 @router.callback_query(F.data == "bot.midjourney")
-async def start_midjourney(callback: CallbackQuery):
-    """Midjourney stub - under development."""
+async def start_midjourney(callback: CallbackQuery, state: FSMContext, user: User):
+    """Midjourney image generation."""
+    from app.bot.keyboards.inline import midjourney_main_keyboard
+
+    await cleanup_temp_images(state)
+
+    mj_billing = get_image_model_billing("midjourney")
+    total_tokens = await get_available_tokens(user.id)
+    images_available = int(total_tokens / mj_billing.tokens_per_generation) if total_tokens > 0 else 0
+
     text = (
-        "🌆 **Midjourney**\n\n"
-        "⚠️ **Функционал в разработке**\n\n"
-        "Интеграция с Midjourney находится в процессе разработки.\n"
-        "Пожалуйста, используйте альтернативные сервисы:\n\n"
-        "• 🍌 Nano Banana (Gemini 2.5 Flash)\n"
-        "• 🖼 DALL·E 3\n\n"
-        "Следите за обновлениями!"
+        "🌆 **Midjourney · генерация изображений**\n\n"
+        "✏️ Отправьте текстовое описание изображения, которое хотите создать.\n\n"
+        "**Примеры:**\n"
+        "• Futuristic cityscape at sunset, cinematic lighting, 8k\n"
+        "• A cute cat wearing a space helmet, floating in galaxy\n"
+        "• Portrait of a samurai in neon rain, cyberpunk style\n\n"
+        "⚙️ **Параметры:**\n"
+        "Версия: 7\n"
+        "Скорость: fast\n"
+        "Формат: 16:9\n\n"
+        f"🔹 Баланса хватит на {images_available} изображений. "
+        f"1 изображение = {format_token_amount(mj_billing.tokens_per_generation)} токенов"
     )
-    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
-    await callback.answer("⚠️ Функционал в разработке", show_alert=False)
+
+    await state.set_state(MediaState.waiting_for_image_prompt)
+    await state.update_data(service="midjourney", reference_image_path=None, photo_caption_prompt=None)
+
+    try:
+        await callback.message.edit_text(text, reply_markup=midjourney_main_keyboard())
+    except Exception:
+        await callback.message.answer(text, reply_markup=midjourney_main_keyboard())
+    await callback.answer()
 
 
-@router.callback_query(F.data == "bot_stable_diffusion")
-async def start_stable_diffusion(callback: CallbackQuery):
-    """Stable Diffusion stub - under development."""
+async def start_midjourney_video(callback: CallbackQuery, state: FSMContext, user: User):
+    """Midjourney Video (image-to-video) generation."""
+    from app.bot.keyboards.inline import midjourney_video_main_keyboard
+
+    mj_billing = get_image_model_billing("midjourney")
+    total_tokens = await get_available_tokens(user.id)
+    images_available = int(total_tokens / mj_billing.tokens_per_generation) if total_tokens > 0 else 0
+
     text = (
-        "🖌 **Stable Diffusion**\n\n"
-        "⚠️ **Функционал в разработке**\n\n"
-        "Интеграция с Stable Diffusion находится в процессе разработки.\n"
-        "Пожалуйста, используйте альтернативные сервисы:\n\n"
-        "• 🍌 Nano Banana (Gemini 2.5 Flash)\n"
-        "• 🖼 DALL·E 3\n\n"
-        "Следите за обновлениями!"
+        "🌆 **Midjourney Video · Image-to-Video**\n\n"
+        "✏️ Отправьте фото с описанием, чтобы создать видео на его основе.\n\n"
+        "**Как использовать:**\n"
+        "1. Прикрепите фото\n"
+        "2. Добавьте описание движения/действия в подписи\n\n"
+        "**Примеры промптов:**\n"
+        "• Camera slowly zooms in, wind blows through hair\n"
+        "• The character turns and smiles at the camera\n\n"
+        f"🔹 Баланса хватит на {images_available} запросов. "
+        f"1 запрос = {format_token_amount(mj_billing.tokens_per_generation)} токенов"
     )
-    await callback.message.edit_text(text, reply_markup=back_to_main_keyboard())
-    await callback.answer("⚠️ Функционал в разработке", show_alert=False)
+
+    await state.set_state(MediaState.waiting_for_video_prompt)
+    await state.update_data(service="midjourney_video", image_path=None, photo_caption_prompt=None)
+
+    try:
+        await callback.message.edit_text(text, reply_markup=midjourney_video_main_keyboard())
+    except Exception:
+        await callback.message.answer(text, reply_markup=midjourney_video_main_keyboard())
+    await callback.answer()
 
 
 @router.callback_query(F.data == "bot.recraft")
@@ -1257,6 +1381,8 @@ async def process_video_photo(message: Message, state: FSMContext, user: User):
             await process_kling_video(message, user, state)
         elif service_name == "kling_effects":
             await process_kling_effects(message, user, state)
+        elif service_name == "midjourney_video":
+            await process_midjourney_video(message, user, state)
     else:
         # No caption
         # For kling_effects, we don't need a caption - the effect ID is the action
@@ -1301,7 +1427,8 @@ async def process_video_prompt(message: Message, state: FSMContext, user: User):
         "luma": "Luma Dream Machine",
         "hailuo": "Hailuo",
         "kling": "Kling AI",
-        "kling_effects": "Kling Effects"
+        "kling_effects": "Kling Effects",
+        "midjourney_video": "Midjourney Video",
     }
     display = display_names.get(service_name, service_name)
 
@@ -1316,6 +1443,8 @@ async def process_video_prompt(message: Message, state: FSMContext, user: User):
         await process_hailuo_video(message, user, state)
     elif service_name == "kling" or service_name == "kling_effects":
         await process_kling_video(message, user, state, is_effects=(service_name == "kling_effects"))
+    elif service_name == "midjourney_video":
+        await process_midjourney_video(message, user, state)
     else:
         await message.answer(
             f"Функция генерации видео ({display}) находится в разработке.\n"
@@ -1604,18 +1733,28 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
 
 async def process_sora_video(message: Message, user: User, state: FSMContext):
     """Process Sora 2 video generation."""
+    from app.bot.states.media import SoraSettings
+    from app.core.billing_config import get_sora_tokens_cost
+
     # Get state data
     data = await state.get_data()
+    sora_settings = SoraSettings.from_dict(data)
+
     # Get prompt from caption if available, otherwise from message text
     prompt = data.get("photo_caption_prompt") or message.text
-    sora_billing = get_video_model_billing("sora2")
-    estimated_tokens = sora_billing.tokens_per_generation
+    image_path = data.get("image_path", None)
+
+    # Determine API model based on settings and whether image is provided
+    api_model = sora_settings.get_api_model(has_image=bool(image_path))
+    estimated_tokens = get_sora_tokens_cost(sora_settings.quality, sora_settings.duration)
 
     async with async_session_maker() as session:
         sub_service = SubscriptionService(session)
         try:
             await sub_service.check_and_use_tokens(user.id, estimated_tokens)
         except InsufficientTokensError as e:
+            if image_path:
+                cleanup_temp_file(image_path)
             await message.answer(
                 f"❌ Недостаточно токенов!\n\n"
                 f"Требуется: {estimated_tokens:,} токенов\n"
@@ -1624,7 +1763,11 @@ async def process_sora_video(message: Message, user: User, state: FSMContext):
             await state.clear()
             return
 
-    progress_msg = await message.answer("🎬 Генерирую видео...")
+    mode_text = "image-to-video" if image_path else "text-to-video"
+    quality_text = "Pro" if sora_settings.quality == "pro" else "Stable"
+    progress_msg = await message.answer(
+        f"🎬 Генерирую видео с Sora 2 {quality_text} ({mode_text}, {sora_settings.duration}с)..."
+    )
     sora_service = SoraService()
 
     async def update_progress(text: str):
@@ -1633,10 +1776,34 @@ async def process_sora_video(message: Message, user: User, state: FSMContext):
         except Exception:
             pass
 
+    # For image-to-video, we need to upload the image first
+    # The Kie.ai API expects a publicly accessible URL
+    image_url = None
+    if image_path:
+        # For now, we skip i2v if no upload mechanism
+        # TODO: implement image upload to get URL
+        cleanup_temp_file(image_path)
+        await progress_msg.edit_text(
+            "⚠️ **Image-to-Video для Sora 2 временно недоступен**\n\n"
+            "Sora 2 API требует загрузки изображения на CDN сервер.\n\n"
+            "Используйте text-to-video режим или альтернативные сервисы:\n"
+            "• 🌊 Veo 3.1 (поддерживает image-to-video)\n"
+            "• 🎥 Hailuo (поддерживает image-to-video)",
+            parse_mode="Markdown"
+        )
+        # Refund tokens
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            await sub_service.add_tokens(user.id, estimated_tokens)
+        await state.update_data(image_path=None, photo_caption_prompt=None)
+        return
+
     result = await sora_service.generate_video(
         prompt=prompt,
-        model="sora-2",
-        progress_callback=update_progress
+        model=api_model,
+        progress_callback=update_progress,
+        aspect_ratio=sora_settings.aspect_ratio,
+        n_frames=str(sora_settings.duration),
     )
 
     if result.success:
@@ -1648,8 +1815,8 @@ async def process_sora_video(message: Message, user: User, state: FSMContext):
         # Generate unified notification message
         caption = format_generation_message(
             content_type=CONTENT_TYPES["video"],
-            model_name="Sora 2",
-            tokens_used=result.tokens_used,
+            model_name=f"Sora 2 {quality_text}",
+            tokens_used=estimated_tokens,
             user_tokens=user_tokens,
             prompt=prompt
         )
@@ -1668,19 +1835,22 @@ async def process_sora_video(message: Message, user: User, state: FSMContext):
             caption=caption,
             reply_markup=builder.as_markup()
         )
-        try:
-            pass  # os.remove(result.video_path) - DISABLED: files managed by file_cache
-        except Exception as e:
-            logger.error("video_cleanup_failed", error=str(e))
         await progress_msg.delete()
     else:
+        # Refund tokens on failure
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            await sub_service.add_tokens(user.id, estimated_tokens)
+
         try:
-            await progress_msg.edit_text(f"❌ Ошибка: {result.error}", parse_mode=None)
+            await progress_msg.edit_text(
+                f"❌ Ошибка генерации видео:\n{result.error}",
+                parse_mode=None
+            )
         except Exception:
-            # Ignore errors when message is not modified
             pass
 
-    await state.clear()
+    await state.update_data(image_path=None, photo_caption_prompt=None)
 
 
 async def process_luma_video(message: Message, user: User, state: FSMContext):
@@ -2301,6 +2471,8 @@ async def process_image_prompt(message: Message, state: FSMContext, user: User):
         await process_recraft_image(message, user, state)
     elif service_name == "seedream":
         await process_seedream_image(message, user, state)
+    elif service_name == "midjourney":
+        await process_midjourney_image(message, user, state)
     else:
         await message.answer(
             f"Функция генерации изображений находится в разработке.\n"
@@ -5090,3 +5262,157 @@ async def process_seedream_image(message: Message, user: User, state: FSMContext
         )
 
     await state.clear()
+
+
+# ======================
+# MIDJOURNEY IMAGE HANDLER
+# ======================
+
+async def process_midjourney_image(message: Message, user: User, state: FSMContext):
+    """Process Midjourney image generation."""
+    data = await state.get_data()
+    prompt = data.get("photo_caption_prompt") or message.text
+    reference_image_path = data.get("reference_image_path", None)
+
+    mj_billing = get_image_model_billing("midjourney")
+    estimated_tokens = mj_billing.tokens_per_generation
+
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+        try:
+            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+        except InsufficientTokensError as e:
+            if reference_image_path:
+                cleanup_temp_file(reference_image_path)
+            await message.answer(
+                f"❌ Недостаточно токенов!\n\n"
+                f"Требуется: {estimated_tokens:,} токенов\n"
+                f"Доступно: {e.details['available']:,} токенов"
+            )
+            await state.clear()
+            return
+
+    task_type = "mj_txt2img"
+    progress_msg = await message.answer("🎨 Генерирую изображение с Midjourney...")
+
+    mj_service = MidjourneyService()
+
+    async def update_progress(text: str):
+        try:
+            await progress_msg.edit_text(text, parse_mode=None)
+        except Exception:
+            pass
+
+    result = await mj_service.generate_image(
+        prompt=prompt,
+        task_type=task_type,
+        progress_callback=update_progress,
+        aspect_ratio="16:9",
+    )
+
+    if result.success and result.image_paths:
+        # Get user's remaining tokens
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            user_tokens = await sub_service.get_available_tokens(user.id)
+
+        caption = format_generation_message(
+            content_type=CONTENT_TYPES["image"],
+            model_name="Midjourney",
+            tokens_used=estimated_tokens,
+            user_tokens=user_tokens,
+            prompt=prompt
+        )
+
+        builder = create_action_keyboard(
+            action_text=MODEL_ACTIONS["midjourney"]["text"],
+            action_callback=MODEL_ACTIONS["midjourney"]["callback"],
+            file_path=result.image_paths[0],
+            file_type="image"
+        )
+
+        image_file = FSInputFile(result.image_paths[0])
+        await message.answer_photo(
+            photo=image_file,
+            caption=caption,
+            reply_markup=builder.as_markup()
+        )
+        await progress_msg.delete()
+    else:
+        # Refund tokens
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            await sub_service.add_tokens(user.id, estimated_tokens)
+
+        try:
+            await progress_msg.edit_text(
+                f"❌ Ошибка генерации Midjourney:\n{result.error}\n\n"
+                f"💰 Токены возвращены на баланс.",
+                parse_mode=None
+            )
+        except Exception:
+            pass
+
+    await state.clear()
+
+
+# ======================
+# MIDJOURNEY VIDEO HANDLER
+# ======================
+
+async def process_midjourney_video(message: Message, user: User, state: FSMContext):
+    """Process Midjourney Video (image-to-video) generation using mj_video task type."""
+    data = await state.get_data()
+    prompt = data.get("photo_caption_prompt") or message.text or ""
+    image_path = data.get("image_path", None)
+
+    mj_billing = get_image_model_billing("midjourney")
+    estimated_tokens = mj_billing.tokens_per_generation
+
+    if not image_path:
+        await message.answer(
+            "⚠️ Midjourney Video требует фото.\n\n"
+            "Отправьте фото с описанием движения в подписи."
+        )
+        return
+
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+        try:
+            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+        except InsufficientTokensError as e:
+            cleanup_temp_file(image_path)
+            await message.answer(
+                f"❌ Недостаточно токенов!\n\n"
+                f"Требуется: {estimated_tokens:,} токенов\n"
+                f"Доступно: {e.details['available']:,} токенов"
+            )
+            await state.clear()
+            return
+
+    progress_msg = await message.answer("🎬 Генерирую видео с Midjourney Video...")
+    mj_service = MidjourneyService()
+
+    async def update_progress(text: str):
+        try:
+            await progress_msg.edit_text(text, parse_mode=None)
+        except Exception:
+            pass
+
+    # Midjourney Video requires image URL - same limitation as Sora i2v
+    cleanup_temp_file(image_path)
+    await progress_msg.edit_text(
+        "⚠️ **Midjourney Video временно недоступен**\n\n"
+        "API требует загрузки изображения на CDN сервер.\n\n"
+        "Используйте альтернативные сервисы для image-to-video:\n"
+        "• 🌊 Veo 3.1\n"
+        "• 🎥 Hailuo\n"
+        "• 🎞 Kling",
+        parse_mode="Markdown"
+    )
+    # Refund tokens
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+        await sub_service.add_tokens(user.id, estimated_tokens)
+
+    await state.update_data(image_path=None, photo_caption_prompt=None)

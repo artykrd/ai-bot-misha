@@ -151,9 +151,9 @@ IMAGE_MODELS: Dict[str, FixedModelBilling] = {
         model_type=ModelType.IMAGE
     ),
     "midjourney": FixedModelBilling(
-        tokens_per_generation=13000,
+        tokens_per_generation=7000,
         display_name="Midjourney",
-        description_suffix="Стоимость генерации: 13 000 токенов за изображение",
+        description_suffix="Стоимость генерации: 7 000 токенов за изображение",
         model_type=ModelType.IMAGE
     ),
     "nano-banana-image": FixedModelBilling(
@@ -205,10 +205,44 @@ IMAGE_MODELS: Dict[str, FixedModelBilling] = {
 # VIDEO MODELS (Fixed billing)
 # ==============================================
 VIDEO_MODELS: Dict[str, FixedModelBilling] = {
+    # Sora 2 Stable: 7,000 tokens per second
+    "sora2-stable-10s": FixedModelBilling(
+        tokens_per_generation=70000,
+        display_name="Sora 2 Stable",
+        description_suffix="Стоимость генерации видео (10 секунд): 70 000 токенов",
+        model_type=ModelType.VIDEO
+    ),
+    "sora2-stable-15s": FixedModelBilling(
+        tokens_per_generation=105000,
+        display_name="Sora 2 Stable",
+        description_suffix="Стоимость генерации видео (15 секунд): 105 000 токенов",
+        model_type=ModelType.VIDEO
+    ),
+    # Sora 2 Pro: 20,000 tokens per second (720P)
+    "sora2-pro-10s": FixedModelBilling(
+        tokens_per_generation=200000,
+        display_name="Sora 2 Pro",
+        description_suffix="Стоимость генерации видео (10 секунд): 200 000 токенов",
+        model_type=ModelType.VIDEO
+    ),
+    "sora2-pro-15s": FixedModelBilling(
+        tokens_per_generation=300000,
+        display_name="Sora 2 Pro",
+        description_suffix="Стоимость генерации видео (15 секунд): 300 000 токенов",
+        model_type=ModelType.VIDEO
+    ),
+    # Sora 2 Characters Pro: fixed cost per creation
+    "sora2-characters-pro": FixedModelBilling(
+        tokens_per_generation=140000,
+        display_name="Sora 2 Characters Pro",
+        description_suffix="Стоимость создания персонажа: 140 000 токенов",
+        model_type=ModelType.VIDEO
+    ),
+    # Legacy sora2 key (kept for backward compatibility)
     "sora2": FixedModelBilling(
-        tokens_per_generation=50000,
+        tokens_per_generation=70000,
         display_name="Sora 2",
-        description_suffix="Стоимость генерации видео (10 секунд): 50 000 токенов",
+        description_suffix="Стоимость генерации видео (10 секунд): 70 000 токенов",
         model_type=ModelType.VIDEO
     ),
     "veo-3.1-fast": FixedModelBilling(
@@ -304,6 +338,44 @@ LEGACY_VIDEO_MODEL_MAP = {
     "veo": "veo-3.1-fast",
     "sora": "sora2",
 }
+
+
+def get_sora_billing_key(quality: str, duration: int) -> str:
+    """
+    Get billing key for Sora 2 based on quality and duration.
+
+    Args:
+        quality: 'stable' or 'pro'
+        duration: 10 or 15 seconds
+
+    Returns:
+        Billing key for VIDEO_MODELS dict
+    """
+    return f"sora2-{quality}-{duration}s"
+
+
+def get_sora_tokens_cost(quality: str, duration: int) -> int:
+    """
+    Get token cost for Sora 2 video generation.
+
+    Args:
+        quality: 'stable' or 'pro'
+        duration: 10 or 15 seconds
+
+    Returns:
+        Token cost for this generation
+    """
+    billing_key = get_sora_billing_key(quality, duration)
+    billing = VIDEO_MODELS.get(billing_key)
+    if billing:
+        return billing.tokens_per_generation
+    # Fallback to stable 10s
+    return VIDEO_MODELS.get("sora2-stable-10s", FixedModelBilling(
+        tokens_per_generation=70000,
+        display_name="Sora 2",
+        description_suffix="",
+        model_type=ModelType.VIDEO
+    )).tokens_per_generation
 
 
 # ==============================================

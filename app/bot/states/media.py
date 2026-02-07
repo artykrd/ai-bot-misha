@@ -88,6 +88,54 @@ class KlingImageSettings:
         return "\n".join(parts)
 
 
+@dataclass
+class SoraSettings:
+    """Sora 2 video generation settings stored in FSM."""
+    quality: str = "stable"  # "stable" or "pro"
+    duration: int = 10  # 10 or 15 seconds
+    aspect_ratio: str = "landscape"  # "landscape" or "portrait"
+
+    def to_dict(self) -> dict:
+        """Convert to dict for FSM storage."""
+        return {
+            "sora_quality": self.quality,
+            "sora_duration": self.duration,
+            "sora_aspect_ratio": self.aspect_ratio,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "SoraSettings":
+        """Create from FSM data dict."""
+        return cls(
+            quality=data.get("sora_quality", "stable"),
+            duration=data.get("sora_duration", 10),
+            aspect_ratio=data.get("sora_aspect_ratio", "landscape"),
+        )
+
+    def get_display_settings(self) -> str:
+        """Get formatted settings string for display."""
+        quality_names = {
+            "stable": "Стандартное (Stable)",
+            "pro": "Высокое (Pro 720P)",
+        }
+        aspect_names = {
+            "landscape": "16:9 (альбомный)",
+            "portrait": "9:16 (портретный)",
+        }
+        parts = []
+        parts.append(f"Длительность: {self.duration} сек.")
+        parts.append(f"Качество: {quality_names.get(self.quality, self.quality)}")
+        parts.append(f"Формат: {aspect_names.get(self.aspect_ratio, self.aspect_ratio)}")
+        return "\n".join(parts)
+
+    def get_api_model(self, has_image: bool = False) -> str:
+        """Get API model name based on settings and mode."""
+        if self.quality == "pro":
+            return "sora-2-image-to-video" if has_image else "sora-2-text-to-video"
+        else:
+            return "sora-2-image-to-video-stable" if has_image else "sora-2-text-to-video-stable"
+
+
 class MediaState(StatesGroup):
     """States for media generation."""
     waiting_for_video_prompt = State()

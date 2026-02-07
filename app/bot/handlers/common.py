@@ -270,13 +270,24 @@ async def cmd_image(message: Message, state: FSMContext):
 
 
 @router.message(Command("mj"))
-async def cmd_mj(message: Message):
-    """Midjourney command."""
-    await message.answer(
-        "🎨 <b>Midjourney</b>\n\n⚠️ Функционал в разработке\n\nСтоимость: 20,000 токенов за запрос",
-        reply_markup=main_menu_reply_keyboard(),
-        parse_mode=ParseMode.HTML
+async def cmd_mj(message: Message, state):
+    """Midjourney command - redirect to Midjourney image handler."""
+    from app.bot.states import MediaState
+    from app.bot.keyboards.inline import midjourney_main_keyboard
+    from app.core.billing_config import get_image_model_billing, format_token_amount
+
+    mj_billing = get_image_model_billing("midjourney")
+
+    text = (
+        "🌆 **Midjourney · генерация изображений**\n\n"
+        "✏️ Отправьте текстовое описание изображения.\n\n"
+        f"💰 Стоимость: {format_token_amount(mj_billing.tokens_per_generation)} токенов за изображение"
     )
+
+    await state.set_state(MediaState.waiting_for_image_prompt)
+    await state.update_data(service="midjourney", reference_image_path=None, photo_caption_prompt=None)
+
+    await message.answer(text, reply_markup=midjourney_main_keyboard())
 
 
 @router.message(Command("dalle"))
@@ -300,32 +311,35 @@ async def cmd_dalle(message: Message, state: FSMContext):
 
 
 @router.message(Command("recraft"))
-async def cmd_recraft(message: Message):
-    """Recraft command."""
+async def cmd_recraft(message: Message, state):
+    """Recraft command - redirect to Recraft handler."""
+    from app.bot.states import MediaState
+    from app.bot.keyboards.inline import back_to_main_keyboard
     from app.core.billing_config import get_image_model_billing, format_token_amount
+
     recraft_billing = get_image_model_billing("recraft")
-    await message.answer(
-        (
-            "🎨 <b>Recraft</b>\n\n⚠️ Функционал в разработке\n\n"
-            f"Стоимость: {format_token_amount(recraft_billing.tokens_per_generation)} токенов за запрос"
-        ),
-        reply_markup=main_menu_reply_keyboard(),
-        parse_mode=ParseMode.HTML
+
+    text = (
+        "🎨 **Recraft · генерация изображений**\n\n"
+        "✏️ Отправьте текстовое описание изображения.\n\n"
+        f"💰 Стоимость: {format_token_amount(recraft_billing.tokens_per_generation)} токенов за изображение"
     )
+
+    await state.set_state(MediaState.waiting_for_image_prompt)
+    await state.update_data(service="recraft", reference_image_path=None, photo_caption_prompt=None)
+
+    await message.answer(text, reply_markup=back_to_main_keyboard())
 
 
 @router.message(Command("faceswap"))
 async def cmd_faceswap(message: Message):
     """Faceswap command."""
-    from app.core.billing_config import get_image_model_billing, format_token_amount
-    face_billing = get_image_model_billing("face-swap")
+    from app.bot.keyboards.inline import back_to_main_keyboard
     await message.answer(
-        (
-            "👤 <b>Замена лица на фото</b>\n\n⚠️ Функционал в разработке\n\n"
-            f"Стоимость: {format_token_amount(face_billing.tokens_per_generation)} токенов за запрос"
-        ),
-        reply_markup=main_menu_reply_keyboard(),
-        parse_mode=ParseMode.HTML
+        "👤 **Замена лица на фото**\n\n"
+        "Функция временно недоступна.\n"
+        "Используйте другие инструменты для работы с фото.",
+        reply_markup=back_to_main_keyboard()
     )
 
 
@@ -372,20 +386,24 @@ async def cmd_whisper(message: Message, state: FSMContext):
 
 
 @router.message(Command("mvideo"))
-async def cmd_mvideo(message: Message):
-    """Midjourney Video command."""
-    from app.core.billing_config import get_video_model_billing, format_token_amount
-    mj_sd = get_video_model_billing("midjourney-video-sd")
-    mj_hd = get_video_model_billing("midjourney-video-hd")
-    await message.answer(
-        (
-            "🎬 <b>Midjourney Video</b>\n\n⚠️ Функционал в разработке\n\n"
-            f"Стоимость: {format_token_amount(mj_sd.tokens_per_generation)} токенов (SD) / "
-            f"{format_token_amount(mj_hd.tokens_per_generation)} токенов (HD)"
-        ),
-        reply_markup=main_menu_reply_keyboard(),
-        parse_mode=ParseMode.HTML
+async def cmd_mvideo(message: Message, state):
+    """Midjourney Video command - redirect to Midjourney video handler."""
+    from app.bot.states import MediaState
+    from app.bot.keyboards.inline import midjourney_video_main_keyboard
+    from app.core.billing_config import get_image_model_billing, format_token_amount
+
+    mj_billing = get_image_model_billing("midjourney")
+
+    text = (
+        "🌆 **Midjourney Video · Image-to-Video**\n\n"
+        "✏️ Отправьте фото с описанием, чтобы создать видео.\n\n"
+        f"💰 Стоимость: {format_token_amount(mj_billing.tokens_per_generation)} токенов за запрос"
     )
+
+    await state.set_state(MediaState.waiting_for_video_prompt)
+    await state.update_data(service="midjourney_video", image_path=None, photo_caption_prompt=None)
+
+    await message.answer(text, reply_markup=midjourney_video_main_keyboard())
 
 
 @router.message(Command("luma"))
