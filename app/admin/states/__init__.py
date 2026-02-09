@@ -36,6 +36,7 @@ class CreatePromo(StatesGroup):
 
 class Broadcast(StatesGroup):
     """States for broadcast message."""
+    waiting_for_filter = State()
     waiting_for_message = State()
 
 
