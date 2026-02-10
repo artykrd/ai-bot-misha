@@ -100,7 +100,10 @@ class SoraService(BaseVideoProvider):
             "Authorization": f"Bearer {self.api_key}"
         }
 
-        async with aiohttp.ClientSession() as session:
+        # Set longer timeout for task creation (60 seconds)
+        timeout = aiohttp.ClientTimeout(total=60)
+
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(url, headers=headers, json=payload) as response:
                 data = await response.json()
 

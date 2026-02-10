@@ -224,13 +224,84 @@ async def _handle_success(session, job_service, job, task_data: dict):
 
 
 async def _handle_failure(session, job_service, job, task_data: dict):
-    """Handle failed video generation callback."""
+    """Handle failed video generation callback with automatic retry on timeout."""
     from app.bot.bot_instance import bot
+    from app.services.video.sora_service import SoraService
 
     task_id = task_data.get("taskId", "")
     fail_msg = task_data.get("failMsg", "Unknown error")
 
-    # Mark job failed
+    # Check if this is a timeout error and job can be retried
+    is_timeout = "timed out" in fail_msg.lower() or "timeout" in fail_msg.lower()
+
+    if is_timeout and job.can_retry:
+        # Increment attempt count
+        job.attempt_count += 1
+        await session.commit()
+
+        logger.info(
+            "sora_timeout_retry",
+            task_id=task_id,
+            job_id=job.id,
+            user_id=job.user_id,
+            attempt=job.attempt_count,
+            max_attempts=job.max_attempts,
+        )
+
+        # Notify user about retry
+        try:
+            if job.progress_message_id:
+                await bot.edit_message_text(
+                    chat_id=job.chat_id,
+                    message_id=job.progress_message_id,
+                    text=f"⚠️ Сервер не успел сгенерировать видео.\n\n"
+                         f"🔄 Повторная попытка {job.attempt_count}/{job.max_attempts}...\n\n"
+                         f"Пожалуйста, подождите.",
+                    parse_mode=None,
+                )
+        except Exception as e:
+            logger.error("sora_retry_notify_failed", error=str(e), user_id=job.user_id)
+
+        # Create new task
+        try:
+            sora_service = SoraService()
+            input_data = job.input_data or {}
+
+            new_task_id = await sora_service.create_task(
+                prompt=job.prompt,
+                model=job.model_id,
+                aspect_ratio=input_data.get("aspect_ratio", "landscape"),
+                n_frames=input_data.get("n_frames", "10"),
+            )
+
+            # Update job with new task_id and reset to processing
+            await job_service.update_job_status(
+                job.id,
+                "processing",
+                task_id=new_task_id,
+                error_message=None,
+            )
+
+            logger.info(
+                "sora_retry_task_created",
+                job_id=job.id,
+                old_task_id=task_id,
+                new_task_id=new_task_id,
+                attempt=job.attempt_count,
+            )
+
+            return  # Exit early, wait for new callback
+
+        except Exception as e:
+            logger.error(
+                "sora_retry_failed",
+                error=str(e),
+                job_id=job.id,
+                user_id=job.user_id,
+            )
+            # Fall through to mark as failed
+
+    # Mark job failed (either not timeout, can't retry, or retry failed)
     await job_service.update_job_status(
         job.id,
         "failed",
@@ -243,18 +314,22 @@ async def _handle_failure(session, job_service, job, task_data: dict):
 
     # Notify user
     try:
+        retry_info = ""
+        if is_timeout and job.attempt_count >= job.max_attempts:
+            retry_info = f"\n\n⚠️ Достигнуто максимальное количество попыток ({job.max_attempts})."
+
         if job.progress_message_id:
             await bot.edit_message_text(
                 chat_id=job.chat_id,
                 message_id=job.progress_message_id,
-                text=f"❌ Ошибка генерации Sora 2:\n{fail_msg}\n\n"
+                text=f"❌ Ошибка генерации Sora 2:\n{fail_msg}{retry_info}\n\n"
                      f"💰 Токены возвращены на баланс.",
                 parse_mode=None,
             )
         else:
             await bot.send_message(
                 chat_id=job.chat_id,
-                text=f"❌ Ошибка генерации Sora 2:\n{fail_msg}\n\n"
+                text=f"❌ Ошибка генерации Sora 2:\n{fail_msg}{retry_info}\n\n"
                      f"💰 Токены возвращены на баланс.",
             )
     except Exception as e:
@@ -266,4 +341,5 @@ async def _handle_failure(session, job_service, job, task_data: dict):
         job_id=job.id,
         user_id=job.user_id,
         fail_msg=fail_msg,
+        attempts=job.attempt_count,
     )
