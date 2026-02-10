@@ -8,6 +8,7 @@ import json
 from datetime import datetime, timezone
 
 import aiohttp
+from aiogram.exceptions import TelegramBadRequest
 from fastapi import APIRouter, Request, HTTPException
 from pathlib import Path
 
@@ -199,8 +200,12 @@ async def _handle_success(session, job_service, job, task_data: dict):
         if job.progress_message_id:
             try:
                 await bot.delete_message(chat_id=job.chat_id, message_id=job.progress_message_id)
-            except Exception:
-                pass
+            except TelegramBadRequest as e:
+                # Ignore expected errors when message can't be deleted
+                if "message can't be deleted" not in str(e) and "message to delete not found" not in str(e):
+                    logger.warning("sora_delete_message_failed", error=str(e), job_id=job.id)
+            except Exception as e:
+                logger.warning("sora_delete_message_error", error=str(e), job_id=job.id)
 
         logger.info(
             "sora_task_success",
