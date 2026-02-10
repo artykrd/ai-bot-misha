@@ -6,6 +6,7 @@ from typing import Optional
 from datetime import datetime, timezone, timedelta
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramBadRequest
 
 from app.database.database import async_session_maker
 from app.database.repositories.video_job import VideoJobRepository
@@ -249,8 +250,12 @@ class VideoJobService:
                 if job.progress_message_id:
                     try:
                         await bot.delete_message(chat_id=job.chat_id, message_id=job.progress_message_id)
-                    except Exception:
-                        pass
+                    except TelegramBadRequest as e:
+                        # Ignore expected errors when message can't be deleted
+                        if "message can't be deleted" not in str(e) and "message to delete not found" not in str(e):
+                            logger.warning("video_job_delete_message_failed", error=str(e), job_id=job.id)
+                    except Exception as e:
+                        logger.warning("video_job_delete_message_error", error=str(e), job_id=job.id)
 
                 logger.info("video_job_completed", job_id=job.id, provider=job.provider)
                 return True

@@ -8,6 +8,7 @@ Media handlers for video, audio, and image generation.
 import asyncio
 
 from aiogram import Router, F
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, Message, FSInputFile, BufferedInputFile
 from aiogram.fsm.context import FSMContext
 import os
@@ -5389,8 +5390,16 @@ async def _midjourney_generation_task(
             )
             try:
                 await bot.delete_message(chat_id=chat_id, message_id=progress_msg_id)
-            except Exception:
-                pass
+            except TelegramBadRequest as e:
+                # Ignore expected errors when message can't be deleted
+                if "message can't be deleted" not in str(e) and "message to delete not found" not in str(e):
+                    from app.core.logger import get_logger
+                    logger = get_logger(__name__)
+                    logger.warning("media_delete_message_failed", error=str(e))
+            except Exception as e:
+                from app.core.logger import get_logger
+                logger = get_logger(__name__)
+                logger.warning("media_delete_message_error", error=str(e))
         else:
             # Refund tokens
             async with async_session_maker() as session:
