@@ -4,12 +4,66 @@ Broadcast service for managing broadcast messages and statistics.
 from datetime import datetime, timedelta
 from typing import Optional
 
+from aiogram import Bot
+from aiogram.types import InlineKeyboardMarkup
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.logger import get_logger
 from app.database.models.broadcast import BroadcastMessage, BroadcastClick
 from app.database.models.user import User
 from app.database.models.subscription import Subscription
+
+logger = get_logger(__name__)
+
+
+async def send_broadcast_message(
+    bot: Bot,
+    chat_id: int,
+    text: str,
+    photo: Optional[str] = None,
+    keyboard: Optional[InlineKeyboardMarkup] = None,
+) -> None:
+    """
+    Unified method for sending broadcast messages to users.
+
+    Ensures photo, caption, and reply_markup are never lost
+    by using a single send call with all attachments.
+
+    Args:
+        bot: Bot instance to send through
+        chat_id: Telegram user chat ID
+        text: Message text (used as caption when photo is present)
+        photo: Telegram file_id for photo (optional)
+        keyboard: InlineKeyboardMarkup to attach (optional)
+    """
+    send_method = "send_photo" if photo else "send_message"
+
+    logger.info(
+        "BROADCAST_SEND_DEBUG",
+        chat_id=chat_id,
+        has_photo=bool(photo),
+        has_keyboard=keyboard is not None,
+        keyboard_type=type(keyboard).__name__ if keyboard else None,
+        send_method=send_method,
+        text_length=len(text) if text else 0,
+    )
+
+    if photo:
+        await bot.send_photo(
+            chat_id=chat_id,
+            photo=photo,
+            caption=text,
+            reply_markup=keyboard,
+            parse_mode=None,
+        )
+    else:
+        await bot.send_message(
+            chat_id=chat_id,
+            text=text,
+            reply_markup=keyboard,
+            parse_mode=None,
+        )
 
 
 async def create_broadcast_message(

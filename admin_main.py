@@ -1687,6 +1687,9 @@ async def start_broadcast(callback: CallbackQuery, state: FSMContext):
         await callback.answer("❌ Нет доступа")
         return
 
+    # Clear any stale state from previous broadcast flows
+    await state.clear()
+
     from app.admin.keyboards.inline import broadcast_type_menu
 
     text = "📢 Рассылка сообщения\n\n"
@@ -1702,6 +1705,9 @@ async def start_simple_broadcast(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
         await callback.answer("❌ Нет доступа")
         return
+
+    # Set state to prevent conflict with advanced broadcast filter handler
+    await state.set_state(Broadcast.waiting_for_filter)
 
     from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -1719,9 +1725,9 @@ async def start_simple_broadcast(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-@admin_router.callback_query(F.data.startswith("admin:broadcast_filter:"))
+@admin_router.callback_query(F.data.startswith("admin:broadcast_filter:"), StateFilter(Broadcast.waiting_for_filter))
 async def broadcast_filter_selected(callback: CallbackQuery, state: FSMContext):
-    """Start broadcast with selected filter."""
+    """Start broadcast with selected filter (simple broadcast only)."""
     if not is_admin(callback.from_user.id):
         await callback.answer("❌ Нет доступа")
         return
@@ -1754,6 +1760,7 @@ async def process_broadcast_message(message: Message, state: FSMContext):
 
     from app.database.database import async_session_maker
     from app.database.models import User
+    from app.admin.services import send_broadcast_message
     from sqlalchemy import select
     from aiogram import Bot
 
@@ -1802,10 +1809,10 @@ async def process_broadcast_message(message: Message, state: FSMContext):
             # Send messages
             for i, user in enumerate(users, 1):
                 try:
-                    await main_bot.send_message(
+                    await send_broadcast_message(
+                        bot=main_bot,
                         chat_id=user.telegram_id,
                         text=broadcast_text,
-                        parse_mode=None
                     )
                     success_count += 1
                 except Exception as e:
@@ -2346,6 +2353,7 @@ async def confirm_broadcast_send(callback: CallbackQuery, state: FSMContext):
 
     from app.database.database import async_session_maker
     from app.admin.services import (
+        send_broadcast_message,
         create_broadcast_message,
         get_recipients,
         update_broadcast_stats
@@ -2399,21 +2407,13 @@ async def confirm_broadcast_send(callback: CallbackQuery, state: FSMContext):
 
         for i, user in enumerate(recipients, 1):
             try:
-                if image_file_id:
-                    await main_bot.send_photo(
-                        chat_id=user.telegram_id,
-                        photo=image_file_id,
-                        caption=text,
-                        reply_markup=keyboard,
-                        parse_mode=None
-                    )
-                else:
-                    await main_bot.send_message(
-                        chat_id=user.telegram_id,
-                        text=text,
-                        reply_markup=keyboard,
-                        parse_mode=None
-                    )
+                await send_broadcast_message(
+                    bot=main_bot,
+                    chat_id=user.telegram_id,
+                    text=text,
+                    photo=image_file_id,
+                    keyboard=keyboard,
+                )
                 success_count += 1
             except Exception as e:
                 error_count += 1

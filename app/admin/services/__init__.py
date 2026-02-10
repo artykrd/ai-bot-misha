@@ -1,5 +1,6 @@
 """Admin services."""
 from app.admin.services.broadcast_service import (
+    send_broadcast_message,
     create_broadcast_message,
     update_broadcast_stats,
     get_recipients_count,
@@ -11,6 +12,7 @@ from app.admin.services.broadcast_service import (
 )
 
 __all__ = [
+    "send_broadcast_message",
     "create_broadcast_message",
     "update_broadcast_stats",
     "get_recipients_count",
