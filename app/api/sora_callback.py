@@ -231,21 +231,30 @@ async def _handle_failure(session, job_service, job, task_data: dict):
     task_id = task_data.get("taskId", "")
     fail_msg = task_data.get("failMsg", "Unknown error")
 
-    # Check if this is a timeout error and job can be retried
-    is_timeout = "timed out" in fail_msg.lower() or "timeout" in fail_msg.lower()
+    # Check if this is a retryable temporary error
+    fail_msg_lower = fail_msg.lower()
+    is_retryable = (
+        "timed out" in fail_msg_lower or
+        "timeout" in fail_msg_lower or
+        "under heavy load" in fail_msg_lower or
+        "not responding" in fail_msg_lower or
+        "try again later" in fail_msg_lower or
+        "service unavailable" in fail_msg_lower
+    )
 
-    if is_timeout and job.can_retry:
+    if is_retryable and job.can_retry:
         # Increment attempt count
         job.attempt_count += 1
         await session.commit()
 
         logger.info(
-            "sora_timeout_retry",
+            "sora_retry_temporary_error",
             task_id=task_id,
             job_id=job.id,
             user_id=job.user_id,
             attempt=job.attempt_count,
             max_attempts=job.max_attempts,
+            error_type=fail_msg[:50],
         )
 
         # Notify user about retry
@@ -254,7 +263,7 @@ async def _handle_failure(session, job_service, job, task_data: dict):
                 await bot.edit_message_text(
                     chat_id=job.chat_id,
                     message_id=job.progress_message_id,
-                    text=f"⚠️ Сервер не успел сгенерировать видео.\n\n"
+                    text=f"⚠️ Временная проблема на сервере генерации.\n\n"
                          f"🔄 Повторная попытка {job.attempt_count}/{job.max_attempts}...\n\n"
                          f"Пожалуйста, подождите.",
                     parse_mode=None,
@@ -315,7 +324,7 @@ async def _handle_failure(session, job_service, job, task_data: dict):
     # Notify user
     try:
         retry_info = ""
-        if is_timeout and job.attempt_count >= job.max_attempts:
+        if is_retryable and job.attempt_count >= job.max_attempts:
             retry_info = f"\n\n⚠️ Достигнуто максимальное количество попыток ({job.max_attempts})."
 
         if job.progress_message_id:
