@@ -41,7 +41,12 @@ from app.bot.keyboards.inline import (
     seedream_keyboard,
     seedream_size_keyboard,
     seedream_batch_count_keyboard,
-    seedream_back_keyboard
+    seedream_back_keyboard,
+    kling_motion_control_keyboard,
+    kling_mc_settings_keyboard,
+    kling_mc_mode_keyboard,
+    kling_mc_orientation_keyboard,
+    kling_mc_sound_keyboard,
 )
 from app.bot.states import MediaState
 from app.bot.states.media import KlingSettings, KlingImageSettings
@@ -549,12 +554,23 @@ async def kling_effects_confirm(callback: CallbackQuery, state: FSMContext, user
     await callback.answer()
 
 
-# Handler for when user clicks "Kling" from main menu - redirect to Kling image
+# Handler for when user clicks "Kling" from main menu
 @router.callback_query(F.data == "bot.kling_main")
 async def start_kling_choice(callback: CallbackQuery, state: FSMContext, user: User):
-    """Open Kling AI image generation with settings (video is not available)."""
-    # Redirect to Kling Image handler
-    await start_kling_image(callback, state, user)
+    """Open Kling AI choice menu."""
+    text = (
+        "🎞 Kling AI\n\n"
+        "Выберите, что хотите создать:\n\n"
+        "🌄 Создать фото — генерация изображений\n"
+        "🎬 Создать видео — генерация видео по тексту/фото\n"
+        "🕺 Motion Control — перенос движений с видео на изображение"
+    )
+
+    try:
+        await callback.message.edit_text(text, reply_markup=kling_choice_keyboard())
+    except Exception:
+        await callback.message.answer(text, reply_markup=kling_choice_keyboard())
+    await callback.answer()
 
 
 # Handler for Kling Image generation
@@ -4616,12 +4632,12 @@ async def handle_photo_no_model(message: Message, state: FSMContext):
 
     await message.answer_photo(
         photo=photo.file_id,
-        caption="📸 **Фото получено!**\n\n"
+        caption="📸 Фото получено!\n\n"
                 "Что вы хотите сделать с этим фото?\n\n"
-                "🎬 **Создать видео** - генерация видео на основе фото\n"
-                "🖼 **Создать изображение** - трансформация фото в новое изображение\n"
-                "👁 **Анализ фото** - детальное описание содержимого\n"
-                "🎨 **Обработка фото** - удаление фона, улучшение и т.д.",
+                "🎬 Создать видео - генерация видео на основе фото\n"
+                "🖼 Создать изображение - трансформация фото в новое изображение\n"
+                "👁 Анализ фото - детальное описание содержимого\n"
+                "🎨 Обработка фото - удаление фона, улучшение и т.д.",
         reply_markup=keyboard
     )
 
@@ -4644,9 +4660,12 @@ async def handle_photo_action_choice(callback: CallbackQuery, state: FSMContext)
         if saved_photo_path:
             cleanup_temp_file(saved_photo_path)
         await state.clear()
-        await callback.message.edit_caption(
-            caption="❌ Операция отменена."
-        )
+        try:
+            await callback.message.edit_caption(
+                caption="❌ Операция отменена."
+            )
+        except Exception:
+            pass
         await callback.answer()
         return
 
@@ -4667,13 +4686,20 @@ async def handle_photo_action_choice(callback: CallbackQuery, state: FSMContext)
             ]
         ])
 
-        await callback.message.edit_caption(
-            caption="🎬 **Выберите модель для генерации видео:**\n\n"
-                    f"• **Veo 3.1** - Google, HD качество ({format_token_amount(veo_billing.tokens_per_generation)} токенов)\n"
-                    f"• **Luma** - Dream Machine ({format_token_amount(luma_billing.tokens_per_generation)} токенов)\n"
-                    f"• **Kling AI** - Высокое качество ({format_token_amount(kling_billing.tokens_per_generation)} токенов)",
-            reply_markup=keyboard
+        caption_text = (
+            f"🎬 Выберите модель для генерации видео:\n\n"
+            f"• Veo 3.1 - Google, HD качество ({format_token_amount(veo_billing.tokens_per_generation)} токенов)\n"
+            f"• Luma - Dream Machine ({format_token_amount(luma_billing.tokens_per_generation)} токенов)\n"
+            f"• Kling AI - Высокое качество ({format_token_amount(kling_billing.tokens_per_generation)} токенов)"
         )
+
+        try:
+            await callback.message.edit_caption(caption=caption_text, reply_markup=keyboard)
+        except Exception:
+            try:
+                await callback.message.answer(caption_text, reply_markup=keyboard)
+            except Exception:
+                pass
         await callback.answer()
 
     elif action == "image":
@@ -4690,12 +4716,19 @@ async def handle_photo_action_choice(callback: CallbackQuery, state: FSMContext)
             ]
         ])
 
-        await callback.message.edit_caption(
-            caption="🖼 **Выберите модель для генерации изображения:**\n\n"
-                    f"• **Nano Banana** - Gemini 2.5 Flash, image-to-image ({format_token_amount(nano_billing.tokens_per_generation)} токенов)\n"
-                    f"• **DALL-E** - Image variation ({format_token_amount(dalle_billing.tokens_per_generation)} токенов)",
-            reply_markup=keyboard
+        caption_text = (
+            f"🖼 Выберите модель для генерации изображения:\n\n"
+            f"• Nano Banana - Gemini 2.5 Flash, image-to-image ({format_token_amount(nano_billing.tokens_per_generation)} токенов)\n"
+            f"• DALL-E - Image variation ({format_token_amount(dalle_billing.tokens_per_generation)} токенов)"
         )
+
+        try:
+            await callback.message.edit_caption(caption=caption_text, reply_markup=keyboard)
+        except Exception:
+            try:
+                await callback.message.answer(caption_text, reply_markup=keyboard)
+            except Exception:
+                pass
         await callback.answer()
 
     elif action == "vision":
@@ -4732,11 +4765,21 @@ async def handle_photo_action_choice(callback: CallbackQuery, state: FSMContext)
             ]
         ])
 
-        await callback.message.edit_caption(
-            caption="🎨 **Выберите инструмент обработки:**\n\n"
-                    "• **Удалить фон** - прозрачный фон (~1,000 токенов)",
-            reply_markup=keyboard
-        )
+        try:
+            await callback.message.edit_caption(
+                caption="🎨 Выберите инструмент обработки:\n\n"
+                        "• Удалить фон - прозрачный фон (~1,000 токенов)",
+                reply_markup=keyboard
+            )
+        except Exception:
+            try:
+                await callback.message.answer(
+                    "🎨 Выберите инструмент обработки:\n\n"
+                    "• Удалить фон - прозрачный фон (~1,000 токенов)",
+                    reply_markup=keyboard
+                )
+            except Exception:
+                pass
         await callback.answer()
 
     elif action == "back":
@@ -4757,15 +4800,22 @@ async def handle_photo_action_choice(callback: CallbackQuery, state: FSMContext)
             ]
         ])
 
-        await callback.message.edit_caption(
-            caption="📸 **Фото получено!**\n\n"
-                    "Что вы хотите сделать с этим фото?\n\n"
-                    "🎬 **Создать видео** - генерация видео на основе фото\n"
-                    "🖼 **Создать изображение** - трансформация фото в новое изображение\n"
-                    "👁 **Анализ фото** - детальное описание содержимого\n"
-                    "🎨 **Обработка фото** - удаление фона, улучшение и т.д.",
-            reply_markup=keyboard
+        caption_text = (
+            "📸 Фото получено!\n\n"
+            "Что вы хотите сделать с этим фото?\n\n"
+            "🎬 Создать видео - генерация видео на основе фото\n"
+            "🖼 Создать изображение - трансформация фото в новое изображение\n"
+            "👁 Анализ фото - детальное описание содержимого\n"
+            "🎨 Обработка фото - удаление фона, улучшение и т.д."
         )
+
+        try:
+            await callback.message.edit_caption(caption=caption_text, reply_markup=keyboard)
+        except Exception:
+            try:
+                await callback.message.answer(caption_text, reply_markup=keyboard)
+            except Exception:
+                pass
         await callback.answer()
 
 
@@ -4787,15 +4837,23 @@ async def handle_photo_video_model_choice(callback: CallbackQuery, state: FSMCon
         "kling": "Kling AI"
     }
 
-    await callback.message.edit_caption(
-        caption=f"✅ Фото сохранено!\n\n"
-                f"🎬 **{model_names.get(model, model)}**\n\n"
-                f"📝 Теперь отправьте описание видео, которое вы хотите создать на основе этого фото.\n\n"
-                f"**Примеры:**\n"
-                f"• \"Оживи это фото, добавь плавное движение\"\n"
-                f"• \"Сделай так, чтобы волосы развевались на ветру\"\n"
-                f"• \"Добавь падающие снежинки и плавное движение камеры\""
+    caption_text = (
+        f"✅ Фото сохранено!\n\n"
+        f"🎬 {model_names.get(model, model)}\n\n"
+        f"📝 Теперь отправьте описание видео, которое вы хотите создать на основе этого фото.\n\n"
+        f"Примеры:\n"
+        f"• \"Оживи это фото, добавь плавное движение\"\n"
+        f"• \"Сделай так, чтобы волосы развевались на ветру\"\n"
+        f"• \"Добавь падающие снежинки и плавное движение камеры\""
     )
+
+    try:
+        await callback.message.edit_caption(caption=caption_text)
+    except Exception:
+        try:
+            await callback.message.answer(caption_text)
+        except Exception:
+            pass
     await callback.answer()
 
 
@@ -4827,12 +4885,20 @@ async def handle_photo_image_model_choice(callback: CallbackQuery, state: FSMCon
         "dalle": "• Отправьте любой текст для создания вариации"
     }
 
-    await callback.message.edit_caption(
-        caption=f"✅ Фото сохранено!\n\n"
-                f"🖼 **{model_names.get(model, model)}**\n\n"
-                f"📝 Теперь отправьте описание изображения, которое вы хотите создать на основе этого фото.\n\n"
-                f"**Примеры:**\n{examples.get(model, '')}"
+    caption_text = (
+        f"✅ Фото сохранено!\n\n"
+        f"🖼 {model_names.get(model, model)}\n\n"
+        f"📝 Теперь отправьте описание изображения, которое вы хотите создать на основе этого фото.\n\n"
+        f"Примеры:\n{examples.get(model, '')}"
     )
+
+    try:
+        await callback.message.edit_caption(caption=caption_text)
+    except Exception:
+        try:
+            await callback.message.answer(caption_text)
+        except Exception:
+            pass
     await callback.answer()
 
 
@@ -4977,14 +5043,344 @@ async def _process_vision_with_path(message: Message, state: FSMContext, user: U
 
 
 # ======================
+# KLING MOTION CONTROL HANDLERS
+# ======================
+
+@router.callback_query(F.data == "bot.kling_motion_control")
+async def start_kling_motion_control(callback: CallbackQuery, state: FSMContext, user: User):
+    """Start Kling Motion Control flow."""
+    mc_billing = get_video_model_billing("kling-motion-control")
+    total_tokens = await get_available_tokens(user.id)
+    tokens_per_request = mc_billing.tokens_per_generation
+    videos_available = int(total_tokens / tokens_per_request) if total_tokens > 0 else 0
+
+    # Get settings from state
+    data = await state.get_data()
+    mode = data.get("kling_mc_mode", "std")
+    orientation = data.get("kling_mc_orientation", "image")
+    keep_sound = data.get("kling_mc_sound", "yes")
+
+    mode_display = "Стандартный" if mode == "std" else "Профессиональный"
+    orientation_display = "По изображению" if orientation == "image" else "По видео"
+    sound_display = "Да" if keep_sound == "yes" else "Нет"
+
+    text = (
+        "🕺 Kling AI — Motion Control\n\n"
+        "Перенесите движения из видео на персонажа с изображения.\n\n"
+        "📸 Отправьте фото персонажа (референсное изображение).\n\n"
+        "Требования к фото:\n"
+        "• Персонаж должен быть полностью виден (тело и голова)\n"
+        "• Поддерживаются реалистичные и стилизованные персонажи\n"
+        "• Форматы: JPG, JPEG, PNG (до 10 МБ)\n\n"
+        f"⚙️ Настройки:\n"
+        f"• Режим: {mode_display}\n"
+        f"• Ориентация персонажа: {orientation_display}\n"
+        f"• Сохранить звук: {sound_display}\n\n"
+        f"💰 Стоимость: {format_token_amount(tokens_per_request)} токенов\n"
+        f"🔹 Токенов хватит на {videos_available} видео"
+    )
+
+    await state.set_state(MediaState.kling_mc_waiting_for_image)
+    await state.update_data(
+        service="kling_motion_control",
+        kling_mc_mode=mode,
+        kling_mc_orientation=orientation,
+        kling_mc_sound=keep_sound,
+    )
+
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=kling_motion_control_keyboard(mode, orientation, keep_sound)
+        )
+    except Exception:
+        await callback.message.answer(
+            text,
+            reply_markup=kling_motion_control_keyboard(mode, orientation, keep_sound)
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "kling_mc.settings")
+async def kling_mc_settings_menu(callback: CallbackQuery, state: FSMContext):
+    """Show Motion Control settings menu."""
+    text = "⚙️ Настройки Motion Control\n\nВыберите параметр для изменения:"
+
+    try:
+        await callback.message.edit_text(text, reply_markup=kling_mc_settings_keyboard())
+    except Exception:
+        await callback.message.answer(text, reply_markup=kling_mc_settings_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "kling_mc.settings.mode")
+async def kling_mc_mode_settings(callback: CallbackQuery, state: FSMContext):
+    """Show Motion Control mode selection."""
+    data = await state.get_data()
+    current_mode = data.get("kling_mc_mode", "std")
+
+    text = (
+        "🎯 Режим генерации\n\n"
+        "• Стандартный (std) — быстрая генерация\n"
+        "• Профессиональный (pro) — более высокое качество, дольше"
+    )
+
+    try:
+        await callback.message.edit_text(text, reply_markup=kling_mc_mode_keyboard(current_mode))
+    except Exception:
+        await callback.message.answer(text, reply_markup=kling_mc_mode_keyboard(current_mode))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("kling_mc.set.mode:"))
+async def kling_mc_set_mode(callback: CallbackQuery, state: FSMContext, user: User):
+    """Set Motion Control mode."""
+    new_mode = callback.data.split(":")[1]
+    await state.update_data(kling_mc_mode=new_mode)
+    await callback.answer(f"Режим: {'Стандартный' if new_mode == 'std' else 'Профессиональный'}")
+    await start_kling_motion_control(callback, state, user)
+
+
+@router.callback_query(F.data == "kling_mc.settings.orientation")
+async def kling_mc_orientation_settings(callback: CallbackQuery, state: FSMContext):
+    """Show Motion Control orientation selection."""
+    data = await state.get_data()
+    current = data.get("kling_mc_orientation", "image")
+
+    text = (
+        "🧍 Ориентация персонажа\n\n"
+        "• По изображению — ориентация как на фото (макс. 10 сек. видео)\n"
+        "• По видео — ориентация как в референсном видео (макс. 30 сек. видео)"
+    )
+
+    try:
+        await callback.message.edit_text(text, reply_markup=kling_mc_orientation_keyboard(current))
+    except Exception:
+        await callback.message.answer(text, reply_markup=kling_mc_orientation_keyboard(current))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("kling_mc.set.orientation:"))
+async def kling_mc_set_orientation(callback: CallbackQuery, state: FSMContext, user: User):
+    """Set Motion Control orientation."""
+    new_val = callback.data.split(":")[1]
+    await state.update_data(kling_mc_orientation=new_val)
+    await callback.answer(f"Ориентация: {'По изображению' if new_val == 'image' else 'По видео'}")
+    await start_kling_motion_control(callback, state, user)
+
+
+@router.callback_query(F.data == "kling_mc.settings.sound")
+async def kling_mc_sound_settings(callback: CallbackQuery, state: FSMContext):
+    """Show Motion Control sound selection."""
+    data = await state.get_data()
+    current = data.get("kling_mc_sound", "yes")
+
+    text = (
+        "🔊 Звук из видео\n\n"
+        "• Сохранить звук — оригинальный звук из видео будет в результате\n"
+        "• Без звука — результат без аудио"
+    )
+
+    try:
+        await callback.message.edit_text(text, reply_markup=kling_mc_sound_keyboard(current))
+    except Exception:
+        await callback.message.answer(text, reply_markup=kling_mc_sound_keyboard(current))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("kling_mc.set.sound:"))
+async def kling_mc_set_sound(callback: CallbackQuery, state: FSMContext, user: User):
+    """Set Motion Control sound setting."""
+    new_val = callback.data.split(":")[1]
+    await state.update_data(kling_mc_sound=new_val)
+    await callback.answer(f"Звук: {'Сохранить' if new_val == 'yes' else 'Без звука'}")
+    await start_kling_motion_control(callback, state, user)
+
+
+@router.message(MediaState.kling_mc_waiting_for_image, F.photo)
+async def kling_mc_receive_image(message: Message, state: FSMContext, user: User):
+    """Receive reference image for Motion Control."""
+    photo = message.photo[-1]
+    file = await message.bot.get_file(photo.file_id)
+
+    temp_path = get_temp_file_path(prefix="kling_mc_image", suffix=".jpg")
+    await message.bot.download_file(file.file_path, temp_path)
+
+    # Resize if needed
+    resize_image_if_needed(str(temp_path), max_size_mb=10.0, max_dimension=4096)
+
+    await state.update_data(kling_mc_image_path=str(temp_path))
+    await state.set_state(MediaState.kling_mc_waiting_for_video)
+
+    await message.answer(
+        "✅ Фото персонажа получено!\n\n"
+        "🎬 Теперь отправьте ссылку на видео с движениями (URL).\n\n"
+        "Требования к видео:\n"
+        "• Формат: MP4/MOV (до 100 МБ)\n"
+        "• Длительность: 3-30 секунд\n"
+        "• Персонаж должен быть полностью виден\n"
+        "• Без резких переходов и движений камеры\n"
+        "• Рекомендуются реальные действия"
+    )
+
+
+@router.message(MediaState.kling_mc_waiting_for_video, F.text)
+async def kling_mc_receive_video_url(message: Message, state: FSMContext, user: User):
+    """Receive reference video URL for Motion Control."""
+    # Ignore commands
+    if message.text and message.text.startswith('/'):
+        await state.clear()
+        return
+
+    video_url = message.text.strip()
+
+    # Basic URL validation
+    if not video_url.startswith("http"):
+        await message.answer(
+            "❌ Пожалуйста, отправьте корректную ссылку на видео (URL).\n"
+            "Ссылка должна начинаться с http:// или https://"
+        )
+        return
+
+    await state.update_data(kling_mc_video_url=video_url)
+    await state.set_state(MediaState.kling_mc_waiting_for_prompt)
+
+    await message.answer(
+        "✅ Ссылка на видео получена!\n\n"
+        "📝 Отправьте текстовый промпт (необязательно).\n"
+        "Промпт поможет добавить элементы и эффекты движения.\n\n"
+        "Или отправьте /skip чтобы пропустить промпт и начать генерацию."
+    )
+
+
+@router.message(MediaState.kling_mc_waiting_for_prompt, F.text)
+async def kling_mc_receive_prompt(message: Message, state: FSMContext, user: User):
+    """Receive optional prompt and start Motion Control generation."""
+    prompt = None
+    if message.text and not message.text.startswith('/'):
+        prompt = message.text.strip()
+    # /skip or any command means no prompt
+
+    data = await state.get_data()
+    image_path = data.get("kling_mc_image_path")
+    video_url = data.get("kling_mc_video_url")
+    mode = data.get("kling_mc_mode", "std")
+    orientation = data.get("kling_mc_orientation", "image")
+    keep_sound = data.get("kling_mc_sound", "yes")
+
+    if not image_path or not video_url:
+        await message.answer("❌ Ошибка: изображение или видео не найдены. Попробуйте сначала.")
+        await state.clear()
+        return
+
+    # Check and use tokens
+    mc_billing = get_video_model_billing("kling-motion-control")
+    estimated_tokens = mc_billing.tokens_per_generation
+
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+        try:
+            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+        except InsufficientTokensError as e:
+            cleanup_temp_file(image_path)
+            await message.answer(
+                f"❌ Недостаточно токенов!\n\n"
+                f"Требуется: {estimated_tokens:,} токенов\n"
+                f"Доступно: {e.details['available']:,} токенов"
+            )
+            await state.clear()
+            return
+
+    progress_msg = await message.answer("🎬 Генерирую Motion Control видео с Kling AI...")
+
+    await state.clear()
+
+    # Generate video
+    kling_service = KlingService()
+
+    async def update_progress(text: str):
+        try:
+            await progress_msg.edit_text(text, parse_mode=None)
+        except Exception:
+            pass
+
+    result = await kling_service.generate_motion_control(
+        image_path=image_path,
+        video_url=video_url,
+        mode=mode,
+        character_orientation=orientation,
+        prompt=prompt,
+        keep_original_sound=keep_sound,
+        progress_callback=update_progress,
+    )
+
+    # Cleanup temp image
+    cleanup_temp_file(image_path)
+
+    if result.success:
+        from aiogram.types import FSInputFile
+
+        # Get user's remaining tokens
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            user_tokens = await sub_service.get_available_tokens(user.id)
+
+        caption_text = format_generation_message(
+            content_type="видео (Motion Control)",
+            model_name="Kling AI Motion Control",
+            tokens_used=estimated_tokens,
+            user_tokens=user_tokens,
+            prompt=prompt
+        )
+
+        video_file = FSInputFile(result.video_path)
+        await message.answer_video(
+            video=video_file,
+            caption=caption_text
+        )
+        await progress_msg.delete()
+
+    else:
+        # Refund tokens
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            await sub_service.add_eternal_tokens(user.id, estimated_tokens, "refund")
+
+        await progress_msg.edit_text(
+            f"❌ Ошибка Motion Control:\n\n{result.error}\n\n"
+            f"💰 Токены возвращены на баланс."
+        )
+
+
+@router.message(MediaState.kling_mc_waiting_for_video, F.video)
+async def kling_mc_receive_video_file(message: Message, state: FSMContext, user: User):
+    """Handle video file upload for Motion Control - inform user to send URL instead."""
+    await message.answer(
+        "⚠️ Пожалуйста, отправьте ссылку (URL) на видео, а не сам файл.\n\n"
+        "Motion Control API принимает только URL видео.\n"
+        "Загрузите видео на любой хостинг и отправьте ссылку."
+    )
+
+
+# ======================
 # SEEDREAM HANDLERS
 # ======================
 
 @router.callback_query(F.data == "bot.seedream_4.5")
 async def start_seedream_45(callback: CallbackQuery, state: FSMContext, user: User):
     """Seedream 4.5 image generation."""
-    await cleanup_temp_images(state)
-    await _show_seedream_menu(callback, state, user)
+    try:
+        await cleanup_temp_images(state)
+        await _show_seedream_menu(callback, state, user)
+    except Exception as e:
+        logger.error("seedream_start_error", error=str(e))
+        try:
+            await callback.message.answer(
+                "❌ Ошибка при открытии Seedream. Попробуйте еще раз через меню."
+            )
+        except Exception:
+            pass
+        await callback.answer()
 
 
 async def _show_seedream_menu(callback: CallbackQuery, state: FSMContext, user: User):

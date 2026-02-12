@@ -463,8 +463,25 @@ class PaymentService:
             payment = result.scalar_one_or_none()
 
             if not payment or not payment.yukassa_payment_id:
-                logger.error("payment_not_found", subscription_id=subscription_id)
-                return None
+                logger.warning("payment_not_found_cancelling_without_refund", subscription_id=subscription_id)
+                # Still cancel the subscription even if no payment found (e.g., eternal tokens)
+                subscription.is_active = False
+                await self.session.commit()
+
+                total_tokens = subscription.tokens_amount
+                used_tokens = subscription.tokens_used
+                unused_tokens = max(0, total_tokens - used_tokens)
+
+                return {
+                    "subscription_id": subscription_id,
+                    "total_tokens": total_tokens,
+                    "used_tokens": used_tokens,
+                    "unused_tokens": unused_tokens,
+                    "original_price": float(subscription.price) if subscription.price else 0,
+                    "refund_amount": 0,
+                    "refunded": False,
+                    "refund_error": "Платёж не найден. Подписка отменена без возврата."
+                }
 
             # Calculate refund amount based on unused tokens
             total_tokens = subscription.tokens_amount

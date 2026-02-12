@@ -318,6 +318,12 @@ VIDEO_MODELS: Dict[str, FixedModelBilling] = {
         description_suffix="Стоимость применения эффекта: 135 000 токенов",
         model_type=ModelType.VIDEO
     ),
+    "kling-motion-control": FixedModelBilling(
+        tokens_per_generation=240000,
+        display_name="Kling Motion Control",
+        description_suffix="Стоимость генерации Motion Control видео: 240 000 токенов",
+        model_type=ModelType.VIDEO
+    ),
     "hailuo": FixedModelBilling(
         tokens_per_generation=89500,
         display_name="Hailuo",
