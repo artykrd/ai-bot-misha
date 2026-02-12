@@ -560,10 +560,9 @@ async def start_kling_choice(callback: CallbackQuery, state: FSMContext, user: U
     """Open Kling AI choice menu."""
     text = (
         "🎞 Kling AI\n\n"
-        "Выберите, что хотите создать:\n\n"
-        "🌄 Создать фото — генерация изображений\n"
-        "🎬 Создать видео — генерация видео по тексту/фото\n"
-        "🕺 Motion Control — перенос движений с видео на изображение"
+        "Выберите режим:\n\n"
+        "🎬 Создать видео — генерация видео по тексту или фото\n"
+        "🕺 Motion Control — перенос движений с видео на персонажа"
     )
 
     try:
@@ -3306,8 +3305,8 @@ async def process_kling_image(message: Message, user: User, state: FSMContext):
 
         # Create action keyboard
         builder = create_action_keyboard(
-            action_text="🎞 Создать новое изображение",
-            action_callback="bot.kling_image",
+            action_text="🎞 Kling AI",
+            action_callback="bot.kling_main",
             file_path=result.image_path,
             file_type="image"
         )
