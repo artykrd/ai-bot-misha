@@ -816,6 +816,8 @@ class KlingService(BaseVideoProvider):
                 if time.time() - start_time > max_wait_time:
                     raise Exception("Таймаут генерации Motion Control видео (10 минут)")
 
+                elapsed = int(time.time() - start_time)
+
                 async with session.get(
                     url,
                     headers=self._get_auth_headers()
@@ -823,6 +825,7 @@ class KlingService(BaseVideoProvider):
                     if response.status == 401:
                         self._jwt_token = None
                         self._jwt_expires_at = 0
+                        logger.warning("kling_mc_poll_auth_retry", task_id=task_id, elapsed=elapsed)
                         await asyncio.sleep(poll_interval)
                         continue
 
@@ -835,11 +838,19 @@ class KlingService(BaseVideoProvider):
                     status = task_data.get("task_status", "unknown")
                     status_msg = task_data.get("task_status_msg", "")
 
-                    if status != last_status and progress_callback:
-                        if status in ["submitted", "pending", "queued"]:
-                            await progress_callback("⏳ Motion Control видео в очереди...")
-                        elif status in ["processing", "running"]:
-                            await progress_callback("⚙️ Генерирую Motion Control видео...")
+                    if status != last_status:
+                        logger.info(
+                            "kling_mc_poll_status",
+                            task_id=task_id,
+                            status=status,
+                            status_msg=status_msg,
+                            elapsed=elapsed
+                        )
+                        if progress_callback:
+                            if status in ["submitted", "pending", "queued"]:
+                                await progress_callback("⏳ Motion Control видео в очереди...")
+                            elif status in ["processing", "running"]:
+                                await progress_callback("⚙️ Генерирую Motion Control видео...")
 
                     last_status = status
 

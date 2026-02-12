@@ -260,8 +260,7 @@ def create_photo_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🍌✨ Banana PRO", callback_data="bot.nano_pro")
     )
     builder.row(
-        InlineKeyboardButton(text="🌆 Midjourney", callback_data="bot.midjourney"),
-        InlineKeyboardButton(text="🎞 Kling AI", callback_data="bot.kling_main")
+        InlineKeyboardButton(text="🌆 Midjourney", callback_data="bot.midjourney")
     )
     builder.row(
         InlineKeyboardButton(text="✨ Seedream 4.5", callback_data="bot.seedream_4.5")
@@ -496,11 +495,10 @@ def subscription_manage_keyboard(subscription_id: int) -> InlineKeyboardMarkup:
 
 
 def kling_choice_keyboard() -> InlineKeyboardMarkup:
-    """Kling AI choice keyboard for photo, video or motion control generation."""
+    """Kling AI choice keyboard for video or motion control generation."""
     builder = InlineKeyboardBuilder()
 
     builder.row(
-        InlineKeyboardButton(text="🌄 Создать фото", callback_data="bot.kling_image"),
         InlineKeyboardButton(text="🎬 Создать видео", callback_data="bot.kling_video")
     )
     builder.row(
@@ -666,7 +664,7 @@ def kling_image_settings_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🔤 Автоперевод", callback_data="kling_image.settings.auto_translate")
     )
     builder.row(
-        InlineKeyboardButton(text="⬅️ Назад к Kling", callback_data="bot.kling_image")
+        InlineKeyboardButton(text="⬅️ Назад к Kling", callback_data="bot.kling_main")
     )
 
     return builder.as_markup()
