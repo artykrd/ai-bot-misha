@@ -496,12 +496,15 @@ def subscription_manage_keyboard(subscription_id: int) -> InlineKeyboardMarkup:
 
 
 def kling_choice_keyboard() -> InlineKeyboardMarkup:
-    """Kling AI choice keyboard for photo or video generation."""
+    """Kling AI choice keyboard for photo, video or motion control generation."""
     builder = InlineKeyboardBuilder()
 
     builder.row(
         InlineKeyboardButton(text="🌄 Создать фото", callback_data="bot.kling_image"),
         InlineKeyboardButton(text="🎬 Создать видео", callback_data="bot.kling_video")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🕺 Motion Control", callback_data="bot.kling_motion_control")
     )
     builder.row(
         InlineKeyboardButton(text="⬅️ В главное меню", callback_data="bot.back")
@@ -865,6 +868,119 @@ def kling_effects_confirm_keyboard(effect_id: str) -> InlineKeyboardMarkup:
     )
     builder.row(
         InlineKeyboardButton(text="⬅️ В главное меню", callback_data="bot.back")
+    )
+
+    return builder.as_markup()
+
+
+# ======================
+# KLING MOTION CONTROL KEYBOARDS
+# ======================
+
+def kling_motion_control_keyboard(mode: str = "std", orientation: str = "image", keep_sound: str = "yes") -> InlineKeyboardMarkup:
+    """Main Kling Motion Control keyboard with settings."""
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(text="⚙️ Настройки", callback_data="kling_mc.settings")
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ В главное меню", callback_data="bot.back")
+    )
+
+    return builder.as_markup()
+
+
+def kling_mc_settings_keyboard() -> InlineKeyboardMarkup:
+    """Kling Motion Control settings keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(text="🎯 Режим (std/pro)", callback_data="kling_mc.settings.mode")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🧍 Ориентация персонажа", callback_data="kling_mc.settings.orientation")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🔊 Звук из видео", callback_data="kling_mc.settings.sound")
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад", callback_data="bot.kling_motion_control")
+    )
+
+    return builder.as_markup()
+
+
+def kling_mc_mode_keyboard(current_mode: str = "std") -> InlineKeyboardMarkup:
+    """Kling Motion Control mode selection keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    modes = [
+        ("std", "Стандартный (быстрый)"),
+        ("pro", "Профессиональный (качественный)"),
+    ]
+
+    for mode_value, mode_name in modes:
+        prefix = "✅ " if current_mode == mode_value else ""
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{prefix}{mode_name}",
+                callback_data=f"kling_mc.set.mode:{mode_value}"
+            )
+        )
+
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад", callback_data="kling_mc.settings")
+    )
+
+    return builder.as_markup()
+
+
+def kling_mc_orientation_keyboard(current: str = "image") -> InlineKeyboardMarkup:
+    """Kling Motion Control character orientation keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    options = [
+        ("image", "По изображению (макс. 10 сек.)"),
+        ("video", "По видео (макс. 30 сек.)"),
+    ]
+
+    for val, name in options:
+        prefix = "✅ " if current == val else ""
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{prefix}{name}",
+                callback_data=f"kling_mc.set.orientation:{val}"
+            )
+        )
+
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад", callback_data="kling_mc.settings")
+    )
+
+    return builder.as_markup()
+
+
+def kling_mc_sound_keyboard(current: str = "yes") -> InlineKeyboardMarkup:
+    """Kling Motion Control sound settings keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    options = [
+        ("yes", "Сохранить звук"),
+        ("no", "Без звука"),
+    ]
+
+    for val, name in options:
+        prefix = "✅ " if current == val else ""
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{prefix}{name}",
+                callback_data=f"kling_mc.set.sound:{val}"
+            )
+        )
+
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад", callback_data="kling_mc.settings")
     )
 
     return builder.as_markup()

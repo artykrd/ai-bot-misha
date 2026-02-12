@@ -198,16 +198,19 @@ class KlingService(BaseVideoProvider):
                 )
                 endpoint_type = "image2video"
             elif len(images) == 2:
-                # Multi-image-to-video (start + end frame) - only for 2.5
-                if "2.5" not in version:
-                    return VideoResponse(
-                        success=False,
-                        error="Два изображения поддерживаются только в версии 2.5",
-                        processing_time=time.time() - start_time
+                # Multi-image-to-video (start + end frame)
+                # image_tail is NOT supported with kling-v2-5-turbo, force kling-v2-1-master
+                multi_image_model = model
+                if "turbo" in model or "v2-5" in model:
+                    multi_image_model = "kling-v2-1-master"
+                    logger.info(
+                        "kling_model_override_for_image_tail",
+                        original_model=model,
+                        new_model=multi_image_model
                     )
                 task_id = await self._create_multi_image2video(
                     prompt=prompt,
-                    model=model,
+                    model=multi_image_model,
                     image_paths=images,
                     duration=duration,
                     aspect_ratio=aspect_ratio
@@ -641,5 +644,215 @@ class KlingService(BaseVideoProvider):
 
                     if status == "failed":
                         raise Exception(f"Генерация аудио не удалась: {status_msg}")
+
+                await asyncio.sleep(poll_interval)
+
+    # ======================
+    # MOTION CONTROL
+    # ======================
+
+    async def generate_motion_control(
+        self,
+        image_path: str,
+        video_url: str,
+        mode: str = "std",
+        character_orientation: str = "image",
+        prompt: str = None,
+        keep_original_sound: str = "yes",
+        progress_callback: Optional[Callable[[str], Awaitable[None]]] = None,
+    ) -> VideoResponse:
+        """
+        Generate motion control video using Kling AI.
+
+        Args:
+            image_path: Path to reference image
+            video_url: URL of the reference video
+            mode: Generation mode ('std' or 'pro')
+            character_orientation: Orientation of characters ('image' or 'video')
+            prompt: Optional text prompt
+            keep_original_sound: Whether to keep original sound ('yes' or 'no')
+            progress_callback: Optional async callback for progress updates
+
+        Returns:
+            VideoResponse with video path or error
+        """
+        start_time = time.time()
+
+        if not self.use_official:
+            return VideoResponse(
+                success=False,
+                error="Motion Control requires official Kling API",
+                processing_time=time.time() - start_time
+            )
+
+        if not self.access_key:
+            return VideoResponse(
+                success=False,
+                error="Kling API credentials not configured",
+                processing_time=time.time() - start_time
+            )
+
+        try:
+            if progress_callback:
+                await progress_callback("🎬 Создаю Motion Control видео...")
+
+            # Create motion control task
+            task_id = await self._create_motion_control_task(
+                image_path=image_path,
+                video_url=video_url,
+                mode=mode,
+                character_orientation=character_orientation,
+                prompt=prompt,
+                keep_original_sound=keep_original_sound,
+            )
+
+            logger.info("kling_motion_control_created", task_id=task_id)
+
+            # Poll for completion
+            video_result_url, video_id = await self._poll_motion_control_status(
+                task_id=task_id,
+                progress_callback=progress_callback
+            )
+
+            # Download video
+            if progress_callback:
+                await progress_callback("📥 Скачиваю видео...")
+
+            filename = self._generate_filename("mp4")
+            video_path_result = await self._download_file(video_result_url, filename)
+
+            processing_time = time.time() - start_time
+
+            if progress_callback:
+                await progress_callback("✅ Видео готово!")
+
+            logger.info(
+                "kling_motion_control_completed",
+                path=video_path_result,
+                time=processing_time
+            )
+
+            return VideoResponse(
+                success=True,
+                video_path=video_path_result,
+                processing_time=processing_time,
+                metadata={
+                    "provider": "kling",
+                    "type": "motion_control",
+                    "task_id": task_id,
+                    "video_id": video_id,
+                    "mode": mode,
+                    "character_orientation": character_orientation,
+                }
+            )
+
+        except Exception as e:
+            error_msg = str(e)
+            logger.error("kling_motion_control_failed", error=error_msg)
+
+            if progress_callback:
+                await progress_callback(f"❌ Ошибка: {error_msg}")
+
+            return VideoResponse(
+                success=False,
+                error=error_msg,
+                processing_time=time.time() - start_time
+            )
+
+    async def _create_motion_control_task(
+        self,
+        image_path: str,
+        video_url: str,
+        mode: str = "std",
+        character_orientation: str = "image",
+        prompt: str = None,
+        keep_original_sound: str = "yes",
+    ) -> str:
+        """Create motion control task via Kling API."""
+        url = f"{self.base_url}/v1/videos/motion-control"
+
+        # Convert image to base64
+        image_base64 = await self._image_to_base64(image_path)
+
+        payload = {
+            "image_url": image_base64,
+            "video_url": video_url,
+            "mode": mode,
+            "character_orientation": character_orientation,
+            "keep_original_sound": keep_original_sound,
+        }
+
+        if prompt:
+            payload["prompt"] = prompt[:2500]
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                url,
+                headers=self._get_auth_headers(),
+                json=payload
+            ) as response:
+                await self._handle_response_errors(response)
+                data = await response.json()
+                task_id = data.get("data", {}).get("task_id")
+                if not task_id:
+                    raise Exception("Failed to create motion control task")
+                return task_id
+
+    async def _poll_motion_control_status(
+        self,
+        task_id: str,
+        progress_callback: Optional[Callable[[str], Awaitable[None]]] = None,
+        max_wait_time: int = 600,
+        poll_interval: int = 5
+    ) -> tuple:
+        """Poll motion control task status."""
+        url = f"{self.base_url}/v1/videos/motion-control/{task_id}"
+
+        start_time = time.time()
+        last_status = None
+
+        async with aiohttp.ClientSession() as session:
+            while True:
+                if time.time() - start_time > max_wait_time:
+                    raise Exception("Таймаут генерации Motion Control видео (10 минут)")
+
+                async with session.get(
+                    url,
+                    headers=self._get_auth_headers()
+                ) as response:
+                    if response.status == 401:
+                        self._jwt_token = None
+                        self._jwt_expires_at = 0
+                        await asyncio.sleep(poll_interval)
+                        continue
+
+                    if response.status != 200:
+                        error_text = await response.text()
+                        raise Exception(f"Status check failed: {response.status} - {error_text}")
+
+                    data = await response.json()
+                    task_data = data.get("data", {})
+                    status = task_data.get("task_status", "unknown")
+                    status_msg = task_data.get("task_status_msg", "")
+
+                    if status != last_status and progress_callback:
+                        if status in ["submitted", "pending", "queued"]:
+                            await progress_callback("⏳ Motion Control видео в очереди...")
+                        elif status in ["processing", "running"]:
+                            await progress_callback("⚙️ Генерирую Motion Control видео...")
+
+                    last_status = status
+
+                    if status in ["succeed", "completed", "success"]:
+                        videos = task_data.get("task_result", {}).get("videos", [])
+                        if videos:
+                            video_url = videos[0].get("url")
+                            video_id = videos[0].get("id")
+                            return (video_url, video_id)
+                        raise Exception("URL видео не найден в ответе")
+
+                    if status in ["failed", "error"]:
+                        error_msg = status_msg or "Неизвестная ошибка"
+                        raise Exception(f"Motion Control не удался: {error_msg}")
 
                 await asyncio.sleep(poll_interval)

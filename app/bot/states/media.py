@@ -159,6 +159,10 @@ class MediaState(StatesGroup):
     # Kling video generation states
     kling_waiting_for_prompt = State()  # Waiting for text prompt or image
     kling_waiting_for_images = State()  # Collecting images (for multi-image mode)
+    # Kling Motion Control states
+    kling_mc_waiting_for_image = State()  # Waiting for reference image
+    kling_mc_waiting_for_video = State()  # Waiting for reference video URL
+    kling_mc_waiting_for_prompt = State()  # Waiting for optional prompt
 
 
 class SunoState(StatesGroup):
