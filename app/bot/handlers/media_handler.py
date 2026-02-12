@@ -4580,6 +4580,37 @@ async def _process_photo_with_path(message: Message, state: FSMContext, user: Us
     await state.clear()
 
 # ======================
+# KLING MOTION CONTROL - Photo handler (must be before catch-all)
+# ======================
+
+@router.message(MediaState.kling_mc_waiting_for_image, F.photo)
+async def kling_mc_receive_image(message: Message, state: FSMContext, user: User):
+    """Receive reference image for Motion Control."""
+    photo = message.photo[-1]
+    file = await message.bot.get_file(photo.file_id)
+
+    temp_path = get_temp_file_path(prefix="kling_mc_image", suffix=".jpg")
+    await message.bot.download_file(file.file_path, temp_path)
+
+    # Resize if needed
+    resize_image_if_needed(str(temp_path), max_size_mb=10.0, max_dimension=4096)
+
+    await state.update_data(kling_mc_image_path=str(temp_path))
+    await state.set_state(MediaState.kling_mc_waiting_for_video)
+
+    await message.answer(
+        "✅ Фото персонажа получено!\n\n"
+        "🎬 Теперь отправьте ссылку на видео с движениями (URL).\n\n"
+        "Требования к видео:\n"
+        "• Формат: MP4/MOV (до 100 МБ)\n"
+        "• Длительность: 3-30 секунд\n"
+        "• Персонаж должен быть полностью виден\n"
+        "• Без резких переходов и движений камеры\n"
+        "• Рекомендуются реальные действия"
+    )
+
+
+# ======================
 # SMART INPUT HANDLING - No model selected
 # ======================
 
@@ -4589,7 +4620,10 @@ async def handle_photo_in_wrong_state(message: Message, state: FSMContext):
     current_state = await state.get_state()
 
     # If in video/image prompt state, pass to existing handlers
-    if current_state in [MediaState.waiting_for_video_prompt, MediaState.waiting_for_image_prompt]:
+    if current_state in [
+        MediaState.waiting_for_video_prompt,
+        MediaState.waiting_for_image_prompt,
+    ]:
         return  # Let other handlers process it
 
     # Otherwise, clear state and treat as new photo
@@ -5195,33 +5229,6 @@ async def kling_mc_set_sound(callback: CallbackQuery, state: FSMContext, user: U
     await state.update_data(kling_mc_sound=new_val)
     await callback.answer(f"Звук: {'Сохранить' if new_val == 'yes' else 'Без звука'}")
     await start_kling_motion_control(callback, state, user)
-
-
-@router.message(MediaState.kling_mc_waiting_for_image, F.photo)
-async def kling_mc_receive_image(message: Message, state: FSMContext, user: User):
-    """Receive reference image for Motion Control."""
-    photo = message.photo[-1]
-    file = await message.bot.get_file(photo.file_id)
-
-    temp_path = get_temp_file_path(prefix="kling_mc_image", suffix=".jpg")
-    await message.bot.download_file(file.file_path, temp_path)
-
-    # Resize if needed
-    resize_image_if_needed(str(temp_path), max_size_mb=10.0, max_dimension=4096)
-
-    await state.update_data(kling_mc_image_path=str(temp_path))
-    await state.set_state(MediaState.kling_mc_waiting_for_video)
-
-    await message.answer(
-        "✅ Фото персонажа получено!\n\n"
-        "🎬 Теперь отправьте ссылку на видео с движениями (URL).\n\n"
-        "Требования к видео:\n"
-        "• Формат: MP4/MOV (до 100 МБ)\n"
-        "• Длительность: 3-30 секунд\n"
-        "• Персонаж должен быть полностью виден\n"
-        "• Без резких переходов и движений камеры\n"
-        "• Рекомендуются реальные действия"
-    )
 
 
 @router.message(MediaState.kling_mc_waiting_for_video, F.text)
