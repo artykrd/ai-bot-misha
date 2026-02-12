@@ -235,13 +235,19 @@ class PaymentService:
                         tokens=tokens
                     )
 
-                    await subscription_service.add_eternal_tokens(payment.user_id, tokens)
+                    subscription = await subscription_service.add_eternal_tokens(payment.user_id, tokens)
                     tokens_added = tokens
+
+                    # Link payment to subscription and store price for refund
+                    payment.subscription_id = subscription.id
+                    subscription.price = payment.amount
+                    await self.session.commit()
 
                     logger.info(
                         "eternal_tokens_added_to_db",
                         user_id=payment.user_id,
                         tokens=tokens,
+                        subscription_id=subscription.id,
                         type="eternal"
                     )
                 else:

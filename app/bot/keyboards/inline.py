@@ -285,7 +285,7 @@ def create_video_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🌊 Veo 3.1", callback_data="bot.veo")
     )
     builder.row(
-        InlineKeyboardButton(text="🎞 Kling", callback_data="bot.kling_video"),
+        InlineKeyboardButton(text="🎞 Kling", callback_data="bot.kling_main"),
         InlineKeyboardButton(text="🎥 Hailuo", callback_data="bot.hailuo")
     )
     builder.row(
@@ -885,7 +885,7 @@ def kling_motion_control_keyboard(mode: str = "std", orientation: str = "image",
         InlineKeyboardButton(text="⚙️ Настройки", callback_data="kling_mc.settings")
     )
     builder.row(
-        InlineKeyboardButton(text="⬅️ В главное меню", callback_data="bot.back")
+        InlineKeyboardButton(text="⬅️ Назад к Kling", callback_data="bot.kling_main")
     )
 
     return builder.as_markup()
