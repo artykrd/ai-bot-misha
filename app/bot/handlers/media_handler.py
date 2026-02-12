@@ -4600,13 +4600,14 @@ async def kling_mc_receive_image(message: Message, state: FSMContext, user: User
 
     await message.answer(
         "✅ Фото персонажа получено!\n\n"
-        "🎬 Теперь отправьте ссылку на видео с движениями (URL).\n\n"
+        "🎬 Теперь отправьте видео с движениями.\n\n"
+        "Можно:\n"
+        "• Загрузить видеофайл (до 20 МБ)\n"
+        "• Отправить ссылку (URL) на видео\n\n"
         "Требования к видео:\n"
-        "• Формат: MP4/MOV (до 100 МБ)\n"
         "• Длительность: 3-30 секунд\n"
         "• Персонаж должен быть полностью виден\n"
-        "• Без резких переходов и движений камеры\n"
-        "• Рекомендуются реальные действия"
+        "• Без резких переходов и движений камеры"
     )
 
 
@@ -5361,12 +5362,37 @@ async def kling_mc_receive_prompt(message: Message, state: FSMContext, user: Use
 
 @router.message(MediaState.kling_mc_waiting_for_video, F.video)
 async def kling_mc_receive_video_file(message: Message, state: FSMContext, user: User):
-    """Handle video file upload for Motion Control - inform user to send URL instead."""
-    await message.answer(
-        "⚠️ Пожалуйста, отправьте ссылку (URL) на видео, а не сам файл.\n\n"
-        "Motion Control API принимает только URL видео.\n"
-        "Загрузите видео на любой хостинг и отправьте ссылку."
-    )
+    """Handle video file upload for Motion Control - get Telegram file URL."""
+    video = message.video
+
+    # Telegram Bot API file size limit for getFile is 20MB
+    if video.file_size and video.file_size > 20 * 1024 * 1024:
+        await message.answer(
+            "⚠️ Видео слишком большое для загрузки через Telegram (макс. 20 МБ).\n\n"
+            "Пожалуйста, отправьте ссылку (URL) на видео или загрузите более короткое видео."
+        )
+        return
+
+    try:
+        file = await message.bot.get_file(video.file_id)
+
+        # Construct direct Telegram file URL
+        video_url = f"https://api.telegram.org/file/bot{message.bot.token}/{file.file_path}"
+
+        await state.update_data(kling_mc_video_url=video_url)
+        await state.set_state(MediaState.kling_mc_waiting_for_prompt)
+
+        await message.answer(
+            "✅ Видео получено!\n\n"
+            "📝 Отправьте текстовый промпт (необязательно).\n"
+            "Промпт поможет добавить элементы и эффекты движения.\n\n"
+            "Или отправьте /skip чтобы пропустить промпт и начать генерацию."
+        )
+    except Exception as e:
+        logger.error("kling_mc_video_upload_failed", error=str(e))
+        await message.answer(
+            "⚠️ Не удалось обработать видео. Попробуйте отправить ссылку (URL) на видео."
+        )
 
 
 # ======================
