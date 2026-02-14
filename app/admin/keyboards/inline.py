@@ -267,27 +267,49 @@ def build_user_broadcast_keyboard(buttons_data: list[dict]) -> InlineKeyboardMar
     Build inline keyboard for user broadcast message.
 
     Args:
-        buttons_data: List of dicts with 'text' and 'callback_data'
+        buttons_data: List of dicts with 'text' and 'callback_data' or 'copy_text'
 
     Returns:
         InlineKeyboardMarkup with buttons arranged in 1-2 per row
     """
-    builder = InlineKeyboardBuilder()
+    from aiogram.types import InlineKeyboardButton, CopyTextButton
 
-    for button in buttons_data:
-        builder.button(text=button["text"], callback_data=button["callback_data"])
-
-    # Arrange buttons: 1-2 per row based on text length
     rows = []
-    for button in buttons_data:
-        # If button text is short (< 20 chars), allow 2 per row
-        if len(button["text"]) < 20:
-            rows.append(2)
-        else:
-            rows.append(1)
+    current_row = []
 
-    builder.adjust(*rows)
-    return builder.as_markup()
+    for button in buttons_data:
+        if "copy_text" in button:
+            btn = InlineKeyboardButton(
+                text=button["text"],
+                copy_text=CopyTextButton(text=button["copy_text"])
+            )
+        elif "url" in button:
+            btn = InlineKeyboardButton(
+                text=button["text"],
+                url=button["url"]
+            )
+        else:
+            btn = InlineKeyboardButton(
+                text=button["text"],
+                callback_data=button["callback_data"]
+            )
+
+        # Short buttons can be paired, long ones get their own row
+        if len(button["text"]) < 20:
+            current_row.append(btn)
+            if len(current_row) >= 2:
+                rows.append(current_row)
+                current_row = []
+        else:
+            if current_row:
+                rows.append(current_row)
+                current_row = []
+            rows.append([btn])
+
+    if current_row:
+        rows.append(current_row)
+
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def broadcast_stats_keyboard(page: int = 0, total_pages: int = 1) -> InlineKeyboardMarkup:

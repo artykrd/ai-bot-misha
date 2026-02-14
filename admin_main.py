@@ -2144,31 +2144,41 @@ async def process_button_input(message: Message, state: FSMContext):
         await message.answer(text, reply_markup=add_more_buttons_keyboard(button_count))
         return
 
-    # Manual input format: "Text | callback_data"
+    # Manual input format: "Text | callback_data" or "Text | copy:текст для копирования"
     text = message.text.strip()
     if "|" not in text:
         await message.answer(
             "❌ Неверный формат. Используйте:\n"
             "Текст кнопки | callback_data\n\n"
             "Пример:\n"
-            "Попробовать GPT 4o | bot.start_chatgpt_dialog_325"
+            "Попробовать GPT 4o | bot.start_chatgpt_dialog_325\n\n"
+            "Для кнопки копирования:\n"
+            "📋 Скопировать | copy:текст для копирования"
         )
         return
 
-    button_text, callback_data = text.split("|", 1)
+    button_text, action_data = text.split("|", 1)
     button_text = button_text.strip()
-    callback_data = callback_data.strip()
+    action_data = action_data.strip()
 
-    if not button_text or not callback_data:
-        await message.answer("❌ Текст и callback_data не могут быть пустыми")
+    if not button_text or not action_data:
+        await message.answer("❌ Текст и действие не могут быть пустыми")
         return
 
-    # Validate callback_data
-    if not callback_data.replace("_", "").replace(".", "").replace(":", "").replace("#", "").isalnum():
-        await message.answer("❌ callback_data содержит недопустимые символы")
-        return
-
-    buttons.append({"text": button_text, "callback_data": callback_data})
+    # Check if it's a copy_text button
+    if action_data.startswith("copy:"):
+        copy_text = action_data[5:].strip()
+        if not copy_text:
+            await message.answer("❌ Текст для копирования не может быть пустым")
+            return
+        buttons.append({"text": button_text, "copy_text": copy_text})
+    else:
+        callback_data = action_data
+        # Validate callback_data
+        if not callback_data.replace("_", "").replace(".", "").replace(":", "").replace("#", "").isalnum():
+            await message.answer("❌ callback_data содержит недопустимые символы")
+            return
+        buttons.append({"text": button_text, "callback_data": callback_data})
     await state.update_data(buttons=buttons)
 
     from app.admin.keyboards.inline import add_more_buttons_keyboard
