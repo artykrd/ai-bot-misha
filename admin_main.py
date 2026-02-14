@@ -2351,6 +2351,10 @@ async def confirm_broadcast_send(callback: CallbackQuery, state: FSMContext):
         await callback.answer("❌ Нет доступа")
         return
 
+    # Answer callback immediately to prevent "query is too old" error
+    # (broadcast sending takes longer than Telegram's 30s callback timeout)
+    await callback.answer()
+
     from app.database.database import async_session_maker
     from app.admin.services import (
         send_broadcast_message,
@@ -2409,12 +2413,32 @@ async def confirm_broadcast_send(callback: CallbackQuery, state: FSMContext):
 
         # Send broadcast - create bot without default parse_mode to avoid Markdown issues
         from aiogram.client.default import DefaultBotProperties
+        from aiogram.types import BufferedInputFile
         main_bot = Bot(token=settings.telegram_bot_token, default=DefaultBotProperties())
         keyboard = build_user_broadcast_keyboard(buttons) if buttons else None
+
+        # Re-upload photo from admin bot to main bot if needed
+        # (file_id is bot-specific in Telegram and cannot be shared between bots)
+        main_bot_photo = None
+        if image_file_id:
+            try:
+                admin_bot = Bot(token=settings.telegram_admin_bot_token, default=DefaultBotProperties())
+                file = await admin_bot.get_file(image_file_id)
+                photo_bytes = await admin_bot.download_file(file.file_path)
+                main_bot_photo = BufferedInputFile(
+                    file=photo_bytes.read(),
+                    filename="broadcast_photo.jpg"
+                )
+                await admin_bot.session.close()
+                logger.info("broadcast_photo_downloaded", file_id=image_file_id)
+            except Exception as e:
+                logger.error("broadcast_photo_download_error", error=str(e))
+                main_bot_photo = None
 
         total_users = len(recipients)
         success_count = 0
         error_count = 0
+        blocked_count = 0
 
         status_msg = await callback.message.answer(
             f"⏳ Отправка... 0/{total_users}"
@@ -2422,17 +2446,30 @@ async def confirm_broadcast_send(callback: CallbackQuery, state: FSMContext):
 
         for i, user in enumerate(recipients, 1):
             try:
-                await send_broadcast_message(
+                result = await send_broadcast_message(
                     bot=main_bot,
                     chat_id=user.telegram_id,
                     text=text,
-                    photo=image_file_id,
+                    photo=main_bot_photo if main_bot_photo else None,
                     keyboard=keyboard,
                 )
+                # After first successful photo send, use the returned file_id
+                # for faster sending (avoids re-uploading the file each time)
+                if main_bot_photo and isinstance(main_bot_photo, BufferedInputFile) and result:
+                    try:
+                        new_file_id = result.photo[-1].file_id
+                        main_bot_photo = new_file_id
+                        logger.info("broadcast_photo_cached", new_file_id=new_file_id)
+                    except (AttributeError, IndexError):
+                        pass
                 success_count += 1
             except Exception as e:
-                error_count += 1
-                logger.error("broadcast_send_error", user_id=user.telegram_id, error=str(e))
+                error_msg = str(e)
+                if "bot was blocked by the user" in error_msg or "user is deactivated" in error_msg:
+                    blocked_count += 1
+                else:
+                    error_count += 1
+                    logger.error("broadcast_send_error", user_id=user.telegram_id, error=error_msg)
 
             # Update progress every 100 messages
             if i % 100 == 0 or i == total_users:
@@ -2440,6 +2477,7 @@ async def confirm_broadcast_send(callback: CallbackQuery, state: FSMContext):
                     await status_msg.edit_text(
                         f"⏳ Отправка... {i}/{total_users}\n"
                         f"✅ Успешно: {success_count}\n"
+                        f"🚫 Заблокировали: {blocked_count}\n"
                         f"❌ Ошибок: {error_count}"
                     )
                 except:
@@ -2451,14 +2489,17 @@ async def confirm_broadcast_send(callback: CallbackQuery, state: FSMContext):
                 session=session,
                 broadcast_id=broadcast.id,
                 sent_count=success_count,
-                error_count=error_count
+                error_count=error_count + blocked_count
             )
 
         # Final status
         final_text = f"✅ Рассылка завершена!\n\n"
         final_text += f"📊 Статистика:\n"
         final_text += f"  • Отправлено: {success_count}\n"
-        final_text += f"  • Ошибки: {error_count}\n"
+        if blocked_count > 0:
+            final_text += f"  • Заблокировали бота: {blocked_count}\n"
+        if error_count > 0:
+            final_text += f"  • Ошибки: {error_count}\n"
         final_text += f"  • Успешность: {success_count*100//total_users if total_users > 0 else 0}%\n\n"
         final_text += f"🔗 ID рассылки: #{broadcast.id}\n"
         final_text += f"Статистика доступна в разделе [📊 Статистика]"
@@ -2486,7 +2527,6 @@ async def confirm_broadcast_send(callback: CallbackQuery, state: FSMContext):
         )
 
     await state.clear()
-    await callback.answer()
 
 
 # ==================== BROADCAST STATISTICS ====================

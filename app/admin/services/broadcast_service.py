@@ -2,10 +2,10 @@
 Broadcast service for managing broadcast messages and statistics.
 """
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Union
 
 from aiogram import Bot
-from aiogram.types import InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardMarkup, Message, BufferedInputFile
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,9 +21,9 @@ async def send_broadcast_message(
     bot: Bot,
     chat_id: int,
     text: str,
-    photo: Optional[str] = None,
+    photo: Optional[Union[str, BufferedInputFile]] = None,
     keyboard: Optional[InlineKeyboardMarkup] = None,
-) -> None:
+) -> Optional[Message]:
     """
     Unified method for sending broadcast messages to users.
 
@@ -34,23 +34,14 @@ async def send_broadcast_message(
         bot: Bot instance to send through
         chat_id: Telegram user chat ID
         text: Message text (used as caption when photo is present)
-        photo: Telegram file_id for photo (optional)
+        photo: Telegram file_id, BufferedInputFile, or None
         keyboard: InlineKeyboardMarkup to attach (optional)
+
+    Returns:
+        Sent Message object (useful to extract file_id after first upload)
     """
-    send_method = "send_photo" if photo else "send_message"
-
-    logger.info(
-        "BROADCAST_SEND_DEBUG",
-        chat_id=chat_id,
-        has_photo=bool(photo),
-        has_keyboard=keyboard is not None,
-        keyboard_type=type(keyboard).__name__ if keyboard else None,
-        send_method=send_method,
-        text_length=len(text) if text else 0,
-    )
-
     if photo:
-        await bot.send_photo(
+        return await bot.send_photo(
             chat_id=chat_id,
             photo=photo,
             caption=text,
@@ -58,7 +49,7 @@ async def send_broadcast_message(
             parse_mode=None,
         )
     else:
-        await bot.send_message(
+        return await bot.send_message(
             chat_id=chat_id,
             text=text,
             reply_markup=keyboard,
