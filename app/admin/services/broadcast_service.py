@@ -68,7 +68,7 @@ async def send_broadcast_message(
 
 async def create_broadcast_message(
     session: AsyncSession,
-    admin_id: int,
+    admin_id: Optional[int],
     text: str,
     image_file_id: Optional[str],
     buttons: list[dict],
@@ -79,7 +79,8 @@ async def create_broadcast_message(
 
     Args:
         session: Database session
-        admin_id: Admin Telegram ID (will be resolved to internal user ID)
+        admin_id: Internal user ID (from users.id) or None.
+                  Caller must resolve telegram_id to internal ID before calling.
         text: Message text
         image_file_id: Telegram file_id for photo (optional)
         buttons: List of button dicts with 'text' and 'callback_data'
@@ -88,21 +89,8 @@ async def create_broadcast_message(
     Returns:
         Created BroadcastMessage instance
     """
-    # Resolve Telegram ID to internal user ID for FK integrity
-    result = await session.execute(
-        select(User.id).where(User.telegram_id == admin_id)
-    )
-    internal_admin_id = result.scalar_one_or_none()
-
-    if internal_admin_id is None:
-        logger.warning(
-            "broadcast_admin_not_found",
-            telegram_id=admin_id,
-            message="Admin not found in users table, admin_id will be NULL"
-        )
-
     broadcast = BroadcastMessage(
-        admin_id=internal_admin_id,
+        admin_id=admin_id,
         text=text,
         image_file_id=image_file_id,
         buttons=buttons,

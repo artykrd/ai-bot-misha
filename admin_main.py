@@ -2360,6 +2360,8 @@ async def confirm_broadcast_send(callback: CallbackQuery, state: FSMContext):
     )
     from app.admin.keyboards.inline import build_user_broadcast_keyboard
     from aiogram import Bot
+    from app.database.models import User
+    from sqlalchemy import select
 
     data = await state.get_data()
     text = data.get("text", "")
@@ -2367,9 +2369,22 @@ async def confirm_broadcast_send(callback: CallbackQuery, state: FSMContext):
     buttons = data.get("buttons", [])
     filter_type = data.get("filter_type", "all")
 
+    # Resolve admin Telegram ID to internal user ID
+    admin_telegram_id = callback.from_user.id
+    try:
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(User.id).where(User.telegram_id == admin_telegram_id)
+            )
+            internal_admin_id = result.scalar_one_or_none()
+    except Exception as e:
+        logger.error("broadcast_admin_resolve_error", telegram_id=admin_telegram_id, error=str(e))
+        internal_admin_id = None
+
     logger.info(
         "broadcast_confirm_send",
-        admin_id=callback.from_user.id,
+        admin_telegram_id=admin_telegram_id,
+        admin_internal_id=internal_admin_id,
         filter_type=filter_type,
         buttons_count=len(buttons),
         buttons_list=[b["text"] for b in buttons] if buttons else [],
@@ -2382,7 +2397,7 @@ async def confirm_broadcast_send(callback: CallbackQuery, state: FSMContext):
         async with async_session_maker() as session:
             broadcast = await create_broadcast_message(
                 session=session,
-                admin_id=callback.from_user.id,
+                admin_id=internal_admin_id,
                 text=text,
                 image_file_id=image_file_id,
                 buttons=buttons,
