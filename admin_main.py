@@ -2351,6 +2351,10 @@ async def confirm_broadcast_send(callback: CallbackQuery, state: FSMContext):
         await callback.answer("❌ Нет доступа")
         return
 
+    # Answer callback immediately to prevent "query is too old" error
+    # (broadcast sending takes longer than Telegram's 30s callback timeout)
+    await callback.answer()
+
     from app.database.database import async_session_maker
     from app.admin.services import (
         send_broadcast_message,
@@ -2486,7 +2490,6 @@ async def confirm_broadcast_send(callback: CallbackQuery, state: FSMContext):
         )
 
     await state.clear()
-    await callback.answer()
 
 
 # ==================== BROADCAST STATISTICS ====================
