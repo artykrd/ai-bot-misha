@@ -473,9 +473,9 @@ async def cmd_kling(message: Message, state, user: User):
     await state.set_state(MediaState.kling_waiting_for_prompt)
     # Save Kling settings and reset images
     settings_dict = kling_settings.to_dict()
+    settings_dict["kling_images"] = []  # Reset images for fresh session
     await state.update_data(
         service="kling",
-        kling_images=[],
         image_path=None,
         photo_caption_prompt=None,
         **settings_dict
