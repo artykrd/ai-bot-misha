@@ -127,7 +127,7 @@ class PromocodeUse(Base, BaseModel, TimestampMixin):
     bonus_received: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
-        comment="Actual bonus received"
+        comment="Actual bonus received (token amount or percent value)"
     )
 
     # Relationships

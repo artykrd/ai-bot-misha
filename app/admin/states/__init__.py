@@ -31,7 +31,9 @@ class UnbanUser(StatesGroup):
 class CreatePromo(StatesGroup):
     """States for creating promocode."""
     waiting_for_code = State()
+    waiting_for_bonus_type = State()
     waiting_for_tokens = State()
+    waiting_for_max_uses = State()
 
 
 class Broadcast(StatesGroup):
