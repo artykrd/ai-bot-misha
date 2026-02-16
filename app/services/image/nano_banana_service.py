@@ -420,13 +420,8 @@ class NanoBananaService(BaseImageProvider):
                                 content_bool=bool(content_val) if hasattr(candidate, 'content') else False
                             )
 
-                # Delete reference image immediately after upload to prevent reuse
-                if reference_image_path and os.path.exists(reference_image_path):
-                    try:
-                        os.remove(reference_image_path)
-                        logger.info("reference_image_deleted_after_upload", path=reference_image_path)
-                    except Exception as cleanup_error:
-                        logger.warning("reference_image_deletion_failed", path=reference_image_path, error=str(cleanup_error))
+                # Note: reference image cleanup is handled by the caller
+                # to avoid race conditions in parallel multi-image generation
 
                 # Get the first generated image
                 # Response contains parts with images
