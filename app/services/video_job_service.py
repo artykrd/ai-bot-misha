@@ -240,8 +240,7 @@ class VideoJobService:
                 # Send video to user with "Create more" button
                 from aiogram.types import FSInputFile
                 from app.bot.utils.notifications import create_action_keyboard, MODEL_ACTIONS
-
-                video_file = FSInputFile(result.video_path)
+                import os
 
                 # Build caption with prompt
                 prompt_display = (job.prompt[:100] + "...") if job.prompt and len(job.prompt) > 100 else (job.prompt or "без промпта")
@@ -256,13 +255,58 @@ class VideoJobService:
                     file_path=result.video_path,
                     file_type="video"
                 )
+                reply_markup = action_keyboard.as_markup()
 
-                await bot.send_video(
-                    chat_id=job.chat_id,
-                    video=video_file,
-                    caption=caption,
-                    reply_markup=action_keyboard.as_markup()
-                )
+                # Send with retry and large-file fallback
+                file_size = os.path.getsize(result.video_path)
+                max_telegram_size = 49 * 1024 * 1024  # 49MB safety margin
+                sent = False
+
+                if file_size > max_telegram_size:
+                    # Too large for video, send as document
+                    logger.warning("video_job_file_too_large", size=file_size, job_id=job.id)
+                    try:
+                        video_file = FSInputFile(result.video_path)
+                        await bot.send_document(
+                            chat_id=job.chat_id, document=video_file,
+                            caption=caption, reply_markup=reply_markup,
+                        )
+                        sent = True
+                    except Exception as e:
+                        logger.error("video_job_send_document_failed", error=str(e), job_id=job.id)
+                else:
+                    for attempt in range(3):
+                        try:
+                            video_file = FSInputFile(result.video_path)
+                            await bot.send_video(
+                                chat_id=job.chat_id, video=video_file,
+                                caption=caption, reply_markup=reply_markup,
+                            )
+                            sent = True
+                            break
+                        except Exception as e:
+                            logger.warning("video_job_send_retry", attempt=attempt+1, error=str(e), job_id=job.id)
+                            if attempt < 2:
+                                await asyncio.sleep(2 * (attempt + 1))
+
+                    if not sent:
+                        # Fallback: try as document
+                        try:
+                            video_file = FSInputFile(result.video_path)
+                            await bot.send_document(
+                                chat_id=job.chat_id, document=video_file,
+                                caption=caption, reply_markup=reply_markup,
+                            )
+                            sent = True
+                        except Exception as e:
+                            logger.error("video_job_send_all_failed", error=str(e), job_id=job.id)
+
+                if not sent:
+                    await bot.send_message(
+                        chat_id=job.chat_id,
+                        text=f"{caption}\n\n⚠️ Не удалось отправить видео. Попробуйте скачать через кнопку ниже.",
+                        reply_markup=reply_markup,
+                    )
 
                 # Delete progress message
                 if job.progress_message_id:

@@ -101,6 +101,86 @@ async def get_available_tokens(user_id: int) -> int:
         return await sub_service.get_available_tokens(user_id)
 
 
+async def send_video_safe(
+    message: Message,
+    video_path: str,
+    caption: str = None,
+    reply_markup=None,
+    max_retries: int = 2,
+) -> bool:
+    """
+    Send video to user with retry and large-file fallback.
+
+    Telegram Bot API has a 50MB limit for sending files.
+    If the file is too large or the upload fails, falls back to sending as document.
+    Retries on network errors.
+
+    Returns True if sent successfully, False otherwise.
+    """
+    file_size = os.path.getsize(video_path)
+    max_telegram_size = 49 * 1024 * 1024  # 49MB safety margin
+
+    # If file is clearly too large, send as document directly
+    if file_size > max_telegram_size:
+        logger.warning("video_too_large_for_telegram", size=file_size, path=video_path)
+        try:
+            video_file = FSInputFile(video_path)
+            await message.answer_document(
+                document=video_file,
+                caption=caption,
+                reply_markup=reply_markup,
+            )
+            return True
+        except Exception as e:
+            logger.error("video_send_as_document_failed", error=str(e), size=file_size)
+            # Last resort: send just the text
+            await message.answer(
+                f"{caption}\n\n⚠️ Видео слишком большое для отправки через Telegram ({file_size // (1024*1024)} МБ).",
+                reply_markup=reply_markup,
+            )
+            return False
+
+    # Normal-sized file: try sending as video with retries
+    for attempt in range(max_retries + 1):
+        try:
+            video_file = FSInputFile(video_path)
+            await message.answer_video(
+                video=video_file,
+                caption=caption,
+                reply_markup=reply_markup,
+            )
+            return True
+        except Exception as e:
+            error_msg = str(e)
+            logger.warning(
+                "video_send_retry",
+                attempt=attempt + 1,
+                max_retries=max_retries,
+                error=error_msg,
+                size=file_size,
+            )
+            if attempt < max_retries:
+                await asyncio.sleep(2 * (attempt + 1))  # 2s, 4s backoff
+            else:
+                # All retries failed, try as document
+                try:
+                    video_file = FSInputFile(video_path)
+                    await message.answer_document(
+                        document=video_file,
+                        caption=caption,
+                        reply_markup=reply_markup,
+                    )
+                    return True
+                except Exception as doc_e:
+                    logger.error("video_send_all_failed", error=str(doc_e), size=file_size)
+                    await message.answer(
+                        f"{caption}\n\n⚠️ Не удалось отправить видео. Попробуйте позже.",
+                        reply_markup=reply_markup,
+                    )
+                    return False
+    return False
+
+
 def resize_image_if_needed(image_path: str, max_size_mb: float = 2.0, max_dimension: int = 2048) -> str:
     """
     Resize image if it's too large.
@@ -5349,13 +5429,16 @@ async def kling_mc_receive_prompt(message: Message, state: FSMContext, user: Use
             file_type="video"
         )
 
-        video_file = FSInputFile(result.video_path)
-        await message.answer_video(
-            video=video_file,
+        await send_video_safe(
+            message,
+            video_path=result.video_path,
             caption=caption_text,
-            reply_markup=action_keyboard.as_markup()
+            reply_markup=action_keyboard.as_markup(),
         )
-        await progress_msg.delete()
+        try:
+            await progress_msg.delete()
+        except Exception:
+            pass
 
     else:
         # Refund tokens
