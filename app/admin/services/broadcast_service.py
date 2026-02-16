@@ -1,7 +1,7 @@
 """
 Broadcast service for managing broadcast messages and statistics.
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Union
 
 from aiogram import Bot
@@ -146,7 +146,7 @@ async def get_recipients_count(session: AsyncSession, filter_type: str) -> int:
                 and_(
                     User.is_banned == False,
                     Subscription.is_active == True,
-                    Subscription.end_date > datetime.utcnow()
+                    Subscription.expires_at > datetime.now(timezone.utc)
                 )
             )
         )
@@ -154,7 +154,7 @@ async def get_recipients_count(session: AsyncSession, filter_type: str) -> int:
         subquery = select(Subscription.user_id).where(
             and_(
                 Subscription.is_active == True,
-                Subscription.end_date > datetime.utcnow()
+                Subscription.expires_at > datetime.now(timezone.utc)
             )
         )
         result = await session.execute(
@@ -192,7 +192,7 @@ async def get_recipients(session: AsyncSession, filter_type: str) -> list[User]:
                 and_(
                     User.is_banned == False,
                     Subscription.is_active == True,
-                    Subscription.end_date > datetime.utcnow()
+                    Subscription.expires_at > datetime.now(timezone.utc)
                 )
             )
         )
@@ -200,7 +200,7 @@ async def get_recipients(session: AsyncSession, filter_type: str) -> list[User]:
         subquery = select(Subscription.user_id).where(
             and_(
                 Subscription.is_active == True,
-                Subscription.end_date > datetime.utcnow()
+                Subscription.expires_at > datetime.now(timezone.utc)
             )
         )
         result = await session.execute(
