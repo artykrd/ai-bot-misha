@@ -326,7 +326,11 @@ async def start_search_user(callback: CallbackQuery, state: FSMContext):
     await state.set_state(SearchUser.waiting_for_query)
     await callback.message.edit_text(
         "🔍 Поиск пользователя\n\n"
-        "Введите Telegram ID или username пользователя:",
+        "Введите Telegram ID, username или имя пользователя:\n\n"
+        "Примеры:\n"
+        "• 123456789 — поиск по ID\n"
+        "• @username — поиск по username\n"
+        "• Артем — поиск по имени",
         reply_markup=cancel_keyboard()
     )
     await callback.answer()

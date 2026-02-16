@@ -557,9 +557,9 @@ async def kling_effects_confirm(callback: CallbackQuery, state: FSMContext, user
 # Handler for when user clicks "Kling" from main menu
 @router.callback_query(F.data == "bot.kling_main")
 async def start_kling_choice(callback: CallbackQuery, state: FSMContext, user: User):
-    """Open Kling AI choice menu."""
+    """Open Kling AI choice menu - video generation only."""
     text = (
-        "🎞 Kling AI\n\n"
+        "🎞 Kling AI — генерация видео\n\n"
         "Выберите режим:\n\n"
         "🎬 Создать видео — генерация видео по тексту или фото\n"
         "🕺 Motion Control — перенос движений с видео на персонажа"
@@ -5340,10 +5340,20 @@ async def kling_mc_receive_prompt(message: Message, state: FSMContext, user: Use
             prompt=prompt
         )
 
+        # Create "Create more video" keyboard
+        from app.bot.utils.notifications import create_action_keyboard
+        action_keyboard = create_action_keyboard(
+            action_text="🎬 Создать ещё видео",
+            action_callback="bot.kling_motion_control",
+            file_path=result.video_path,
+            file_type="video"
+        )
+
         video_file = FSInputFile(result.video_path)
         await message.answer_video(
             video=video_file,
-            caption=caption_text
+            caption=caption_text,
+            reply_markup=action_keyboard.as_markup()
         )
         await progress_msg.delete()
 

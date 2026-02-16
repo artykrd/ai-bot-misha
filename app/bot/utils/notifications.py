@@ -48,6 +48,10 @@ def format_generation_message(
     """
     mode_info = f" ({mode})" if mode else ""
 
+    # Handle None or empty prompt
+    if not prompt:
+        prompt = "без промпта"
+
     # Escape special Markdown characters in prompt
     escaped_prompt = escape_markdown(prompt[:150])
     prompt_suffix = '...' if len(prompt) > 150 else ''
