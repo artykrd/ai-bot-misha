@@ -7,7 +7,7 @@ import html as html_module
 
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.filters import Command, StateFilter
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.fsm.context import FSMContext
 from aiogram.client.default import DefaultBotProperties
@@ -102,6 +102,21 @@ def safe_text(text: str) -> str:
     return text.strip()
 
 
+def admin_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Persistent reply keyboard for admin bot."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="👥 Пользователи")],
+            [KeyboardButton(text="🔍 Поиск"), KeyboardButton(text="📢 Рассылка")],
+            [KeyboardButton(text="🔨 Бан/Разбан"), KeyboardButton(text="💰 Выдать токены")],
+            [KeyboardButton(text="🎁 Промокоды"), KeyboardButton(text="🔗 Безлимит ссылки")],
+            [KeyboardButton(text="💳 Платежи"), KeyboardButton(text="📝 Логи")],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+    )
+
+
 def escape_markdown(text: str) -> str:
     """Escape special Markdown characters for safe display."""
     if not text:
@@ -126,8 +141,94 @@ async def admin_start(message: Message):
         await message.answer("❌ У вас нет доступа к админ-панели.")
         return
 
-    text = "🔐 Админ-панель\n\nВыберите действие из меню ниже:"
+    # Send persistent reply keyboard
+    await message.answer("🔐 Админ-панель", reply_markup=admin_reply_keyboard())
+    # Send inline menu
+    text = "Выберите действие из меню ниже:"
     await message.answer(text, reply_markup=main_admin_menu())
+
+
+# ==================== REPLY KEYBOARD HANDLERS ====================
+
+REPLY_KEYBOARD_MAP = {
+    "📊 Статистика": "admin:stats",
+    "👥 Пользователи": "admin:users",
+    "🔍 Поиск": "admin:search_user",
+    "📢 Рассылка": "admin:broadcast",
+    "🔨 Бан/Разбан": "admin:ban_menu",
+    "💰 Выдать токены": "admin:give_tokens",
+    "🎁 Промокоды": "admin:promo_menu",
+    "🔗 Безлимит ссылки": "admin:unlimited_menu",
+    "💳 Платежи": "admin:payments",
+    "📝 Логи": "admin:logs",
+}
+
+
+@admin_router.message(F.text.in_(REPLY_KEYBOARD_MAP.keys()))
+async def handle_reply_keyboard(message: Message, state: FSMContext):
+    """Route reply keyboard button presses to corresponding inline callback handlers."""
+    if not is_admin(message.from_user.id):
+        return
+
+    await state.clear()
+    callback_data = REPLY_KEYBOARD_MAP[message.text]
+
+    if callback_data == "admin:search_user":
+        await state.set_state(SearchUser.waiting_for_query)
+        await message.answer(
+            "🔍 Поиск пользователя\n\n"
+            "Введите Telegram ID, username или имя пользователя:\n\n"
+            "Примеры:\n"
+            "• 123456789 — поиск по ID\n"
+            "• @username — поиск по username\n"
+            "• Артем — поиск по имени",
+            reply_markup=cancel_keyboard()
+        )
+    elif callback_data == "admin:stats":
+        from app.database.database import async_session_maker
+        from app.database.models import User, Subscription, Payment
+        from sqlalchemy import select, func
+        async with async_session_maker() as session:
+            total_users = await session.scalar(select(func.count()).select_from(User))
+            total_subscriptions = await session.scalar(select(func.count()).select_from(Subscription))
+            total_payments = await session.scalar(select(func.count()).select_from(Payment))
+        text = (
+            f"📊 Статистика\n\n"
+            f"👥 Пользователи: {total_users}\n"
+            f"📦 Подписки: {total_subscriptions}\n"
+            f"💳 Платежи: {total_payments}"
+        )
+        await message.answer(text, reply_markup=back_keyboard())
+    elif callback_data == "admin:broadcast":
+        from app.admin.keyboards.inline import broadcast_type_menu
+        await message.answer(
+            "📢 Рассылка\n\nВыберите тип рассылки:",
+            reply_markup=broadcast_type_menu()
+        )
+    elif callback_data == "admin:ban_menu":
+        from app.admin.keyboards.inline import ban_menu
+        await message.answer(
+            "🔨 Управление банами\n\nВыберите действие:",
+            reply_markup=ban_menu()
+        )
+    elif callback_data == "admin:promo_menu":
+        from app.admin.keyboards.inline import promo_menu
+        await message.answer(
+            "🎁 Промокоды\n\nВыберите действие:",
+            reply_markup=promo_menu()
+        )
+    elif callback_data == "admin:unlimited_menu":
+        from app.admin.keyboards.inline import unlimited_links_menu
+        await message.answer(
+            "🔗 Безлимитные ссылки\n\nВыберите действие:",
+            reply_markup=unlimited_links_menu()
+        )
+    else:
+        # For users, payments, logs, give_tokens — show full inline menu
+        await message.answer(
+            "🔐 Админ-панель\n\nВыберите действие:",
+            reply_markup=main_admin_menu()
+        )
 
 
 # ==================== CALLBACK HANDLERS ====================
@@ -357,14 +458,14 @@ async def process_search_query(message: Message, state: FSMContext):
                     select(User).where(User.telegram_id == telegram_id)
                 )
             else:
-                # Remove @ if present and search by username, first_name, or full_name
+                # Remove @ if present and search by username, first_name, or last_name
                 search_term = query.lstrip('@')
                 result = await session.execute(
                     select(User).where(
                         or_(
                             User.username.ilike(f"%{search_term}%"),
                             User.first_name.ilike(f"%{search_term}%"),
-                            User.full_name.ilike(f"%{search_term}%")
+                            User.last_name.ilike(f"%{search_term}%")
                         )
                     ).limit(50)
                 )
