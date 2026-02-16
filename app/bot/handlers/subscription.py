@@ -229,9 +229,11 @@ async def process_promocode(message: Message, state: FSMContext, user: User):
                 return
 
             # Apply promocode
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            sub_service = SubscriptionService(session)
+
             if promo.bonus_type == "tokens":
                 # Give tokens
-                sub_service = SubscriptionService(session)
                 await sub_service.add_eternal_tokens(
                     user_id=user.id,
                     tokens=promo.bonus_value,
@@ -242,18 +244,14 @@ async def process_promocode(message: Message, state: FSMContext, user: User):
                 promo_use = PromocodeUse(
                     promocode_id=promo.id,
                     user_id=user.id,
-                    bonus_received=f"{promo.bonus_value} tokens"
+                    bonus_received=promo.bonus_value
                 )
                 session.add(promo_use)
-
-                # Increment usage count
                 promo.current_uses += 1
                 await session.commit()
 
                 total_tokens = await sub_service.get_available_tokens(user.id)
 
-                # Create keyboard with profile button
-                from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
                 keyboard = InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(text="💎 Проверить баланс", callback_data="profile")],
                     [InlineKeyboardButton(text="🔙 В главное меню", callback_data="main_menu")]
@@ -270,8 +268,111 @@ async def process_promocode(message: Message, state: FSMContext, user: User):
                     "promocode_activated",
                     user_id=user.id,
                     code=code,
+                    bonus_type="tokens",
                     tokens=promo.bonus_value
                 )
+
+            elif promo.bonus_type == "discount_percent":
+                # Store discount in user's state for next purchase
+                discount = promo.bonus_value  # percent (e.g. 20 = 20%)
+
+                # Record promocode use
+                promo_use = PromocodeUse(
+                    promocode_id=promo.id,
+                    user_id=user.id,
+                    bonus_received=discount
+                )
+                session.add(promo_use)
+                promo.current_uses += 1
+
+                # Give discount as bonus tokens (discount_percent of cheapest plan price in tokens)
+                # Simpler approach: give equivalent tokens as a bonus
+                from app.core.subscription_plans import ETERNAL_PLANS
+                # Give tokens equivalent to discount% of the 150k plan
+                base_tokens = 150_000
+                bonus_tokens = int(base_tokens * discount / 100)
+
+                await sub_service.add_eternal_tokens(
+                    user_id=user.id,
+                    tokens=bonus_tokens,
+                    subscription_type=f"promo_discount_{promo.code}"
+                )
+                await session.commit()
+
+                total_tokens = await sub_service.get_available_tokens(user.id)
+
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="💎 Проверить баланс", callback_data="profile")],
+                    [InlineKeyboardButton(text="🔙 В главное меню", callback_data="main_menu")]
+                ])
+
+                await message.answer(
+                    f"✅ Промокод активирован!\n\n"
+                    f"🎁 Скидка {discount}% применена!\n"
+                    f"💎 Вы получили: {bonus_tokens:,} бонусных токенов\n"
+                    f"💎 Всего токенов: {total_tokens:,}",
+                    reply_markup=keyboard
+                )
+
+                logger.info(
+                    "promocode_activated",
+                    user_id=user.id,
+                    code=code,
+                    bonus_type="discount_percent",
+                    discount=discount,
+                    bonus_tokens=bonus_tokens
+                )
+
+            elif promo.bonus_type == "subscription":
+                # Give a subscription plan
+                # bonus_value contains tokens amount for the subscription
+                tokens_amount = promo.bonus_value
+
+                await sub_service.add_eternal_tokens(
+                    user_id=user.id,
+                    tokens=tokens_amount,
+                    subscription_type=f"promo_sub_{promo.code}"
+                )
+
+                # Record promocode use
+                promo_use = PromocodeUse(
+                    promocode_id=promo.id,
+                    user_id=user.id,
+                    bonus_received=tokens_amount
+                )
+                session.add(promo_use)
+                promo.current_uses += 1
+                await session.commit()
+
+                total_tokens = await sub_service.get_available_tokens(user.id)
+
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="💎 Проверить баланс", callback_data="profile")],
+                    [InlineKeyboardButton(text="🔙 В главное меню", callback_data="main_menu")]
+                ])
+
+                await message.answer(
+                    f"✅ Промокод активирован!\n\n"
+                    f"🎁 Вы получили подписку: {tokens_amount:,} токенов\n"
+                    f"💎 Всего токенов: {total_tokens:,}",
+                    reply_markup=keyboard
+                )
+
+                logger.info(
+                    "promocode_activated",
+                    user_id=user.id,
+                    code=code,
+                    bonus_type="subscription",
+                    tokens=tokens_amount
+                )
+
+            else:
+                await message.answer(
+                    f"❌ Неизвестный тип промокода: {promo.bonus_type}",
+                    reply_markup=back_to_main_keyboard()
+                )
+                await state.clear()
+                return
 
     except ValueError:
         await message.answer("❌ Неверный формат промокода.")

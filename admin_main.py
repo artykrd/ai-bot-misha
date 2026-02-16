@@ -107,10 +107,9 @@ def admin_reply_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="👥 Пользователи")],
-            [KeyboardButton(text="🔍 Поиск"), KeyboardButton(text="📢 Рассылка")],
-            [KeyboardButton(text="🔨 Бан/Разбан"), KeyboardButton(text="💰 Выдать токены")],
+            [KeyboardButton(text="📢 Рассылка"), KeyboardButton(text="💰 Выдать токены")],
+            [KeyboardButton(text="🔨 Бан/Разбан"), KeyboardButton(text="💵 Финансы")],
             [KeyboardButton(text="🎁 Промокоды"), KeyboardButton(text="🔗 Безлимит ссылки")],
-            [KeyboardButton(text="💳 Платежи"), KeyboardButton(text="📝 Логи")],
         ],
         resize_keyboard=True,
         is_persistent=True,
@@ -153,14 +152,12 @@ async def admin_start(message: Message):
 REPLY_KEYBOARD_MAP = {
     "📊 Статистика": "admin:stats",
     "👥 Пользователи": "admin:users",
-    "🔍 Поиск": "admin:search_user",
     "📢 Рассылка": "admin:broadcast",
     "🔨 Бан/Разбан": "admin:ban_menu",
     "💰 Выдать токены": "admin:give_tokens",
     "🎁 Промокоды": "admin:promo_menu",
     "🔗 Безлимит ссылки": "admin:unlimited_menu",
-    "💳 Платежи": "admin:payments",
-    "📝 Логи": "admin:logs",
+    "💵 Финансы": "admin:finance",
 }
 
 
@@ -173,31 +170,8 @@ async def handle_reply_keyboard(message: Message, state: FSMContext):
     await state.clear()
     callback_data = REPLY_KEYBOARD_MAP[message.text]
 
-    if callback_data == "admin:search_user":
-        await state.set_state(SearchUser.waiting_for_query)
-        await message.answer(
-            "🔍 Поиск пользователя\n\n"
-            "Введите Telegram ID, username или имя пользователя:\n\n"
-            "Примеры:\n"
-            "• 123456789 — поиск по ID\n"
-            "• @username — поиск по username\n"
-            "• Артем — поиск по имени",
-            reply_markup=cancel_keyboard()
-        )
-    elif callback_data == "admin:stats":
-        from app.database.database import async_session_maker
-        from app.database.models import User, Subscription, Payment
-        from sqlalchemy import select, func
-        async with async_session_maker() as session:
-            total_users = await session.scalar(select(func.count()).select_from(User))
-            total_subscriptions = await session.scalar(select(func.count()).select_from(Subscription))
-            total_payments = await session.scalar(select(func.count()).select_from(Payment))
-        text = (
-            f"📊 Статистика\n\n"
-            f"👥 Пользователи: {total_users}\n"
-            f"📦 Подписки: {total_subscriptions}\n"
-            f"💳 Платежи: {total_payments}"
-        )
+    if callback_data == "admin:stats":
+        text = await _build_stats_text()
         await message.answer(text, reply_markup=back_keyboard())
     elif callback_data == "admin:broadcast":
         from app.admin.keyboards.inline import broadcast_type_menu
@@ -223,8 +197,12 @@ async def handle_reply_keyboard(message: Message, state: FSMContext):
             "🔗 Безлимитные ссылки\n\nВыберите действие:",
             reply_markup=unlimited_links_menu()
         )
+    elif callback_data == "admin:finance":
+        text = await _build_finance_text("all")
+        keyboard = _finance_period_keyboard()
+        await message.answer(text, reply_markup=keyboard)
     else:
-        # For users, payments, logs, give_tokens — show full inline menu
+        # For users, give_tokens — show full inline menu
         await message.answer(
             "🔐 Админ-панель\n\nВыберите действие:",
             reply_markup=main_admin_menu()
@@ -270,23 +248,84 @@ async def show_stats_callback(callback: CallbackQuery):
         await callback.answer("❌ Нет доступа")
         return
 
-    from app.database.database import async_session_maker
-    from app.database.models import User, Subscription, Payment
-    from sqlalchemy import select, func
-
-    async with async_session_maker() as session:
-        total_users = await session.scalar(select(func.count()).select_from(User))
-        total_subscriptions = await session.scalar(select(func.count()).select_from(Subscription))
-        total_payments = await session.scalar(select(func.count()).select_from(Payment))
-
-    text = f"""📊 Статистика
-
-👥 Пользователи: {total_users}
-📦 Подписки: {total_subscriptions}
-💳 Платежи: {total_payments}"""
-
+    text = await _build_stats_text()
     await callback.message.edit_text(text, reply_markup=back_keyboard())
     await callback.answer()
+
+
+async def _build_stats_text() -> str:
+    """Build statistics text with accurate data."""
+    from app.database.database import async_session_maker
+    from app.database.models import User, Subscription, Payment
+    from sqlalchemy import select, func, and_
+    from datetime import datetime, timezone, timedelta
+
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_ago = now - timedelta(days=7)
+    month_ago = now - timedelta(days=30)
+
+    async with async_session_maker() as session:
+        # Total users
+        total_users = await session.scalar(select(func.count()).select_from(User))
+
+        # New users today
+        new_today = await session.scalar(
+            select(func.count()).select_from(User).where(User.created_at >= today_start)
+        )
+
+        # Active subscriptions (is_active=True AND not expired)
+        active_subs = await session.scalar(
+            select(func.count()).select_from(Subscription).where(
+                and_(
+                    Subscription.is_active == True,
+                    (Subscription.expires_at > now) | (Subscription.expires_at.is_(None))
+                )
+            )
+        )
+
+        # Paid subscriptions (with associated successful payment)
+        paid_subs = await session.scalar(
+            select(func.count(func.distinct(Subscription.id)))
+            .select_from(Subscription)
+            .join(Payment, Payment.subscription_id == Subscription.id)
+            .where(Payment.status == "success")
+        )
+
+        # Successful payments count and total revenue
+        successful_payments = await session.scalar(
+            select(func.count()).select_from(Payment).where(Payment.status == "success")
+        )
+        total_revenue = await session.scalar(
+            select(func.sum(Payment.amount)).where(Payment.status == "success")
+        ) or 0
+
+        # Revenue this month
+        month_revenue = await session.scalar(
+            select(func.sum(Payment.amount)).where(
+                and_(Payment.status == "success", Payment.created_at >= month_ago)
+            )
+        ) or 0
+
+        # Revenue today
+        today_revenue = await session.scalar(
+            select(func.sum(Payment.amount)).where(
+                and_(Payment.status == "success", Payment.created_at >= today_start)
+            )
+        ) or 0
+
+    text = (
+        f"📊 Статистика\n\n"
+        f"👥 Пользователи: {total_users}\n"
+        f"🆕 Новых сегодня: {new_today}\n\n"
+        f"📦 Активные подписки: {active_subs}\n"
+        f"💳 Оплаченных подписок: {paid_subs}\n\n"
+        f"💰 Платежи (успешные): {successful_payments}\n"
+        f"💵 Выручка всего: {total_revenue:,.0f} RUB\n"
+        f"📅 За месяц: {month_revenue:,.0f} RUB\n"
+        f"📆 Сегодня: {today_revenue:,.0f} RUB"
+    )
+    return text
 
 
 @admin_router.callback_query(F.data == "admin:users")
@@ -1537,6 +1576,182 @@ async def process_give_tokens_amount(message: Message, state: FSMContext):
     await state.clear()
 
 
+# ==================== FINANCE ====================
+
+def _finance_period_keyboard():
+    """Create inline keyboard for finance period selection."""
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.button(text="📆 Сегодня", callback_data="admin:finance:today")
+    builder.button(text="📅 Неделя", callback_data="admin:finance:week")
+    builder.button(text="🗓 Месяц", callback_data="admin:finance:month")
+    builder.button(text="📊 Всё время", callback_data="admin:finance:all")
+    builder.button(text="🔙 Назад в меню", callback_data="admin:back")
+    builder.adjust(2, 2, 1)
+    return builder.as_markup()
+
+
+async def _build_finance_text(period: str) -> str:
+    """Build finance analytics text for the given period."""
+    from app.database.database import async_session_maker
+    from app.database.models import Payment, Subscription, User
+    from sqlalchemy import select, func, and_
+    from datetime import datetime, timezone, timedelta
+
+    now = datetime.now(timezone.utc)
+
+    period_labels = {
+        "today": "Сегодня",
+        "week": "За неделю",
+        "month": "За месяц",
+        "all": "За всё время",
+    }
+
+    if period == "today":
+        start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif period == "week":
+        start_date = now - timedelta(days=7)
+    elif period == "month":
+        start_date = now - timedelta(days=30)
+    else:
+        start_date = None
+
+    async with async_session_maker() as session:
+        # Base payment filters
+        success_filter = [Payment.status == "success"]
+        if start_date:
+            success_filter.append(Payment.created_at >= start_date)
+
+        # Successful payments count
+        successful_count = await session.scalar(
+            select(func.count()).select_from(Payment).where(and_(*success_filter))
+        ) or 0
+
+        # Total revenue
+        revenue = await session.scalar(
+            select(func.sum(Payment.amount)).where(and_(*success_filter))
+        ) or 0
+
+        # Average check
+        avg_check = await session.scalar(
+            select(func.avg(Payment.amount)).where(and_(*success_filter))
+        ) or 0
+
+        # Failed payments
+        fail_filter = [Payment.status == "failed"]
+        if start_date:
+            fail_filter.append(Payment.created_at >= start_date)
+        failed_count = await session.scalar(
+            select(func.count()).select_from(Payment).where(and_(*fail_filter))
+        ) or 0
+
+        # Refunded payments
+        refund_filter = [Payment.status == "refunded"]
+        if start_date:
+            refund_filter.append(Payment.created_at >= start_date)
+        refunded_count = await session.scalar(
+            select(func.count()).select_from(Payment).where(and_(*refund_filter))
+        ) or 0
+        refunded_amount = await session.scalar(
+            select(func.sum(Payment.amount)).where(and_(*refund_filter))
+        ) or 0
+
+        # Pending payments
+        pending_filter = [Payment.status == "pending"]
+        if start_date:
+            pending_filter.append(Payment.created_at >= start_date)
+        pending_count = await session.scalar(
+            select(func.count()).select_from(Payment).where(and_(*pending_filter))
+        ) or 0
+
+        # New subscriptions in period
+        sub_filter = [Subscription.is_active == True]
+        if start_date:
+            sub_filter.append(Subscription.started_at >= start_date)
+        new_subs = await session.scalar(
+            select(func.count()).select_from(Subscription).where(and_(*sub_filter))
+        ) or 0
+
+        # Currently active subscriptions (always show)
+        active_subs = await session.scalar(
+            select(func.count()).select_from(Subscription).where(
+                and_(
+                    Subscription.is_active == True,
+                    (Subscription.expires_at > now) | (Subscription.expires_at.is_(None))
+                )
+            )
+        ) or 0
+
+        # New users in period
+        user_filter = []
+        if start_date:
+            user_filter.append(User.created_at >= start_date)
+        if user_filter:
+            new_users = await session.scalar(
+                select(func.count()).select_from(User).where(and_(*user_filter))
+            ) or 0
+        else:
+            new_users = await session.scalar(
+                select(func.count()).select_from(User)
+            ) or 0
+
+        # Last 5 payments in period
+        pay_query = select(Payment).where(Payment.status == "success").order_by(Payment.created_at.desc()).limit(5)
+        if start_date:
+            pay_query = select(Payment).where(
+                and_(Payment.status == "success", Payment.created_at >= start_date)
+            ).order_by(Payment.created_at.desc()).limit(5)
+        result = await session.execute(pay_query)
+        recent_payments = result.scalars().all()
+
+    label = period_labels.get(period, "За всё время")
+
+    text = (
+        f"💵 Финансы — {label}\n\n"
+        f"💰 Выручка: {revenue:,.0f} RUB\n"
+        f"✅ Успешных платежей: {successful_count}\n"
+        f"📊 Средний чек: {avg_check:,.0f} RUB\n\n"
+        f"❌ Неудачных: {failed_count}\n"
+        f"↩️ Возвратов: {refunded_count} ({refunded_amount:,.0f} RUB)\n"
+        f"⏳ Ожидающих: {pending_count}\n\n"
+        f"📦 Новых подписок: {new_subs}\n"
+        f"🟢 Активных подписок: {active_subs}\n"
+        f"👥 Новых пользователей: {new_users}\n"
+    )
+
+    if recent_payments:
+        text += "\n📋 Последние платежи:\n"
+        for p in recent_payments:
+            text += f"  {p.created_at.strftime('%d.%m %H:%M')} — {p.amount:,.0f} RUB (ID: {p.user_id})\n"
+
+    return text
+
+
+@admin_router.callback_query(F.data == "admin:finance")
+async def finance_callback(callback: CallbackQuery):
+    """Show finance section."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    text = await _build_finance_text("all")
+    await callback.message.edit_text(text, reply_markup=_finance_period_keyboard())
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data.startswith("admin:finance:"))
+async def finance_period_callback(callback: CallbackQuery):
+    """Show finance for selected period."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    period = callback.data.split(":")[-1]
+    text = await _build_finance_text(period)
+    await callback.message.edit_text(text, reply_markup=_finance_period_keyboard())
+    await callback.answer()
+
+
 # ==================== PAYMENTS ====================
 
 @admin_router.callback_query(F.data == "admin:payments")
@@ -1623,56 +1838,123 @@ async def process_promo_code(message: Message, state: FSMContext):
         await message.answer("❌ Код должен содержать минимум 3 символа")
         return
 
+    # Check if code already exists
+    from app.database.database import async_session_maker
+    from app.database.models.promocode import Promocode
+    from sqlalchemy import select
+
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(Promocode).where(Promocode.code == code)
+        )
+        existing = result.scalar_one_or_none()
+
+    if existing:
+        await message.answer(
+            f"❌ Промокод с кодом {code} уже существует.",
+            reply_markup=back_keyboard()
+        )
+        await state.clear()
+        return
+
     await state.update_data(code=code)
-    await state.set_state(CreatePromo.waiting_for_tokens)
+    await state.set_state(CreatePromo.waiting_for_bonus_type)
+
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.button(text="💎 Токены", callback_data="promo_type:tokens")
+    builder.button(text="📦 Подписка (токены)", callback_data="promo_type:subscription")
+    builder.button(text="💸 Скидка (%)", callback_data="promo_type:discount_percent")
+    builder.button(text="❌ Отмена", callback_data="admin:cancel")
+    builder.adjust(1)
 
     await message.answer(
         f"✅ Код: {code}\n\n"
-        "Введите количество токенов для бонуса:",
-        reply_markup=cancel_keyboard()
+        "Выберите тип бонуса:",
+        reply_markup=builder.as_markup()
     )
+
+
+@admin_router.callback_query(F.data.startswith("promo_type:"), StateFilter(CreatePromo.waiting_for_bonus_type))
+async def process_promo_bonus_type(callback: CallbackQuery, state: FSMContext):
+    """Process bonus type selection."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    bonus_type = callback.data.split(":")[1]
+    await state.update_data(bonus_type=bonus_type)
+    await state.set_state(CreatePromo.waiting_for_tokens)
+
+    if bonus_type == "tokens":
+        prompt = "Введите количество токенов:"
+    elif bonus_type == "subscription":
+        prompt = "Введите количество токенов для подписки:"
+    else:  # discount_percent
+        prompt = "Введите размер скидки (в процентах, например 20):"
+
+    await callback.message.edit_text(prompt)
+    await callback.answer()
 
 
 @admin_router.message(StateFilter(CreatePromo.waiting_for_tokens))
 async def process_promo_tokens(message: Message, state: FSMContext):
-    """Process token amount and create promocode."""
+    """Process bonus value for promocode."""
+    if not is_admin(message.from_user.id):
+        return
+
+    try:
+        value = int(message.text.strip())
+        if value <= 0:
+            await message.answer("❌ Значение должно быть больше 0")
+            return
+
+        data = await state.get_data()
+        bonus_type = data.get('bonus_type', 'tokens')
+
+        if bonus_type == "discount_percent" and value > 100:
+            await message.answer("❌ Скидка не может быть больше 100%")
+            return
+
+        await state.update_data(bonus_value=value)
+        await state.set_state(CreatePromo.waiting_for_max_uses)
+
+        await message.answer(
+            "Введите макс. кол-во использований\n"
+            "(или 0 для неограниченного):",
+            reply_markup=cancel_keyboard()
+        )
+
+    except ValueError:
+        await message.answer("❌ Неверный формат. Введите число.")
+
+
+@admin_router.message(StateFilter(CreatePromo.waiting_for_max_uses))
+async def process_promo_max_uses(message: Message, state: FSMContext):
+    """Process max uses and create promocode."""
     if not is_admin(message.from_user.id):
         return
 
     from app.database.database import async_session_maker
     from app.database.models.promocode import Promocode
-    from sqlalchemy import select
 
     try:
-        tokens = int(message.text.strip())
-        if tokens <= 0:
-            await message.answer("❌ Количество токенов должно быть больше 0")
+        max_uses = int(message.text.strip())
+        if max_uses < 0:
+            await message.answer("❌ Значение не может быть отрицательным")
             return
 
         data = await state.get_data()
         code = data['code']
+        bonus_type = data.get('bonus_type', 'tokens')
+        bonus_value = data['bonus_value']
 
         async with async_session_maker() as session:
-            # Check if code already exists
-            result = await session.execute(
-                select(Promocode).where(Promocode.code == code)
-            )
-            existing = result.scalar_one_or_none()
-
-            if existing:
-                await message.answer(
-                    f"❌ Промокод с кодом {code} уже существует.",
-                    reply_markup=back_keyboard()
-                )
-                await state.clear()
-                return
-
-            # Create promocode
             promo = Promocode(
                 code=code,
-                bonus_type="tokens",
-                bonus_value=tokens,
-                max_uses=None,  # Unlimited
+                bonus_type=bonus_type,
+                bonus_value=bonus_value,
+                max_uses=max_uses if max_uses > 0 else None,
                 current_uses=0,
                 is_active=True
             )
@@ -1681,11 +1963,18 @@ async def process_promo_tokens(message: Message, state: FSMContext):
             await session.commit()
             await session.refresh(promo)
 
+            type_labels = {
+                "tokens": f"{bonus_value:,} токенов",
+                "subscription": f"Подписка ({bonus_value:,} токенов)",
+                "discount_percent": f"Скидка {bonus_value}%",
+            }
+            uses_text = f"{max_uses}" if max_uses > 0 else "Неограничено"
+
             await message.answer(
                 f"✅ Промокод создан!\n\n"
                 f"🎁 Код: {code}\n"
-                f"💎 Бонус: {tokens:,} токенов\n"
-                f"👥 Использований: Неограничено",
+                f"📦 Тип: {type_labels.get(bonus_type, bonus_type)}\n"
+                f"👥 Использований: {uses_text}",
                 reply_markup=back_keyboard()
             )
 
@@ -1693,7 +1982,9 @@ async def process_promo_tokens(message: Message, state: FSMContext):
                 "admin_create_promo",
                 admin_id=message.from_user.id,
                 code=code,
-                tokens=tokens
+                bonus_type=bonus_type,
+                bonus_value=bonus_value,
+                max_uses=max_uses
             )
 
     except ValueError:
@@ -1734,8 +2025,13 @@ async def list_promos_callback(callback: CallbackQuery):
         if promo.is_active and not promo.is_valid:
             status = "⚠️ Истек"
 
+        type_labels = {
+            "tokens": f"{promo.bonus_value:,} токенов",
+            "subscription": f"Подписка ({promo.bonus_value:,} токенов)",
+            "discount_percent": f"Скидка {promo.bonus_value}%",
+        }
         text += f"Код: {promo.code}\n"
-        text += f"💎 Бонус: {promo.bonus_value:,} токенов\n"
+        text += f"💎 Бонус: {type_labels.get(promo.bonus_type, f'{promo.bonus_value:,} токенов')}\n"
         text += f"👥 Использований: {promo.current_uses}"
         if promo.max_uses:
             text += f"/{promo.max_uses}"
