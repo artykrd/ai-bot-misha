@@ -272,16 +272,27 @@ def build_user_broadcast_keyboard(buttons_data: list[dict]) -> InlineKeyboardMar
     Returns:
         InlineKeyboardMarkup with buttons arranged in 1-2 per row
     """
-    from aiogram.types import InlineKeyboardButton, CopyTextButton
+    from aiogram.types import InlineKeyboardButton
+    try:
+        from aiogram.types import CopyTextButton
+        has_copy_text = True
+    except ImportError:
+        has_copy_text = False
 
     rows = []
     current_row = []
 
     for button in buttons_data:
-        if "copy_text" in button:
+        if "copy_text" in button and has_copy_text:
             btn = InlineKeyboardButton(
                 text=button["text"],
                 copy_text=CopyTextButton(text=button["copy_text"])
+            )
+        elif "copy_text" in button and not has_copy_text:
+            # Fallback: use callback_data if CopyTextButton is not available
+            btn = InlineKeyboardButton(
+                text=button["text"],
+                callback_data=button.get("callback_data", "noop")
             )
         elif "url" in button:
             btn = InlineKeyboardButton(

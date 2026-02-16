@@ -183,7 +183,7 @@ class VideoJobService:
             aspect_ratio = input_data.get("aspect_ratio", "1:1")
             version = input_data.get("version", "2.5")
 
-            # Attempt generation with 10-minute timeout
+            # Attempt generation with 20-minute timeout
             try:
                 result = await asyncio.wait_for(
                     service.generate_video(
@@ -194,7 +194,7 @@ class VideoJobService:
                         aspect_ratio=aspect_ratio,
                         version=version
                     ),
-                    timeout=600  # 10 minutes
+                    timeout=1200  # 20 minutes
                 )
             except asyncio.TimeoutError:
                 # Timeout - mark as timeout_waiting for later re-check
@@ -237,13 +237,31 @@ class VideoJobService:
                     video_path=result.video_path
                 )
 
-                # Send video to user
+                # Send video to user with "Create more" button
                 from aiogram.types import FSInputFile
+                from app.bot.utils.notifications import create_action_keyboard, MODEL_ACTIONS
+
                 video_file = FSInputFile(result.video_path)
+
+                # Build caption with prompt
+                prompt_display = (job.prompt[:100] + "...") if job.prompt and len(job.prompt) > 100 else (job.prompt or "без промпта")
+                caption = f"✅ Ваше видео готово!\n\n📝 Промпт: {prompt_display}"
+
+                # Get action keyboard for this provider
+                provider_key = job.provider or "kling"
+                action_config = MODEL_ACTIONS.get(provider_key, MODEL_ACTIONS.get("kling"))
+                action_keyboard = create_action_keyboard(
+                    action_text=action_config["text"],
+                    action_callback=action_config["callback"],
+                    file_path=result.video_path,
+                    file_type="video"
+                )
+
                 await bot.send_video(
                     chat_id=job.chat_id,
                     video=video_file,
-                    caption=f"✅ Ваше видео готово!\n\n📝 Промпт: {job.prompt[:100]}..."
+                    caption=caption,
+                    reply_markup=action_keyboard.as_markup()
                 )
 
                 # Delete progress message

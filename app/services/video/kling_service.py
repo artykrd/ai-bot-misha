@@ -446,7 +446,7 @@ class KlingService(BaseVideoProvider):
         task_id: str,
         endpoint_type: str,
         progress_callback: Optional[Callable[[str], Awaitable[None]]] = None,
-        max_wait_time: int = 600,  # 10 minutes
+        max_wait_time: int = 1200,  # 20 minutes
         poll_interval: int = 5  # 5 seconds
     ) -> tuple:
         """
@@ -476,7 +476,7 @@ class KlingService(BaseVideoProvider):
             while True:
                 # Check timeout
                 if time.time() - start_time > max_wait_time:
-                    raise Exception("Таймаут генерации видео (10 минут)")
+                    raise Exception("Таймаут генерации видео (20 минут)")
 
                 try:
                     async with session.get(
@@ -802,7 +802,7 @@ class KlingService(BaseVideoProvider):
         self,
         task_id: str,
         progress_callback: Optional[Callable[[str], Awaitable[None]]] = None,
-        max_wait_time: int = 600,
+        max_wait_time: int = 1200,
         poll_interval: int = 5
     ) -> tuple:
         """Poll motion control task status."""
@@ -814,7 +814,7 @@ class KlingService(BaseVideoProvider):
         async with aiohttp.ClientSession() as session:
             while True:
                 if time.time() - start_time > max_wait_time:
-                    raise Exception("Таймаут генерации Motion Control видео (10 минут)")
+                    raise Exception("Таймаут генерации Motion Control видео (20 минут)")
 
                 elapsed = int(time.time() - start_time)
 
