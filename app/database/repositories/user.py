@@ -5,6 +5,7 @@ from typing import Optional
 from datetime import datetime, timezone
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models.user import User
@@ -76,6 +77,14 @@ class UserRepository(BaseRepository[User]):
             await self.update_last_activity(user.id)
             return user, False
 
-        # Create new user
-        user = await self.create_from_telegram(telegram_id, **user_data)
-        return user, True
+        # Create new user — handle race condition where another request
+        # created the same user between our SELECT and INSERT
+        try:
+            user = await self.create_from_telegram(telegram_id, **user_data)
+            return user, True
+        except IntegrityError:
+            await self.session.rollback()
+            user = await self.get_by_telegram_id(telegram_id)
+            if user:
+                return user, False
+            raise
