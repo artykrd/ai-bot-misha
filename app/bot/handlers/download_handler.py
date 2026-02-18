@@ -51,13 +51,26 @@ async def download_file(callback: CallbackQuery):
         # Determine file type from cache key
         file_type = cache_key.split(":")[0] if ":" in cache_key else "file"
 
+        # Get file name and size
+        file_name = os.path.basename(file_path)
+        file_size = os.path.getsize(file_path)
+
+        # Telegram Bot API limit: 50 MB for file uploads
+        MAX_TELEGRAM_FILE_SIZE = 50 * 1024 * 1024
+
+        if file_size > MAX_TELEGRAM_FILE_SIZE:
+            size_mb = file_size / (1024 * 1024)
+            logger.warning("file_too_large_for_telegram", path=file_path, size=file_size, size_mb=f"{size_mb:.1f}")
+            await callback.answer(
+                f"⚠️ Файл слишком большой ({size_mb:.0f} МБ). Лимит Telegram — 50 МБ.",
+                show_alert=True
+            )
+            return
+
         # Send file as document (uncompressed)
         file = FSInputFile(file_path)
 
-        # Get file name from path
-        file_name = os.path.basename(file_path)
-
-        logger.info("sending_file", path=file_path, size=os.path.getsize(file_path), file_name=file_name)
+        logger.info("sending_file", path=file_path, size=file_size, file_name=file_name)
 
         await callback.message.answer_document(
             document=file,
