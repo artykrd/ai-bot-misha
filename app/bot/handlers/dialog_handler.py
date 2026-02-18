@@ -324,6 +324,9 @@ async def process_dialog_message(
         provider = dialog["provider"]
         model_id = dialog["model_id"]
 
+        # Get bot instance for voice file downloads
+        from app.bot.bot_instance import bot as bot_instance
+
         if provider == "openai":
             response = await process_openai_message(
                 message_type=message_type,
@@ -331,7 +334,8 @@ async def process_dialog_message(
                 model_id=model_id,
                 caption=message.caption,
                 history_enabled=dialog["history_enabled"],
-                system_prompt=dialog.get("system_prompt")
+                system_prompt=dialog.get("system_prompt"),
+                bot_instance=bot_instance
             )
         elif provider == "google":
             response = await process_google_message(
@@ -340,7 +344,8 @@ async def process_dialog_message(
                 model_id=model_id,
                 caption=message.caption,
                 history_enabled=dialog["history_enabled"],
-                system_prompt=dialog.get("system_prompt")
+                system_prompt=dialog.get("system_prompt"),
+                bot_instance=bot_instance
             )
         elif provider == "anthropic":
             response = await process_anthropic_message(
@@ -349,7 +354,8 @@ async def process_dialog_message(
                 model_id=model_id,
                 caption=message.caption,
                 history_enabled=dialog["history_enabled"],
-                system_prompt=dialog.get("system_prompt")
+                system_prompt=dialog.get("system_prompt"),
+                bot_instance=bot_instance
             )
         elif provider == "deepseek":
             response = await process_deepseek_message(
@@ -358,7 +364,8 @@ async def process_dialog_message(
                 model_id=model_id,
                 caption=message.caption,
                 history_enabled=dialog["history_enabled"],
-                system_prompt=dialog.get("system_prompt")
+                system_prompt=dialog.get("system_prompt"),
+                bot_instance=bot_instance
             )
         elif provider == "perplexity":
             response = await process_perplexity_message(
@@ -367,7 +374,8 @@ async def process_dialog_message(
                 model_id=model_id,
                 caption=message.caption,
                 history_enabled=dialog["history_enabled"],
-                system_prompt=dialog.get("system_prompt")
+                system_prompt=dialog.get("system_prompt"),
+                bot_instance=bot_instance
             )
         else:
             response = {
@@ -474,13 +482,60 @@ async def process_dialog_message(
         release_ai_slot()
 
 
+async def transcribe_voice(voice_content, bot_instance) -> str:
+    """
+    Download voice message from Telegram and transcribe it using Whisper.
+
+    Args:
+        voice_content: Telegram Voice object
+        bot_instance: Bot instance for downloading files
+
+    Returns:
+        Transcribed text string
+
+    Raises:
+        Exception: If transcription fails
+    """
+    import tempfile
+    import os
+    from app.services.audio.openai_audio_service import OpenAIAudioService
+
+    # Download voice file from Telegram
+    file = await bot_instance.get_file(voice_content.file_id)
+
+    # Create a temporary file for the voice
+    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp_file:
+        tmp_path = tmp_file.name
+
+    try:
+        await bot_instance.download_file(file.file_path, tmp_path)
+
+        # Transcribe using Whisper
+        audio_service = OpenAIAudioService()
+        result = await audio_service.transcribe(tmp_path, language="ru")
+
+        if not result.success:
+            raise Exception(f"Whisper transcription failed: {result.error}")
+
+        transcribed_text = result.text
+        if not transcribed_text or not transcribed_text.strip():
+            raise Exception("Не удалось распознать речь в голосовом сообщении.")
+
+        return transcribed_text.strip()
+    finally:
+        # Clean up temp file
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+
 async def process_openai_message(
     message_type: str,
     content: any,
     model_id: str,
     caption: str = None,
     history_enabled: bool = False,
-    system_prompt: str = None
+    system_prompt: str = None,
+    bot_instance=None
 ) -> dict:
     """Process message with OpenAI models."""
     from app.services.ai.openai_service import OpenAIService
@@ -495,8 +550,13 @@ async def process_openai_message(
                 system_prompt=system_prompt
             )
         elif message_type == "voice":
-            # TODO: Transcribe voice first, then send to model
-            return {"success": False, "error": "Voice processing not yet implemented"}
+            # Transcribe voice first, then send to model
+            transcribed_text = await transcribe_voice(content, bot_instance)
+            result = await service.generate_text(
+                model=model_id,
+                prompt=transcribed_text,
+                system_prompt=system_prompt
+            )
         elif message_type == "photo":
             # TODO: Process image with vision model
             return {"success": False, "error": "Image processing not yet implemented"}
@@ -527,7 +587,8 @@ async def process_google_message(
     model_id: str,
     caption: str = None,
     history_enabled: bool = False,
-    system_prompt: str = None
+    system_prompt: str = None,
+    bot_instance=None
 ) -> dict:
     """Process message with Google Gemini models."""
     from app.services.ai.google_service import GoogleService
@@ -539,6 +600,13 @@ async def process_google_message(
             result = await service.generate_text(
                 model=model_id,
                 prompt=content,
+                system_prompt=system_prompt
+            )
+        elif message_type == "voice":
+            transcribed_text = await transcribe_voice(content, bot_instance)
+            result = await service.generate_text(
+                model=model_id,
+                prompt=transcribed_text,
                 system_prompt=system_prompt
             )
         else:
@@ -565,7 +633,8 @@ async def process_anthropic_message(
     model_id: str,
     caption: str = None,
     history_enabled: bool = False,
-    system_prompt: str = None
+    system_prompt: str = None,
+    bot_instance=None
 ) -> dict:
     """Process message with Anthropic Claude models."""
     from app.services.ai.anthropic_service import AnthropicService
@@ -577,6 +646,13 @@ async def process_anthropic_message(
             result = await service.generate_text(
                 model=model_id,
                 prompt=content,
+                system_prompt=system_prompt
+            )
+        elif message_type == "voice":
+            transcribed_text = await transcribe_voice(content, bot_instance)
+            result = await service.generate_text(
+                model=model_id,
+                prompt=transcribed_text,
                 system_prompt=system_prompt
             )
         else:
@@ -603,7 +679,8 @@ async def process_deepseek_message(
     model_id: str,
     caption: str = None,
     history_enabled: bool = False,
-    system_prompt: str = None
+    system_prompt: str = None,
+    bot_instance=None
 ) -> dict:
     """Process message with DeepSeek models."""
     from app.services.ai.deepseek_service import DeepSeekService
@@ -623,6 +700,13 @@ async def process_deepseek_message(
             result = await service.generate_text(
                 model=api_model,
                 prompt=content,
+                system_prompt=system_prompt
+            )
+        elif message_type == "voice":
+            transcribed_text = await transcribe_voice(content, bot_instance)
+            result = await service.generate_text(
+                model=api_model,
+                prompt=transcribed_text,
                 system_prompt=system_prompt
             )
         else:
@@ -648,7 +732,8 @@ async def process_perplexity_message(
     model_id: str,
     caption: str = None,
     history_enabled: bool = False,
-    system_prompt: str = None
+    system_prompt: str = None,
+    bot_instance=None
 ) -> dict:
     """Process message with Perplexity models."""
     from app.services.ai.perplexity_service import PerplexityService
@@ -660,6 +745,13 @@ async def process_perplexity_message(
             result = await service.generate_text(
                 model=model_id,
                 prompt=content,
+                system_prompt=system_prompt
+            )
+        elif message_type == "voice":
+            transcribed_text = await transcribe_voice(content, bot_instance)
+            result = await service.generate_text(
+                model=model_id,
+                prompt=transcribed_text,
                 system_prompt=system_prompt
             )
         else:

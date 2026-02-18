@@ -42,6 +42,7 @@ async def setup_bot() -> Dispatcher:
     from app.bot.handlers import (
         start,
         navigation,
+        subscription,
         media_handler,
         suno_handler,
         profile,
@@ -54,6 +55,7 @@ async def setup_bot() -> Dispatcher:
 
     # Order matters! Commands should come before FSM handlers, dialog_handler should be last
     dp.include_router(start.router)
+    dp.include_router(subscription.router)  # Promocode & subscription callbacks
     dp.include_router(navigation.router)
     dp.include_router(common.router)  # Commands BEFORE FSM handlers
     dp.include_router(download_handler.router)  # Download handler

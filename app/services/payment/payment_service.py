@@ -320,8 +320,9 @@ class PaymentService:
                     )
                     tokens_added = tokens
 
-                    # Link payment to subscription
+                    # Link payment to subscription and store price for refund
                     payment.subscription_id = subscription.id
+                    subscription.price = payment.amount
                     await self.session.commit()
 
                     logger.info(
@@ -489,20 +490,38 @@ class PaymentService:
                     "refund_error": "Платёж не найден. Подписка отменена без возврата."
                 }
 
-            # Calculate refund amount based on unused tokens
+            # Calculate refund amount based on unused tokens or remaining time
             total_tokens = subscription.tokens_amount
             used_tokens = subscription.tokens_used
             unused_tokens = max(0, total_tokens - used_tokens)
 
-            # If unlimited subscription, no refund
+            original_price = Decimal(str(subscription.price)) if subscription.price else Decimal("0")
+
+            # If unlimited subscription, calculate refund based on remaining time
             if subscription.is_unlimited:
-                logger.info("unlimited_subscription_no_refund", subscription_id=subscription_id)
-                refund_amount = Decimal("0")
-            # If eternal subscription, calculate based on unused tokens
+                if subscription.expires_at and subscription.started_at and original_price > 0:
+                    from datetime import datetime, timezone
+                    now = datetime.now(timezone.utc)
+                    total_duration = (subscription.expires_at - subscription.started_at).total_seconds()
+                    remaining_duration = max(0, (subscription.expires_at - now).total_seconds())
+                    if total_duration > 0:
+                        refund_percentage = remaining_duration / total_duration
+                        refund_amount = Decimal(str(float(original_price) * refund_percentage))
+                        refund_amount = refund_amount.quantize(Decimal("0.01"))
+                    else:
+                        refund_amount = Decimal("0")
+                else:
+                    refund_amount = Decimal("0")
+                logger.info(
+                    "unlimited_subscription_refund_calculated",
+                    subscription_id=subscription_id,
+                    refund_amount=float(refund_amount)
+                )
+            # If eternal subscription or token-based, calculate based on unused tokens
             elif subscription.is_eternal or total_tokens > 0:
                 usage_percentage = used_tokens / total_tokens if total_tokens > 0 else 1.0
                 refund_percentage = max(0, 1.0 - usage_percentage)
-                refund_amount = Decimal(str(float(subscription.price) * refund_percentage))
+                refund_amount = Decimal(str(float(original_price) * refund_percentage))
                 # Round to 2 decimal places
                 refund_amount = refund_amount.quantize(Decimal("0.01"))
             else:

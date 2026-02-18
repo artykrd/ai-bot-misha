@@ -34,6 +34,7 @@ class CreatePromo(StatesGroup):
     waiting_for_bonus_type = State()
     waiting_for_tokens = State()
     waiting_for_max_uses = State()
+    waiting_for_expires_at = State()
 
 
 class Broadcast(StatesGroup):
