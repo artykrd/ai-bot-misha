@@ -22,6 +22,48 @@ logger = get_logger(__name__)
 router = Router(name="subscription")
 
 
+async def get_user_active_discount(session, user_id: int) -> tuple:
+    """
+    Get user's active (unapplied) discount from promo codes.
+
+    Returns:
+        Tuple of (discount_percent, promo_use_id) or (0, None) if no active discount.
+        discount_percent > 0 means there's an unused discount.
+    """
+    from app.database.models.promocode import Promocode, PromocodeUse
+    from sqlalchemy import select
+
+    result = await session.execute(
+        select(PromocodeUse, Promocode).join(
+            Promocode, PromocodeUse.promocode_id == Promocode.id
+        ).where(
+            PromocodeUse.user_id == user_id,
+            Promocode.bonus_type == "discount_percent",
+            PromocodeUse.bonus_received > 0  # > 0 means not yet applied
+        ).order_by(PromocodeUse.created_at.desc()).limit(1)
+    )
+    row = result.first()
+    if row:
+        promo_use, promo = row
+        return promo_use.bonus_received, promo_use.id
+    return 0, None
+
+
+async def consume_discount(session, promo_use_id: int):
+    """Mark a discount promo code use as consumed (applied to a purchase)."""
+    from app.database.models.promocode import PromocodeUse
+    from sqlalchemy import select
+
+    result = await session.execute(
+        select(PromocodeUse).where(PromocodeUse.id == promo_use_id)
+    )
+    promo_use = result.scalar_one_or_none()
+    if promo_use and promo_use.bonus_received > 0:
+        # Set to negative to mark as consumed
+        promo_use.bonus_received = -promo_use.bonus_received
+        await session.commit()
+
+
 @router.callback_query(F.data == "subscription")
 async def show_subscriptions(callback: CallbackQuery, user: User):
     """Show subscription options."""
@@ -79,6 +121,7 @@ async def process_subscription_purchase(callback: CallbackQuery, user: User):
     from app.database.database import async_session_maker
     from app.services.payment import PaymentService
     from app.core.subscription_plans import ETERNAL_PLANS
+    from decimal import Decimal
 
     subscription_type = callback.data.split(":")[1]
 
@@ -87,11 +130,29 @@ async def process_subscription_purchase(callback: CallbackQuery, user: User):
         await callback.answer("❌ Неизвестный тариф", show_alert=True)
         return
 
+    # Check for active discount promo code
+    async with async_session_maker() as session:
+        discount_percent, promo_use_id = await get_user_active_discount(session, user.id)
+
+    original_price = plan.price
+    final_price = original_price
+    discount_text = ""
+
+    if discount_percent > 0:
+        discount_amount = original_price * Decimal(str(discount_percent)) / Decimal("100")
+        final_price = (original_price - discount_amount).quantize(Decimal("0.01"))
+        # Ensure minimum price of 1 ruble
+        if final_price < Decimal("1.00"):
+            final_price = Decimal("1.00")
+        discount_text = f"\n🎁 **Скидка:** {discount_percent}% (-{discount_amount:.2f} руб.)"
+
     logger.info(
         "subscription_purchase_initiated",
         user_id=user.id,
         subscription_type=subscription_type,
-        amount=plan.price
+        original_amount=float(original_price),
+        final_amount=float(final_price),
+        discount_percent=discount_percent
     )
 
     # Create payment
@@ -100,12 +161,14 @@ async def process_subscription_purchase(callback: CallbackQuery, user: User):
 
         payment = await payment_service.create_payment(
             user_id=user.id,
-            amount=plan.price,
-            description=f"Покупка {plan.display_name}",
+            amount=final_price,
+            description=f"Покупка {plan.display_name}" + (f" (скидка {discount_percent}%)" if discount_percent > 0 else ""),
             metadata={
                 "subscription_type": subscription_type,
                 "tokens": plan.tokens,
-                "type": "eternal_tokens"
+                "type": "eternal_tokens",
+                "discount_percent": discount_percent,
+                "promo_use_id": promo_use_id
             }
         )
 
@@ -120,6 +183,10 @@ async def process_subscription_purchase(callback: CallbackQuery, user: User):
             await callback.answer("❌ Ошибка получения ссылки на оплату", show_alert=True)
             return
 
+        # Consume the discount promo code after successful payment creation
+        if promo_use_id:
+            await consume_discount(session, promo_use_id)
+
     # Build payment message
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     from aiogram.types import InlineKeyboardButton
@@ -132,7 +199,18 @@ async def process_subscription_purchase(callback: CallbackQuery, user: User):
         InlineKeyboardButton(text="⬅️ Назад", callback_data="bot#shop")
     )
 
-    text = f"""💳 **Оплата токенов**
+    if discount_percent > 0:
+        text = f"""💳 **Оплата токенов**
+
+📦 **Тариф:** {plan.display_name}
+💰 **Цена:** ~~{original_price}~~ **{final_price} руб.**{discount_text}
+
+🔹 Токены вечные и никогда не сгорают
+🔹 После оплаты токены будут автоматически зачислены
+
+Нажмите кнопку "Оплатить" для перехода к оплате."""
+    else:
+        text = f"""💳 **Оплата токенов**
 
 📦 **Тариф:** {plan.display_name}
 💰 **Стоимость:** {plan.price} руб.
@@ -273,7 +351,8 @@ async def process_promocode(message: Message, state: FSMContext, user: User):
                 )
 
             elif promo.bonus_type == "discount_percent":
-                # Store discount in user's state for next purchase
+                # Save discount for the user's next purchase
+                # bonus_received > 0 means discount not yet applied to a purchase
                 discount = promo.bonus_value  # percent (e.g. 20 = 20%)
 
                 # Record promocode use
@@ -284,33 +363,17 @@ async def process_promocode(message: Message, state: FSMContext, user: User):
                 )
                 session.add(promo_use)
                 promo.current_uses += 1
-
-                # Give discount as bonus tokens (discount_percent of cheapest plan price in tokens)
-                # Simpler approach: give equivalent tokens as a bonus
-                from app.core.subscription_plans import ETERNAL_PLANS
-                # Give tokens equivalent to discount% of the 150k plan
-                base_tokens = 150_000
-                bonus_tokens = int(base_tokens * discount / 100)
-
-                await sub_service.add_eternal_tokens(
-                    user_id=user.id,
-                    tokens=bonus_tokens,
-                    subscription_type=f"promo_discount_{promo.code}"
-                )
                 await session.commit()
 
-                total_tokens = await sub_service.get_available_tokens(user.id)
-
                 keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="💎 Проверить баланс", callback_data="profile")],
+                    [InlineKeyboardButton(text="💎 Перейти к покупке", callback_data="bot#shop")],
                     [InlineKeyboardButton(text="🔙 В главное меню", callback_data="main_menu")]
                 ])
 
                 await message.answer(
                     f"✅ Промокод активирован!\n\n"
-                    f"🎁 Скидка {discount}% применена!\n"
-                    f"💎 Вы получили: {bonus_tokens:,} бонусных токенов\n"
-                    f"💎 Всего токенов: {total_tokens:,}",
+                    f"🎁 Скидка {discount}% будет применена к вашей следующей покупке.\n\n"
+                    f"Перейдите в раздел подписки, чтобы оформить покупку со скидкой.",
                     reply_markup=keyboard
                 )
 
@@ -319,8 +382,7 @@ async def process_promocode(message: Message, state: FSMContext, user: User):
                     user_id=user.id,
                     code=code,
                     bonus_type="discount_percent",
-                    discount=discount,
-                    bonus_tokens=bonus_tokens
+                    discount=discount
                 )
 
             elif promo.bonus_type == "subscription":
