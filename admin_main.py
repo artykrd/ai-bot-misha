@@ -274,12 +274,15 @@ async def _build_stats_text() -> str:
             select(func.count()).select_from(User).where(User.created_at >= today_start)
         )
 
-        # Active subscriptions (is_active=True AND not expired)
+        # Active paid subscriptions (distinct users with usable tokens)
+        from app.core.subscription_plans import PAID_SUBSCRIPTION_TYPES
         active_subs = await session.scalar(
-            select(func.count()).select_from(Subscription).where(
+            select(func.count(func.distinct(Subscription.user_id)))
+            .select_from(Subscription).where(
                 and_(
                     Subscription.is_active == True,
-                    (Subscription.expires_at > now) | (Subscription.expires_at.is_(None))
+                    Subscription.tokens_amount > Subscription.tokens_used,
+                    Subscription.subscription_type.in_(PAID_SUBSCRIPTION_TYPES)
                 )
             )
         )
@@ -1664,20 +1667,26 @@ async def _build_finance_text(period: str) -> str:
             select(func.count()).select_from(Payment).where(and_(*pending_filter))
         ) or 0
 
-        # New subscriptions in period
-        sub_filter = [Subscription.is_active == True]
+        # New paid subscriptions in period (distinct users)
+        from app.core.subscription_plans import PAID_SUBSCRIPTION_TYPES
+        sub_filter = [
+            Subscription.subscription_type.in_(PAID_SUBSCRIPTION_TYPES)
+        ]
         if start_date:
             sub_filter.append(Subscription.started_at >= start_date)
         new_subs = await session.scalar(
-            select(func.count()).select_from(Subscription).where(and_(*sub_filter))
+            select(func.count(func.distinct(Subscription.user_id)))
+            .select_from(Subscription).where(and_(*sub_filter))
         ) or 0
 
-        # Currently active subscriptions (always show)
+        # Currently active paid subscriptions (distinct users with usable tokens)
         active_subs = await session.scalar(
-            select(func.count()).select_from(Subscription).where(
+            select(func.count(func.distinct(Subscription.user_id)))
+            .select_from(Subscription).where(
                 and_(
                     Subscription.is_active == True,
-                    (Subscription.expires_at > now) | (Subscription.expires_at.is_(None))
+                    Subscription.tokens_amount > Subscription.tokens_used,
+                    Subscription.subscription_type.in_(PAID_SUBSCRIPTION_TYPES)
                 )
             )
         ) or 0
