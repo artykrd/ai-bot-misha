@@ -711,6 +711,8 @@ async def tariff_selected(callback: CallbackQuery, user: User):
     from aiogram.types import InlineKeyboardButton
     from app.core.subscription_plans import get_subscription_plan, UNLIMITED_PLAN
     from app.core.logger import get_logger
+    from app.bot.handlers.subscription import get_user_active_discount, consume_discount
+    from decimal import Decimal
 
     logger = get_logger(__name__)
 
@@ -743,19 +745,36 @@ async def tariff_selected(callback: CallbackQuery, user: User):
         tariff_name = plan.display_name
         tariff_tokens = plan.tokens
 
+    # Check for active discount promo code
+    async with async_session_maker() as session:
+        discount_percent, promo_use_id = await get_user_active_discount(session, user.id)
+
+    original_price = tariff.price
+    final_price = original_price
+    discount_text = ""
+
+    if discount_percent > 0:
+        discount_amount = original_price * Decimal(str(discount_percent)) / Decimal("100")
+        final_price = (original_price - discount_amount).quantize(Decimal("0.01"))
+        if final_price < Decimal("1.00"):
+            final_price = Decimal("1.00")
+        discount_text = f"\n🎁 **Скидка:** {discount_percent}% (-{discount_amount:.2f} руб.)"
+
     # Create payment
     async with async_session_maker() as session:
         payment_service = PaymentService(session)
 
         payment = await payment_service.create_payment(
             user_id=user.id,
-            amount=tariff.price,
-            description=f"Подписка: {tariff_name}",
+            amount=final_price,
+            description=f"Подписка: {tariff_name}" + (f" (скидка {discount_percent}%)" if discount_percent > 0 else ""),
             metadata={
                 "tariff_id": tariff_id,
                 "days": tariff.days,
                 "tokens": tariff_tokens,
-                "type": "subscription"
+                "type": "subscription",
+                "discount_percent": discount_percent,
+                "promo_use_id": promo_use_id
             }
         )
 
@@ -776,10 +795,16 @@ async def tariff_selected(callback: CallbackQuery, user: User):
                 pass
             return
 
+        # Consume the discount promo code after successful payment creation
+        if promo_use_id:
+            await consume_discount(session, promo_use_id)
+
     logger.info(
         "subscription_payment_created",
         plan_id=tariff_id,
-        amount_rub=float(tariff.price),
+        original_amount_rub=float(original_price),
+        final_amount_rub=float(final_price),
+        discount_percent=discount_percent,
         tokens_granted=tariff_tokens,
         duration_days=tariff.days,
         user_id=user.id,
@@ -813,10 +838,11 @@ async def tariff_selected(callback: CallbackQuery, user: User):
         hailuo_billing = get_video_model_billing("hailuo")
         kling_billing = get_video_model_billing("kling-video")
 
+        price_line = f"💰 **Стоимость:** ~~{original_price}~~ **{final_price} руб.**{discount_text}" if discount_percent > 0 else f"💰 **Стоимость:** {final_price} руб."
         text = f"""💳 **Оплата подписки**
 
 📦 **Тариф:** {tariff_name}
-💰 **Стоимость:** {tariff.price} руб.
+{price_line}
 ⏰ **Срок:** {tariff.days} день
 
 🎯 **Что вы получаете:**
@@ -843,10 +869,11 @@ async def tariff_selected(callback: CallbackQuery, user: User):
 
 Нажмите кнопку "Оплатить" для перехода к оплате."""
     else:
+        price_line = f"💰 **Стоимость:** ~~{original_price}~~ **{final_price} руб.**{discount_text}" if discount_percent > 0 else f"💰 **Стоимость:** {final_price} руб."
         text = f"""💳 **Оплата подписки**
 
 📦 **Тариф:** {tariff_name}
-💰 **Стоимость:** {tariff.price} руб.
+{price_line}
 ⏰ **Срок:** {tariff.days} дней
 🎁 **Токены:** {tokens_text}
 
