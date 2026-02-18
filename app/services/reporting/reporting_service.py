@@ -136,9 +136,12 @@ class ReportingService:
         old_result = await self.session.execute(old_query)
         old_users = old_result.scalar() or 0
 
-        # Users with active subscriptions
+        # Users with active paid subscriptions (with usable tokens)
+        from app.core.subscription_plans import PAID_SUBSCRIPTION_TYPES
         paying_query = select(func.count(func.distinct(Subscription.user_id))).where(
-            Subscription.is_active == True
+            Subscription.is_active == True,
+            Subscription.tokens_amount > Subscription.tokens_used,
+            Subscription.subscription_type.in_(PAID_SUBSCRIPTION_TYPES)
         )
         paying_result = await self.session.execute(paying_query)
         paying_users = paying_result.scalar() or 0
@@ -156,27 +159,30 @@ class ReportingService:
         period_start: datetime,
         period_end: datetime
     ) -> Dict[str, Any]:
-        """Get new subscriptions statistics."""
+        """Get new paid subscriptions statistics."""
+        from app.core.subscription_plans import PAID_SUBSCRIPTION_TYPES
 
-        # Total count and sum
+        # Total distinct users and revenue (only paid types)
         total_query = select(
-            func.count(Subscription.id),
+            func.count(func.distinct(Subscription.user_id)),
             func.coalesce(func.sum(Subscription.price), 0)
         ).where(
             Subscription.created_at >= period_start,
-            Subscription.created_at < period_end
+            Subscription.created_at < period_end,
+            Subscription.subscription_type.in_(PAID_SUBSCRIPTION_TYPES)
         )
         total_result = await self.session.execute(total_query)
         row = total_result.one()
 
-        # By subscription type
+        # By subscription type (only paid types)
         type_query = select(
             Subscription.subscription_type,
             func.count(Subscription.id),
             func.coalesce(func.sum(Subscription.price), 0)
         ).where(
             Subscription.created_at >= period_start,
-            Subscription.created_at < period_end
+            Subscription.created_at < period_end,
+            Subscription.subscription_type.in_(PAID_SUBSCRIPTION_TYPES)
         ).group_by(Subscription.subscription_type)
 
         type_result = await self.session.execute(type_query)

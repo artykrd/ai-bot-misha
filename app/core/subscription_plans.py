@@ -133,6 +133,18 @@ ETERNAL_PLANS: Dict[str, EternalTokenPlan] = {
 }
 
 
+# Subscription types that represent actual paid purchases.
+# Used for statistics filtering to exclude bonuses, promos, gifts, etc.
+PAID_SUBSCRIPTION_TYPES = [
+    # Eternal token purchases (payment_service default)
+    "eternal_purchase",
+    # Time-limited subscriptions (payment_service default)
+    "premium_subscription",
+    # Unlimited daily plan
+    "unlimited_1day",
+]
+
+
 def list_subscription_plans() -> Iterable[SubscriptionPlan]:
     return SUBSCRIPTION_PLANS.values()
 
