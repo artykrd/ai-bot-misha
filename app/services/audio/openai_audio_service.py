@@ -221,22 +221,26 @@ class OpenAIAudioService(BaseAudioProvider):
         if not audio_file.exists():
             raise FileNotFoundError(f"Audio file not found: {audio_path}")
 
-        # Prepare form data
-        data = aiohttp.FormData()
-        data.add_field('file',
-                       open(audio_path, 'rb'),
-                       filename=audio_file.name,
-                       content_type='audio/mpeg')
-        data.add_field('model', 'whisper-1')
+        # Prepare form data and send request
+        file_handle = open(audio_path, 'rb')
+        try:
+            data = aiohttp.FormData()
+            data.add_field('file',
+                           file_handle,
+                           filename=audio_file.name,
+                           content_type='audio/ogg')
+            data.add_field('model', 'whisper-1')
 
-        if language:
-            data.add_field('language', language)
+            if language:
+                data.add_field('language', language)
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=headers, data=data) as response:
-                if response.status != 200:
-                    error_text = await response.text()
-                    raise Exception(f"OpenAI Whisper error: {response.status} - {error_text}")
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, headers=headers, data=data) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        raise Exception(f"OpenAI Whisper error: {response.status} - {error_text}")
 
-                result = await response.json()
-                return result.get("text", "")
+                    result = await response.json()
+                    return result.get("text", "")
+        finally:
+            file_handle.close()

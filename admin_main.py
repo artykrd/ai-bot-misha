@@ -1931,12 +1931,9 @@ async def process_promo_tokens(message: Message, state: FSMContext):
 
 @admin_router.message(StateFilter(CreatePromo.waiting_for_max_uses))
 async def process_promo_max_uses(message: Message, state: FSMContext):
-    """Process max uses and create promocode."""
+    """Process max uses and ask for expiration date."""
     if not is_admin(message.from_user.id):
         return
-
-    from app.database.database import async_session_maker
-    from app.database.models.promocode import Promocode
 
     try:
         max_uses = int(message.text.strip())
@@ -1944,10 +1941,62 @@ async def process_promo_max_uses(message: Message, state: FSMContext):
             await message.answer("❌ Значение не может быть отрицательным")
             return
 
+        await state.update_data(max_uses=max_uses)
+        await state.set_state(CreatePromo.waiting_for_expires_at)
+
+        await message.answer(
+            "📅 Введите срок действия промокода:\n\n"
+            "Форматы:\n"
+            "• Количество дней: 7, 30, 90\n"
+            "• Дата: 31.12.2026\n"
+            "• 0 — без ограничения срока\n\n"
+            "Пример: 30 (промокод будет действовать 30 дней)",
+            reply_markup=cancel_keyboard()
+        )
+
+    except ValueError:
+        await message.answer("❌ Неверный формат. Введите число.")
+
+
+@admin_router.message(StateFilter(CreatePromo.waiting_for_expires_at))
+async def process_promo_expires_at(message: Message, state: FSMContext):
+    """Process expiration date and create promocode."""
+    if not is_admin(message.from_user.id):
+        return
+
+    from app.database.database import async_session_maker
+    from app.database.models.promocode import Promocode
+    from datetime import datetime, timedelta, timezone
+
+    try:
+        text = message.text.strip()
+        expires_at = None
+
+        if text == "0":
+            expires_at = None  # No expiration
+        elif "." in text:
+            # Date format: DD.MM.YYYY
+            try:
+                expires_at = datetime.strptime(text, "%d.%m.%Y").replace(
+                    hour=23, minute=59, second=59, tzinfo=timezone.utc
+                )
+            except ValueError:
+                await message.answer("❌ Неверный формат даты. Используйте ДД.ММ.ГГГГ (например: 31.12.2026)")
+                return
+        else:
+            # Number of days
+            days = int(text)
+            if days < 0:
+                await message.answer("❌ Количество дней не может быть отрицательным")
+                return
+            if days > 0:
+                expires_at = datetime.now(timezone.utc) + timedelta(days=days)
+
         data = await state.get_data()
         code = data['code']
         bonus_type = data.get('bonus_type', 'tokens')
         bonus_value = data['bonus_value']
+        max_uses = data['max_uses']
 
         async with async_session_maker() as session:
             promo = Promocode(
@@ -1956,7 +2005,8 @@ async def process_promo_max_uses(message: Message, state: FSMContext):
                 bonus_value=bonus_value,
                 max_uses=max_uses if max_uses > 0 else None,
                 current_uses=0,
-                is_active=True
+                is_active=True,
+                expires_at=expires_at
             )
 
             session.add(promo)
@@ -1969,12 +2019,14 @@ async def process_promo_max_uses(message: Message, state: FSMContext):
                 "discount_percent": f"Скидка {bonus_value}%",
             }
             uses_text = f"{max_uses}" if max_uses > 0 else "Неограничено"
+            expires_text = expires_at.strftime("%d.%m.%Y %H:%M") if expires_at else "Бессрочно"
 
             await message.answer(
                 f"✅ Промокод создан!\n\n"
                 f"🎁 Код: {code}\n"
                 f"📦 Тип: {type_labels.get(bonus_type, bonus_type)}\n"
-                f"👥 Использований: {uses_text}",
+                f"👥 Использований: {uses_text}\n"
+                f"📅 Действует до: {expires_text}",
                 reply_markup=back_keyboard()
             )
 
@@ -1984,11 +2036,12 @@ async def process_promo_max_uses(message: Message, state: FSMContext):
                 code=code,
                 bonus_type=bonus_type,
                 bonus_value=bonus_value,
-                max_uses=max_uses
+                max_uses=max_uses,
+                expires_at=str(expires_at)
             )
 
     except ValueError:
-        await message.answer("❌ Неверный формат. Введите число.")
+        await message.answer("❌ Неверный формат. Введите число дней или дату (ДД.ММ.ГГГГ)")
     except Exception as e:
         logger.error("admin_create_promo_error", error=str(e))
         await message.answer(f"❌ Ошибка: {str(e)}", reply_markup=back_keyboard())
@@ -2036,6 +2089,10 @@ async def list_promos_callback(callback: CallbackQuery):
         if promo.max_uses:
             text += f"/{promo.max_uses}"
         text += f"\n📊 Статус: {status}\n"
+        if promo.expires_at:
+            text += f"📅 Действует до: {promo.expires_at.strftime('%d.%m.%Y %H:%M')}\n"
+        else:
+            text += f"📅 Срок: Бессрочно\n"
         text += f"🕐 Создан: {promo.created_at.strftime('%d.%m.%Y %H:%M')}\n\n"
 
     await callback.message.edit_text(text, reply_markup=back_keyboard())
