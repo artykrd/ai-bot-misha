@@ -5448,7 +5448,8 @@ async def kling_mc_receive_prompt(message: Message, state: FSMContext, user: Use
 
         await progress_msg.edit_text(
             f"❌ Ошибка Motion Control:\n\n{result.error}\n\n"
-            f"💰 Токены возвращены на баланс."
+            f"💰 Токены возвращены на баланс.",
+            parse_mode=None
         )
 
 
