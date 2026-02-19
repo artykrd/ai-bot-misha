@@ -782,6 +782,10 @@ class KlingService(BaseVideoProvider):
             "keep_original_sound": keep_original_sound,
         }
 
+        # For character_orientation='image', video duration must not exceed 10 seconds
+        if character_orientation == "image":
+            payload["duration"] = "10"
+
         if prompt:
             payload["prompt"] = prompt[:2500]
 
