@@ -30,6 +30,7 @@ from app.bot.keyboards.inline import (
 from app.bot.keyboards.reply import main_menu_reply_keyboard
 from app.database.models.user import User
 from app.bot.handlers.dialog_context import clear_active_dialog
+from app.bot.states.media import clear_state_preserve_settings
 
 router = Router(name="navigation")
 
@@ -65,7 +66,7 @@ DIALOG_STATES = {}
 
 async def reset_menu_context(state: FSMContext, user: User) -> None:
     """Clear FSM state and active dialog when entering menu navigation."""
-    await state.clear()
+    await clear_state_preserve_settings(state)
     await clear_active_dialog(user.telegram_id)
 
 
@@ -107,8 +108,8 @@ async def back_to_main(callback: CallbackQuery, user: User, state: FSMContext):
             except Exception:
                 pass
 
-    # Clear state
-    await state.clear()
+    # Clear state but preserve settings
+    await clear_state_preserve_settings(state)
 
     async with async_session_maker() as session:
         sub_service = SubscriptionService(session)

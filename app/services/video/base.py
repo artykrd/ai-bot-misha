@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import aiohttp
 import asyncio
+import uuid
 from datetime import datetime
 
 from app.core.config import settings
@@ -75,4 +76,5 @@ class BaseVideoProvider(ABC):
     def _generate_filename(self, extension: str = "mp4") -> str:
         """Generate unique filename for video."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        return f"video_{timestamp}.{extension}"
+        unique_id = uuid.uuid4().hex[:8]
+        return f"video_{timestamp}_{unique_id}.{extension}"

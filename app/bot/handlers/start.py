@@ -12,6 +12,7 @@ from aiogram.fsm.context import FSMContext
 from app.bot.keyboards.inline import main_menu_keyboard
 from app.bot.keyboards.reply import main_menu_reply_keyboard
 from app.database.models.user import User
+from app.bot.states.media import clear_state_preserve_settings
 
 router = Router(name="start")
 
@@ -27,7 +28,7 @@ async def cmd_start(message: Message, user: User, state: FSMContext):
     from sqlalchemy import select
     from datetime import datetime, timedelta, timezone
 
-    await state.clear()
+    await clear_state_preserve_settings(state)
     await clear_active_dialog(user.telegram_id)
 
     # Check for referral code or unlimited invite in command args
@@ -192,7 +193,7 @@ async def show_main_menu(callback: CallbackQuery, user: User, state: FSMContext)
     from app.services.subscription.subscription_service import SubscriptionService
     from app.bot.handlers.dialog_context import clear_active_dialog
 
-    await state.clear()
+    await clear_state_preserve_settings(state)
     await clear_active_dialog(user.telegram_id)
     async with async_session_maker() as session:
         sub_service = SubscriptionService(session)
@@ -233,7 +234,7 @@ async def show_full_menu(callback: CallbackQuery, user: User, state: FSMContext)
     """Show full menu."""
     from app.bot.handlers.dialog_context import clear_active_dialog
 
-    await state.clear()
+    await clear_state_preserve_settings(state)
     await clear_active_dialog(user.telegram_id)
     text = "Меню"
     if callback.message.photo:
@@ -254,6 +255,6 @@ async def show_full_menu_message(message: Message, user: User, state: FSMContext
     """Show full menu by reply button."""
     from app.bot.handlers.dialog_context import clear_active_dialog
 
-    await state.clear()
+    await clear_state_preserve_settings(state)
     await clear_active_dialog(user.telegram_id)
     await message.answer("Меню", reply_markup=main_menu_keyboard())

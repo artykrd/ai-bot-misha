@@ -24,8 +24,9 @@ async def download_file(callback: CallbackQuery):
         # Extract cache key from callback data
         cache_key = callback.data.replace("download:", "")
 
-        # Retrieve file path from cache
-        file_path = file_cache.get(cache_key)
+        # Retrieve file path from cache with user_id validation
+        user_id = callback.from_user.id
+        file_path = file_cache.get(cache_key, user_id=user_id)
 
         if not file_path:
             logger.warning("download_file_not_in_cache", cache_key=cache_key)

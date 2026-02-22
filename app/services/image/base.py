@@ -6,6 +6,7 @@ from typing import Optional, Callable, Awaitable
 from dataclasses import dataclass
 from pathlib import Path
 import aiohttp
+import uuid
 from datetime import datetime
 
 from app.core.config import settings
@@ -73,4 +74,5 @@ class BaseImageProvider(ABC):
     def _generate_filename(self, extension: str = "png") -> str:
         """Generate unique filename for image."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        return f"image_{timestamp}.{extension}"
+        unique_id = uuid.uuid4().hex[:8]
+        return f"image_{timestamp}_{unique_id}.{extension}"

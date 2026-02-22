@@ -49,7 +49,7 @@ from app.bot.keyboards.inline import (
     kling_mc_sound_keyboard,
 )
 from app.bot.states import MediaState
-from app.bot.states.media import KlingSettings, KlingImageSettings
+from app.bot.states.media import KlingSettings, KlingImageSettings, clear_state_preserve_settings
 from app.bot.utils.notifications import (
     format_generation_message,
     create_action_keyboard,
@@ -479,7 +479,7 @@ async def start_kling_effects(callback: CallbackQuery, state: FSMContext, user: 
         f"🔹 Доступно: {videos_available} видео"
     )
 
-    await state.clear()
+    await clear_state_preserve_settings(state)
     await state.update_data(service="kling_effects")
 
     try:
@@ -1503,7 +1503,7 @@ async def process_video_prompt(message: Message, state: FSMContext, user: User):
     # CRITICAL FIX: Ignore commands (text starting with /)
     # Commands should NOT be processed as prompts
     if message.text and message.text.startswith('/'):
-        await state.clear()
+        await clear_state_preserve_settings(state)
         return
 
     # Check message length (max 2000 characters)
@@ -1548,7 +1548,7 @@ async def process_video_prompt(message: Message, state: FSMContext, user: User):
             f"Функция генерации видео ({display}) находится в разработке.\n"
             f"Ваш запрос получен: {message.text[:100]}..."
         )
-        await state.clear()
+        await clear_state_preserve_settings(state)
 
 
 # ======================
@@ -1630,7 +1630,7 @@ async def process_kling_prompt(message: Message, state: FSMContext, user: User):
     """Process Kling video generation prompt."""
     # Ignore commands
     if message.text and message.text.startswith('/'):
-        await state.clear()
+        await clear_state_preserve_settings(state)
         return
 
     # Check message length (max 2500 characters for Kling)
@@ -1667,7 +1667,7 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
         # Clean up image if exists
         cleanup_temp_file(image_path)
         await message.answer(rate_error)
-        await state.clear()
+        await clear_state_preserve_settings(state)
         return
 
     estimated_tokens = cost_estimate.estimated_tokens
@@ -1705,7 +1705,7 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
                 f"Доступно: {e.details['available']:,} токенов\n\n"
                 f"Купите подписку: /start → 💎 Подписка"
             )
-            await state.clear()
+            await clear_state_preserve_settings(state)
             return
 
     # Send improved progress message with cost info
@@ -1761,7 +1761,8 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
             action_text=MODEL_ACTIONS["veo"]["text"],
             action_callback=MODEL_ACTIONS["veo"]["callback"],
             file_path=result.video_path,
-            file_type="video"
+            file_type="video",
+            user_id=user.telegram_id
         )
 
         video_file = FSInputFile(result.video_path)
@@ -1864,7 +1865,7 @@ async def process_sora_video(message: Message, user: User, state: FSMContext):
                 f"Требуется: {estimated_tokens:,} токенов\n"
                 f"Доступно: {e.details['available']:,} токенов"
             )
-            await state.clear()
+            await clear_state_preserve_settings(state)
             return
 
     quality_text = "Pro" if sora_settings.quality == "pro" else "Stable"
@@ -1995,7 +1996,7 @@ async def process_luma_video(message: Message, user: User, state: FSMContext):
                 f"Требуется: {estimated_tokens:,} токенов\n"
                 f"Доступно: {e.details['available']:,} токенов"
             )
-            await state.clear()
+            await clear_state_preserve_settings(state)
             return
 
     mode_text = "image-to-video" if image_path else "text-to-video"
@@ -2023,7 +2024,7 @@ async def process_luma_video(message: Message, user: User, state: FSMContext):
             "• 🎥 Hailuo (поддерживает image-to-video)",
             parse_mode="Markdown"
         )
-        await state.clear()
+        await clear_state_preserve_settings(state)
         return
 
     # Text-to-video mode (no keyframes needed)
@@ -2054,7 +2055,8 @@ async def process_luma_video(message: Message, user: User, state: FSMContext):
             action_text=MODEL_ACTIONS["luma"]["text"],
             action_callback=MODEL_ACTIONS["luma"]["callback"],
             file_path=result.video_path,
-            file_type="video"
+            file_type="video",
+            user_id=user.telegram_id
         )
 
         video_file = FSInputFile(result.video_path)
@@ -2084,7 +2086,7 @@ async def process_luma_video(message: Message, user: User, state: FSMContext):
             # Ignore errors when message is not modified
             pass
 
-    await state.clear()
+    await clear_state_preserve_settings(state)
 
 
 async def process_hailuo_video(message: Message, user: User, state: FSMContext):
@@ -2106,7 +2108,7 @@ async def process_hailuo_video(message: Message, user: User, state: FSMContext):
                 f"Требуется: {estimated_tokens:,} токенов\n"
                 f"Доступно: {e.details['available']:,} токенов"
             )
-            await state.clear()
+            await clear_state_preserve_settings(state)
             return
 
     progress_msg = await message.answer("🎬 Инициализация Hailuo AI...")
@@ -2143,7 +2145,8 @@ async def process_hailuo_video(message: Message, user: User, state: FSMContext):
             action_text=MODEL_ACTIONS["hailuo"]["text"],
             action_callback=MODEL_ACTIONS["hailuo"]["callback"],
             file_path=result.video_path,
-            file_type="video"
+            file_type="video",
+            user_id=user.telegram_id
         )
 
         video_file = FSInputFile(result.video_path)
@@ -2164,7 +2167,7 @@ async def process_hailuo_video(message: Message, user: User, state: FSMContext):
             # Ignore errors when message is not modified
             pass
 
-    await state.clear()
+    await clear_state_preserve_settings(state)
 
 
 async def process_kling_video(message: Message, user: User, state: FSMContext, is_effects: bool = False):
@@ -2206,7 +2209,7 @@ async def process_kling_video(message: Message, user: User, state: FSMContext, i
                 f"Требуется: {format_token_amount(estimated_tokens)} токенов\n"
                 f"Доступно: {format_token_amount(e.details['available'])} токенов"
             )
-            await state.clear()
+            await clear_state_preserve_settings(state)
             return
 
     # Validate image count based on version
@@ -2214,14 +2217,14 @@ async def process_kling_video(message: Message, user: User, state: FSMContext, i
         for img_path in images:
             cleanup_temp_file(img_path)
         await message.answer("❌ Максимум 2 изображения поддерживаются.")
-        await state.clear()
+        await clear_state_preserve_settings(state)
         return
 
     if len(images) == 2 and kling_settings.version != "2.5":
         for img_path in images:
             cleanup_temp_file(img_path)
         await message.answer("❌ Два изображения поддерживаются только в версии 2.5.")
-        await state.clear()
+        await clear_state_preserve_settings(state)
         return
 
     # Determine mode
@@ -2283,7 +2286,8 @@ async def process_kling_video(message: Message, user: User, state: FSMContext, i
             action_text=MODEL_ACTIONS[callback_key]["text"],
             action_callback=MODEL_ACTIONS[callback_key]["callback"],
             file_path=result.video_path,
-            file_type="video"
+            file_type="video",
+            user_id=user.telegram_id
         )
 
         video_file = FSInputFile(result.video_path)
@@ -2308,7 +2312,7 @@ async def process_kling_video(message: Message, user: User, state: FSMContext, i
         except Exception:
             pass
 
-    await state.clear()
+    await clear_state_preserve_settings(state)
 
 
 async def process_kling_effects(message: Message, user: User, state: FSMContext):
@@ -2323,7 +2327,7 @@ async def process_kling_effects(message: Message, user: User, state: FSMContext)
 
     if not effect_id:
         await message.answer("❌ Эффект не выбран. Пожалуйста, выберите эффект заново.")
-        await state.clear()
+        await clear_state_preserve_settings(state)
         return
 
     # Get the image path from state (saved by process_video_photo)
@@ -2365,7 +2369,7 @@ async def process_kling_effects(message: Message, user: User, state: FSMContext)
                 f"Требуется: {format_token_amount(estimated_tokens)} токенов\n"
                 f"Доступно: {format_token_amount(e.details['available'])} токенов"
             )
-            await state.clear()
+            await clear_state_preserve_settings(state)
             return
 
     progress_msg = await message.answer(f"🎬 Начинаю создание видео с эффектом «{effect_name}»...")
@@ -2407,7 +2411,8 @@ async def process_kling_effects(message: Message, user: User, state: FSMContext)
             action_text=MODEL_ACTIONS["kling_effects"]["text"],
             action_callback=MODEL_ACTIONS["kling_effects"]["callback"],
             file_path=result.video_path,
-            file_type="video"
+            file_type="video",
+            user_id=user.telegram_id
         )
 
         video_file = FSInputFile(result.video_path)
@@ -2432,7 +2437,7 @@ async def process_kling_effects(message: Message, user: User, state: FSMContext)
         except Exception:
             pass
 
-    await state.clear()
+    await clear_state_preserve_settings(state)
 
 
 # ======================
@@ -2559,7 +2564,7 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
 async def process_image_prompt(message: Message, state: FSMContext, user: User):
     # CRITICAL FIX: Ignore commands (text starting with /)
     if message.text and message.text.startswith('/'):
-        await state.clear()
+        await clear_state_preserve_settings(state)
         return
 
     # Check message length (max 2000 characters)
@@ -2594,7 +2599,7 @@ async def process_image_prompt(message: Message, state: FSMContext, user: User):
             f"Функция генерации изображений находится в разработке.\n"
             f"Ваш запрос получен: {message.text[:100]}..."
         )
-        await state.clear()
+        await clear_state_preserve_settings(state)
 
 
 async def process_dalle_image(message: Message, user: User, state: FSMContext):
@@ -2626,7 +2631,7 @@ async def process_dalle_image(message: Message, user: User, state: FSMContext):
                 f"Доступно: {e.details['available']:,} токенов\n\n"
                 f"Купите подписку: /start → 💎 Подписка"
             )
-            await state.clear()
+            await clear_state_preserve_settings(state)
             return
 
     # Create service
@@ -2697,7 +2702,8 @@ async def process_dalle_image(message: Message, user: User, state: FSMContext):
             action_text=MODEL_ACTIONS["gpt_image"]["text"],
             action_callback=MODEL_ACTIONS["gpt_image"]["callback"],
             file_path=result.image_path,
-            file_type="image"
+            file_type="image",
+            user_id=user.telegram_id
         )
 
         # Send image
@@ -2733,7 +2739,7 @@ async def process_dalle_image(message: Message, user: User, state: FSMContext):
             pass
 
     # Clear state after generation (success or failure)
-    await state.clear()
+    await clear_state_preserve_settings(state)
 
 
 async def process_gemini_image(message: Message, user: User, state: FSMContext):
@@ -2759,7 +2765,7 @@ async def process_gemini_image(message: Message, user: User, state: FSMContext):
                 f"Доступно: {e.details['available']:,} токенов\n\n"
                 f"Купите подписку: /start → 💎 Подписка"
             )
-            await state.clear()
+            await clear_state_preserve_settings(state)
             return
 
     # Send progress message
@@ -2810,7 +2816,7 @@ async def process_gemini_image(message: Message, user: User, state: FSMContext):
             # Ignore errors when message is not modified
             pass
 
-    await state.clear()
+    await clear_state_preserve_settings(state)
 
 
 async def process_nano_image(message: Message, user: User, state: FSMContext):
@@ -2861,7 +2867,7 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
                 f"Доступно: {e.details['available']:,} токенов\n\n"
                 f"Купите подписку: /start → 💎 Подписка"
             )
-            await state.clear()
+            await clear_state_preserve_settings(state)
             return
 
     # Progress message
@@ -3128,7 +3134,8 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
                         action_text=MODEL_ACTIONS["nano_banana"]["text"],
                         action_callback=nano_callback,
                         file_path=result.image_path,
-                        file_type="image"
+                        file_type="image",
+                        user_id=user.telegram_id
                     )
                     await message.answer_photo(
                         photo=image_file,
@@ -3150,7 +3157,7 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
                 parse_mode=None
             )
 
-        await state.clear()
+        await clear_state_preserve_settings(state)
         return
 
     # Single-image generation mode (original code)
@@ -3185,7 +3192,8 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
             action_text=MODEL_ACTIONS["nano_banana"]["text"],
             action_callback=nano_callback,
             file_path=result.image_path,
-            file_type="image"
+            file_type="image",
+            user_id=user.telegram_id
         )
 
         try:
@@ -3295,7 +3303,7 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
             pass
 
     # Clear state after generation (success or failure)
-    await state.clear()
+    await clear_state_preserve_settings(state)
 
 
 async def process_kling_image(message: Message, user: User, state: FSMContext):
@@ -3337,7 +3345,7 @@ async def process_kling_image(message: Message, user: User, state: FSMContext):
                 f"Доступно: {e.details['available']:,} токенов\n\n"
                 f"Купите подписку: /start → 💎 Подписка"
             )
-            await state.clear()
+            await clear_state_preserve_settings(state)
             return
 
     # Progress message
@@ -3388,7 +3396,8 @@ async def process_kling_image(message: Message, user: User, state: FSMContext):
             action_text="🎞 Kling AI",
             action_callback="bot.kling_main",
             file_path=result.image_path,
-            file_type="image"
+            file_type="image",
+            user_id=user.telegram_id
         )
 
         try:
@@ -3438,7 +3447,7 @@ async def process_kling_image(message: Message, user: User, state: FSMContext):
         except Exception:
             pass
 
-    await state.clear()
+    await clear_state_preserve_settings(state)
 
 
 async def process_recraft_image(message: Message, user: User, state: FSMContext):
@@ -3461,7 +3470,7 @@ async def process_recraft_image(message: Message, user: User, state: FSMContext)
                 f"Доступно: {e.details['available']:,} токенов\n\n"
                 f"Купите подписку: /start → 💎 Подписка"
             )
-            await state.clear()
+            await clear_state_preserve_settings(state)
             return
 
     # Progress message
@@ -3507,7 +3516,8 @@ async def process_recraft_image(message: Message, user: User, state: FSMContext)
             action_text="🎨 Создать новое изображение",
             action_callback="bot.recraft",
             file_path=result.image_path,
-            file_type="image"
+            file_type="image",
+            user_id=user.telegram_id
         )
 
         try:
@@ -3564,7 +3574,7 @@ async def process_recraft_image(message: Message, user: User, state: FSMContext)
 async def process_audio_prompt(message: Message, state: FSMContext, user: User):
     # CRITICAL FIX: Ignore commands (text starting with /)
     if message.text and message.text.startswith('/'):
-        await state.clear()
+        await clear_state_preserve_settings(state)
         return
 
     data = await state.get_data()
@@ -3584,7 +3594,7 @@ async def process_audio_prompt(message: Message, state: FSMContext, user: User):
             f"Функция генерации аудио ({display}) находится в разработке.\n"
             f"Ваш текст получен: {message.text[:100]}..."
         )
-        await state.clear()
+        await clear_state_preserve_settings(state)
 
 
 async def process_suno_audio(message: Message, user: User, state: FSMContext):
@@ -3606,7 +3616,7 @@ async def process_suno_audio(message: Message, user: User, state: FSMContext):
                 f"Доступно: {e.details['available']:,} токенов\n\n"
                 f"Купите подписку: /start → 💎 Подписка"
             )
-            await state.clear()
+            await clear_state_preserve_settings(state)
             return
 
     # Send progress message
@@ -3668,7 +3678,7 @@ async def process_suno_audio(message: Message, user: User, state: FSMContext):
             # Ignore errors when message is not modified
             pass
 
-    await state.clear()
+    await clear_state_preserve_settings(state)
 
 
 # ======================
@@ -3712,7 +3722,7 @@ async def process_replace_bg_prompt(message: Message, state: FSMContext, user: U
     """Process background replacement with new background description."""
     # CRITICAL FIX: Ignore commands
     if message.text and message.text.startswith('/'):
-        await state.clear()
+        await clear_state_preserve_settings(state)
         return
 
     data = await state.get_data()
@@ -3721,7 +3731,7 @@ async def process_replace_bg_prompt(message: Message, state: FSMContext, user: U
 
     if not image_path:
         await message.answer("❌ Изображение не найдено. Начните заново с /start")
-        await state.clear()
+        await clear_state_preserve_settings(state)
         return
 
     # Check tokens
@@ -3738,7 +3748,7 @@ async def process_replace_bg_prompt(message: Message, state: FSMContext, user: U
                 f"Требуется: {estimated_tokens:,} токенов\n"
                 f"Доступно: {e.details['available']:,} токенов"
             )
-            await state.clear()
+            await clear_state_preserve_settings(state)
             return
 
     # Send progress message
@@ -3790,7 +3800,8 @@ async def process_replace_bg_prompt(message: Message, state: FSMContext, user: U
                 action_text="🔄 Заменить фон еще раз",
                 action_callback="bot.pi_repb",
                 file_path=result.image_path,
-                file_type="image"
+                file_type="image",
+                user_id=user.telegram_id
             ).as_markup()
         )
 
@@ -3818,7 +3829,7 @@ async def process_replace_bg_prompt(message: Message, state: FSMContext, user: U
 
         logger.error("replace_bg_failed", user_id=user.id, error=result.error)
 
-    await state.clear()
+    await clear_state_preserve_settings(state)
 
 
 @router.message(MediaState.waiting_for_image, F.photo)
@@ -3835,7 +3846,7 @@ async def process_image(message: Message, state: FSMContext, user: User):
         f"Функция обработки изображений ({display}) находится в разработке.\n"
         "Изображение получено!"
     )
-    await state.clear()
+    await clear_state_preserve_settings(state)
 
 
 @router.message(MediaState.waiting_for_upscale_image, F.photo)
@@ -3859,7 +3870,7 @@ async def process_upscale(message: Message, state: FSMContext, user: User):
                 f"Доступно: {e.details['available']:,} токенов\n\n"
                 f"Купите подписку: /start → 💎 Подписка"
             )
-            await state.clear()
+            await clear_state_preserve_settings(state)
             return
 
     # Send progress message
@@ -3919,7 +3930,7 @@ async def process_upscale(message: Message, state: FSMContext, user: User):
             # Ignore errors when message is not modified
             pass
 
-    await state.clear()
+    await clear_state_preserve_settings(state)
 
 
 # ======================
@@ -3945,7 +3956,7 @@ async def process_whisper_audio(message: Message, state: FSMContext, user: User)
                 f"Доступно: {e.details['available']:,} токенов\n\n"
                 f"Купите подписку: /start → 💎 Подписка"
             )
-            await state.clear()
+            await clear_state_preserve_settings(state)
             return
 
     # Send progress message
@@ -4003,7 +4014,7 @@ async def process_whisper_audio(message: Message, state: FSMContext, user: User)
             # Ignore errors when message is not modified
             pass
 
-    await state.clear()
+    await clear_state_preserve_settings(state)
 
 
 # ======================
@@ -4016,7 +4027,7 @@ async def process_tts_audio(message: Message, user: User, state: FSMContext):
 
     if len(text) > 4096:
         await message.answer("❌ Текст слишком длинный! Максимум 4096 символов.")
-        await state.clear()
+        await clear_state_preserve_settings(state)
         return
 
     # Check and use tokens
@@ -4034,7 +4045,7 @@ async def process_tts_audio(message: Message, user: User, state: FSMContext):
                 f"Доступно: {e.details['available']:,} токенов\n\n"
                 f"Купите подписку: /start → 💎 Подписка"
             )
-            await state.clear()
+            await clear_state_preserve_settings(state)
             return
 
     # Send progress message
@@ -4086,7 +4097,7 @@ async def process_tts_audio(message: Message, user: User, state: FSMContext):
             # Ignore errors when message is not modified
             pass
 
-    await state.clear()
+    await clear_state_preserve_settings(state)
 
 
 # ======================
@@ -4134,7 +4145,7 @@ async def process_vision_prompt(message: Message, state: FSMContext, user: User)
 
     if not image_path or not os.path.exists(image_path):
         await message.answer("❌ Ошибка: изображение не найдено. Попробуйте снова.")
-        await state.clear()
+        await clear_state_preserve_settings(state)
         return
 
     # Check and use tokens
@@ -4154,7 +4165,7 @@ async def process_vision_prompt(message: Message, state: FSMContext, user: User)
             )
             # Clean up temp file
             cleanup_temp_file(image_path)
-            await state.clear()
+            await clear_state_preserve_settings(state)
             return
 
     # Send progress message
@@ -4193,7 +4204,7 @@ async def process_vision_prompt(message: Message, state: FSMContext, user: User)
             # Ignore errors when message is not modified
             pass
 
-    await state.clear()
+    await clear_state_preserve_settings(state)
 
 
 # ======================
@@ -4221,7 +4232,7 @@ async def process_photo_upscale(message: Message, state: FSMContext, user: User)
                 f"Доступно: {e.details['available']:,} токенов\n\n"
                 f"Купите подписку: /start → 💎 Подписка"
             )
-            await state.clear()
+            await clear_state_preserve_settings(state)
             return
 
     # Send progress message
@@ -4322,7 +4333,7 @@ async def process_photo_upscale(message: Message, state: FSMContext, user: User)
         except Exception:
             pass
 
-    await state.clear()
+    await clear_state_preserve_settings(state)
 
 
 @router.message(MediaState.waiting_for_photo_replace_bg, F.photo)
@@ -4359,7 +4370,7 @@ async def process_photo_replace_bg_prompt(message: Message, state: FSMContext, u
     """Process background replacement with Gemini (NanoBananaService)."""
     # CRITICAL FIX: Ignore commands
     if message.text and message.text.startswith('/'):
-        await state.clear()
+        await clear_state_preserve_settings(state)
         return
 
     data = await state.get_data()
@@ -4367,7 +4378,7 @@ async def process_photo_replace_bg_prompt(message: Message, state: FSMContext, u
 
     if not image_path or not os.path.exists(image_path):
         await message.answer("❌ Ошибка: фото не найдено. Попробуйте снова.")
-        await state.clear()
+        await clear_state_preserve_settings(state)
         return
 
     bg_description = message.text
@@ -4390,7 +4401,7 @@ async def process_photo_replace_bg_prompt(message: Message, state: FSMContext, u
             )
             # Clean up saved image
             cleanup_temp_file(image_path)
-            await state.clear()
+            await clear_state_preserve_settings(state)
             return
 
     # Send progress message
@@ -4443,7 +4454,8 @@ async def process_photo_replace_bg_prompt(message: Message, state: FSMContext, u
                 action_text="🔄 Заменить фон еще раз",
                 action_callback="bot.pi_repb",
                 file_path=result.image_path,
-                file_type="image"
+                file_type="image",
+                user_id=user.telegram_id
             ).as_markup()
         )
 
@@ -4471,7 +4483,7 @@ async def process_photo_replace_bg_prompt(message: Message, state: FSMContext, u
 
         logger.error("photo_replace_bg_failed", user_id=user.id, error=result.error)
 
-    await state.clear()
+    await clear_state_preserve_settings(state)
 
 
 @router.message(MediaState.waiting_for_photo_remove_bg, F.photo)
@@ -4495,7 +4507,7 @@ async def process_photo_remove_bg(message: Message, state: FSMContext, user: Use
                 f"Доступно: {e.details['available']:,} токенов\n\n"
                 f"Купите подписку: /start → 💎 Подписка"
             )
-            await state.clear()
+            await clear_state_preserve_settings(state)
             return
 
     # Send progress message
@@ -4563,7 +4575,7 @@ async def process_photo_remove_bg(message: Message, state: FSMContext, user: Use
         except Exception:
             pass
 
-    await state.clear()
+    await clear_state_preserve_settings(state)
 
 
 @router.message(MediaState.waiting_for_photo_vectorize, F.photo)
@@ -4617,7 +4629,7 @@ async def _process_photo_with_path(message: Message, state: FSMContext, user: Us
             )
             # Clean up temp file
             cleanup_temp_file(image_path)
-            await state.clear()
+            await clear_state_preserve_settings(state)
             return
 
     # Send progress message
@@ -4656,7 +4668,7 @@ async def _process_photo_with_path(message: Message, state: FSMContext, user: Us
             # Ignore errors when message is not modified
             pass
 
-    await state.clear()
+    await clear_state_preserve_settings(state)
 
 # ======================
 # KLING MOTION CONTROL - Photo handler (must be before catch-all)
@@ -4707,7 +4719,7 @@ async def handle_photo_in_wrong_state(message: Message, state: FSMContext):
         return  # Let other handlers process it
 
     # Otherwise, clear state and treat as new photo
-    await state.clear()
+    await clear_state_preserve_settings(state)
     await handle_photo_no_model(message, state)
 
 
@@ -4773,7 +4785,7 @@ async def handle_photo_action_choice(callback: CallbackQuery, state: FSMContext)
         # Clean up photo
         if saved_photo_path:
             cleanup_temp_file(saved_photo_path)
-        await state.clear()
+        await clear_state_preserve_settings(state)
         try:
             await callback.message.edit_caption(
                 caption="❌ Операция отменена."
@@ -4861,10 +4873,10 @@ async def handle_photo_action_choice(callback: CallbackQuery, state: FSMContext)
                     await _process_vision_with_path(callback.message, state, user, saved_photo_path, prompt)
                 else:
                     await callback.message.edit_caption("❌ Ошибка: пользователь не найден")
-                    await state.clear()
+                    await clear_state_preserve_settings(state)
         else:
             await callback.answer("❌ Фото не найдено. Попробуйте еще раз.", show_alert=True)
-            await state.clear()
+            await clear_state_preserve_settings(state)
 
     elif action == "tools":
         # Show photo tools
@@ -5037,10 +5049,10 @@ async def handle_photo_tool_choice(callback: CallbackQuery, state: FSMContext):
                     await _process_remove_bg_with_path(callback.message, state, user, saved_photo_path)
                 else:
                     await callback.message.edit_caption("❌ Ошибка: пользователь не найден")
-                    await state.clear()
+                    await clear_state_preserve_settings(state)
         else:
             await callback.answer("❌ Фото не найдено", show_alert=True)
-            await state.clear()
+            await clear_state_preserve_settings(state)
 
     await callback.answer()
 
@@ -5061,7 +5073,7 @@ async def _process_remove_bg_with_path(message: Message, state: FSMContext, user
                 f"Доступно: {e.details['available']:,} токенов\n\n"
                 f"Купите подписку: /start → 💎 Подписка"
             )
-            await state.clear()
+            await clear_state_preserve_settings(state)
             return
 
     progress_msg = await message.answer("🚫 Удаляю фон...")
@@ -5106,7 +5118,7 @@ async def _process_remove_bg_with_path(message: Message, state: FSMContext, user
     else:
         await progress_msg.edit_text(f"❌ Ошибка удаления фона:\n{result.error}")
 
-    await state.clear()
+    await clear_state_preserve_settings(state)
 
 
 async def _process_vision_with_path(message: Message, state: FSMContext, user: User, image_path: str, prompt: str):
@@ -5126,7 +5138,7 @@ async def _process_vision_with_path(message: Message, state: FSMContext, user: U
                 f"Купите подписку: /start → 💎 Подписка"
             )
             cleanup_temp_file(image_path)
-            await state.clear()
+            await clear_state_preserve_settings(state)
             return
 
     progress_msg = await message.answer("👁 Анализирую изображение...")
@@ -5153,7 +5165,7 @@ async def _process_vision_with_path(message: Message, state: FSMContext, user: U
     else:
         await progress_msg.edit_text(f"❌ Ошибка анализа:\n{result.error}")
 
-    await state.clear()
+    await clear_state_preserve_settings(state)
 
 
 # ======================
@@ -5316,7 +5328,7 @@ async def kling_mc_receive_video_url(message: Message, state: FSMContext, user: 
     """Receive reference video URL for Motion Control."""
     # Ignore commands
     if message.text and message.text.startswith('/'):
-        await state.clear()
+        await clear_state_preserve_settings(state)
         return
 
     video_url = message.text.strip()
@@ -5357,7 +5369,7 @@ async def kling_mc_receive_prompt(message: Message, state: FSMContext, user: Use
 
     if not image_path or not video_url:
         await message.answer("❌ Ошибка: изображение или видео не найдены. Попробуйте сначала.")
-        await state.clear()
+        await clear_state_preserve_settings(state)
         return
 
     # Check and use tokens
@@ -5375,12 +5387,12 @@ async def kling_mc_receive_prompt(message: Message, state: FSMContext, user: Use
                 f"Требуется: {estimated_tokens:,} токенов\n"
                 f"Доступно: {e.details['available']:,} токенов"
             )
-            await state.clear()
+            await clear_state_preserve_settings(state)
             return
 
     progress_msg = await message.answer("🎬 Генерирую Motion Control видео с Kling AI...")
 
-    await state.clear()
+    await clear_state_preserve_settings(state)
 
     # Generate video
     kling_service = KlingService()
@@ -5426,7 +5438,8 @@ async def kling_mc_receive_prompt(message: Message, state: FSMContext, user: Use
             action_text="🎬 Создать ещё видео",
             action_callback="bot.kling_motion_control",
             file_path=result.video_path,
-            file_type="video"
+            file_type="video",
+            user_id=user.telegram_id
         )
 
         await send_video_safe(
@@ -5697,7 +5710,7 @@ async def process_seedream_image(message: Message, user: User, state: FSMContext
                 f"Доступно: {format_token_amount(e.details['available'])} токенов\n\n"
                 f"Купите подписку: /start → 💎 Подписка"
             )
-            await state.clear()
+            await clear_state_preserve_settings(state)
             return
 
     # Progress message
@@ -5763,7 +5776,8 @@ async def process_seedream_image(message: Message, user: User, state: FSMContext
                         action_text="✨ Создать новое изображение",
                         action_callback="bot.seedream_4.5",
                         file_path=img_path,
-                        file_type="image"
+                        file_type="image",
+                        user_id=user.telegram_id
                     )
 
                     photo = FSInputFile(img_path)
@@ -5804,7 +5818,7 @@ async def process_seedream_image(message: Message, user: User, state: FSMContext
             f"💰 Токены возвращены на баланс."
         )
 
-    await state.clear()
+    await clear_state_preserve_settings(state)
 
 
 # ======================
@@ -5832,7 +5846,7 @@ async def process_midjourney_image(message: Message, user: User, state: FSMConte
                 f"Требуется: {estimated_tokens:,} токенов\n"
                 f"Доступно: {e.details['available']:,} токенов"
             )
-            await state.clear()
+            await clear_state_preserve_settings(state)
             return
 
     progress_msg = await message.answer("🎨 Генерирую изображение с Midjourney...")
@@ -5844,6 +5858,7 @@ async def process_midjourney_image(message: Message, user: User, state: FSMConte
             bot=message.bot,
             chat_id=message.chat.id,
             user_id=user.id,
+            telegram_id=user.telegram_id,
             prompt=prompt,
             estimated_tokens=estimated_tokens,
             progress_msg_id=progress_msg.message_id,
@@ -5851,13 +5866,14 @@ async def process_midjourney_image(message: Message, user: User, state: FSMConte
         )
     )
 
-    await state.clear()
+    await clear_state_preserve_settings(state)
 
 
 async def _midjourney_generation_task(
     bot,
     chat_id: int,
     user_id: int,
+    telegram_id: int,
     prompt: str,
     estimated_tokens: int,
     progress_msg_id: int,
@@ -5901,6 +5917,7 @@ async def _midjourney_generation_task(
                 action_callback=MODEL_ACTIONS["midjourney"]["callback"],
                 file_path=result.image_paths[0],
                 file_type="image",
+                user_id=telegram_id,
             )
 
             image_file = FSInputFile(result.image_paths[0])
@@ -5991,7 +6008,7 @@ async def process_midjourney_video(message: Message, user: User, state: FSMConte
                 f"Требуется: {estimated_tokens:,} токенов\n"
                 f"Доступно: {e.details['available']:,} токенов"
             )
-            await state.clear()
+            await clear_state_preserve_settings(state)
             return
 
     progress_msg = await message.answer("🎬 Генерирую видео с Midjourney Video...")

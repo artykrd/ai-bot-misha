@@ -26,6 +26,7 @@ from app.bot.keyboards.inline import (
     suno_vocal_keyboard,
 )
 from app.bot.states.media import SunoState
+from app.bot.states.media import clear_state_preserve_settings
 from app.database.models.user import User
 from app.database.database import async_session_maker
 from app.core.logger import get_logger
@@ -160,7 +161,7 @@ async def start_suno(callback: CallbackQuery, state: FSMContext, user: User):
         "suno_selected_styles": data.get("suno_selected_styles"),
     }
 
-    await state.clear()  # Clear song creation state (title, lyrics, etc.)
+    await clear_state_preserve_settings(state)  # Clear song creation state (title, lyrics, etc.)
 
     # Restore user settings if they were set
     settings_to_restore = {k: v for k, v in saved_settings.items() if v is not None}
@@ -521,7 +522,7 @@ async def process_custom_style(message: Message, state: FSMContext, user: User):
     """Process custom style input and proceed to vocal selection or final summary."""
     # CRITICAL FIX: Ignore commands (text starting with /)
     if message.text and message.text.startswith('/'):
-        await state.clear()
+        await clear_state_preserve_settings(state)
         return
     style = message.text.strip()
     await state.update_data(suno_style=style, suno_selected_styles=[style])
@@ -572,7 +573,7 @@ async def suno_step_by_step(callback: CallbackQuery, state: FSMContext):
 async def process_song_title(message: Message, state: FSMContext):
     # CRITICAL FIX: Ignore commands (text starting with /)
     if message.text and message.text.startswith('/'):
-        await state.clear()
+        await clear_state_preserve_settings(state)
         return
     """Process song title and ask for lyrics choice."""
     song_title = message.text.strip()
@@ -670,7 +671,7 @@ async def process_lyrics_description(message: Message, state: FSMContext, user: 
     """Generate lyrics from description."""
     # CRITICAL FIX: Ignore commands (text starting with /)
     if message.text and message.text.startswith('/'):
-        await state.clear()
+        await clear_state_preserve_settings(state)
         return
 
     description = message.text.strip()
@@ -762,7 +763,7 @@ async def suno_lyrics_custom(callback: CallbackQuery, state: FSMContext):
 async def process_custom_lyrics(message: Message, state: FSMContext):
     # CRITICAL FIX: Ignore commands (text starting with /)
     if message.text and message.text.startswith('/'):
-        await state.clear()
+        await clear_state_preserve_settings(state)
         return
     """Process custom lyrics input."""
     lyrics = message.text.strip()
@@ -805,7 +806,7 @@ async def suno_lyrics_instrumental(callback: CallbackQuery, state: FSMContext):
 async def process_melody_prompt(message: Message, state: FSMContext):
     # CRITICAL FIX: Ignore commands (text starting with /)
     if message.text and message.text.startswith('/'):
-        await state.clear()
+        await clear_state_preserve_settings(state)
         return
     """Process melody prompt for instrumental."""
     melody_prompt = message.text.strip()
@@ -919,7 +920,7 @@ async def generate_suno_song(callback: CallbackQuery, state: FSMContext, user: U
                 await callback.message.answer_photo(photo=FSInputFile(result.image_path))
 
             await progress_msg.delete()
-            await state.clear()
+            await clear_state_preserve_settings(state)
 
             logger.info(
                 "suno_song_generated",
