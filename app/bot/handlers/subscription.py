@@ -14,6 +14,7 @@ from app.bot.keyboards.inline import (
     back_to_main_keyboard
 )
 from app.bot.states import PromocodeStates
+from app.bot.states.media import clear_state_preserve_settings
 from app.database.models.user import User
 from app.core.logger import get_logger
 
@@ -277,7 +278,7 @@ async def process_promocode(message: Message, state: FSMContext, user: User):
                     "❌ Промокод не найден.\n\n"
                     "Проверьте правильность ввода и попробуйте снова."
                 )
-                await state.clear()
+                await clear_state_preserve_settings(state)
                 return
 
             # Check if promocode is valid
@@ -286,7 +287,7 @@ async def process_promocode(message: Message, state: FSMContext, user: User):
                     "❌ Промокод недействителен или истек.",
                     reply_markup=back_to_main_keyboard()
                 )
-                await state.clear()
+                await clear_state_preserve_settings(state)
                 return
 
             # Check if user already used this promocode
@@ -303,7 +304,7 @@ async def process_promocode(message: Message, state: FSMContext, user: User):
                     "❌ Вы уже использовали этот промокод.",
                     reply_markup=back_to_main_keyboard()
                 )
-                await state.clear()
+                await clear_state_preserve_settings(state)
                 return
 
             # Apply promocode
@@ -433,7 +434,7 @@ async def process_promocode(message: Message, state: FSMContext, user: User):
                     f"❌ Неизвестный тип промокода: {promo.bonus_type}",
                     reply_markup=back_to_main_keyboard()
                 )
-                await state.clear()
+                await clear_state_preserve_settings(state)
                 return
 
     except ValueError:
@@ -443,4 +444,4 @@ async def process_promocode(message: Message, state: FSMContext, user: User):
         user_message = format_user_error(e, provider="Promocode", user_id=user.id)
         await message.answer(f"❌ {user_message}")
 
-    await state.clear()
+    await clear_state_preserve_settings(state)

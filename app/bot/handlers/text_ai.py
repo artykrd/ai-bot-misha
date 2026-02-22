@@ -9,6 +9,7 @@ from aiogram.fsm.context import FSMContext
 
 from app.bot.keyboards.inline import ai_models_keyboard, back_to_main_keyboard
 from app.bot.states.dialog import AIGenerationStates
+from app.bot.states.media import clear_state_preserve_settings
 from app.database.models.user import User
 from app.database.database import async_session_maker
 from app.services.billing.billing_service import BillingService
@@ -205,7 +206,7 @@ async def process_ai_request(message: Message, user: User, state: FSMContext):
     billing = get_text_model_billing(model_id)
     if not billing:
         await message.answer("❌ Ошибка конфигурации модели")
-        await state.clear()
+        await clear_state_preserve_settings(state)
         return
 
     # Estimate minimum cost (base_tokens + estimated avg usage)
@@ -226,7 +227,7 @@ async def process_ai_request(message: Message, user: User, state: FSMContext):
                 f"Ваш баланс: {total_tokens:,} токенов\n\n"
                 f"Купите подписку: /start → 💎 Подписка"
             )
-            await state.clear()
+            await clear_state_preserve_settings(state)
             return
 
     # Process with AI using factory
@@ -251,7 +252,7 @@ async def process_ai_request(message: Message, user: User, state: FSMContext):
                 model=model_id,
                 error=response.error
             )
-            await state.clear()
+            await clear_state_preserve_settings(state)
             return
 
         # Calculate actual cost based on real usage
@@ -320,4 +321,4 @@ async def process_ai_request(message: Message, user: User, state: FSMContext):
         )
         logger.error("ai_request_exception", user_id=user.id, model=model_id, error=str(e))
 
-    await state.clear()
+    await clear_state_preserve_settings(state)

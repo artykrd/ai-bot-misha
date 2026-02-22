@@ -19,6 +19,7 @@ from app.core.logger import get_logger
 from app.core.exceptions import InsufficientTokensError
 from app.core.billing_config import get_kling_tokens_cost, get_kling_api_model
 from app.bot.states.media import KlingSettings
+from app.bot.states.media import clear_state_preserve_settings
 from sqlalchemy import select
 
 logger = get_logger(__name__)
@@ -101,7 +102,7 @@ async def create_kling_video_job(
                     f"Доступно: {error_details['available']:,} токенов"
                 )
 
-            await state.clear()
+            await clear_state_preserve_settings(state)
             return False
 
     # Send "in queue" message
@@ -182,7 +183,7 @@ async def create_kling_video_job(
         return False
 
     finally:
-        await state.clear()
+        await clear_state_preserve_settings(state)
 
     return True
 
@@ -192,7 +193,7 @@ async def process_kling_text_async(message: Message, state: FSMContext, user: Us
     """Process Kling text prompt with async job queue (if enabled)."""
     # CRITICAL FIX: Ignore commands
     if message.text and message.text.startswith('/'):
-        await state.clear()
+        await clear_state_preserve_settings(state)
         return
 
     # Check if async is enabled

@@ -70,7 +70,8 @@ def create_action_keyboard(
     action_text: str,
     action_callback: str,
     file_path: Optional[str] = None,
-    file_type: str = "file"
+    file_type: str = "file",
+    user_id: Optional[int] = None
 ) -> InlineKeyboardBuilder:
     """
     Create a standard keyboard with action, download, and home buttons.
@@ -80,6 +81,7 @@ def create_action_keyboard(
         action_callback: Callback data for the action button
         file_path: Optional file path to enable download button
         file_type: Type of file ('image' or 'video') for download
+        user_id: Owner user ID for download access control
 
     Returns:
         InlineKeyboardBuilder instance
@@ -93,7 +95,7 @@ def create_action_keyboard(
     if file_path:
         # Generate unique cache key
         cache_key = f"{file_type}:{uuid.uuid4().hex[:12]}"
-        file_cache.store(cache_key, file_path)
+        file_cache.store(cache_key, file_path, user_id=user_id)
 
         builder.button(
             text="📥 Скачать оригинал",

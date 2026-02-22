@@ -2,8 +2,35 @@
 FSM States for media generation (video, audio, image).
 """
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.context import FSMContext
 from dataclasses import dataclass, field
 from typing import List, Optional
+
+
+# Settings keys that should persist across generations
+PERSISTENT_SETTINGS_KEYS = [
+    # Nano Banana settings
+    "nano_aspect_ratio",
+    # Kling video settings
+    "kling_version", "kling_duration", "kling_aspect_ratio", "kling_auto_translate",
+    # Kling image settings
+    "kling_image_model", "kling_image_aspect_ratio", "kling_image_resolution", "kling_image_auto_translate",
+    # Sora settings
+    "sora_quality", "sora_duration", "sora_aspect_ratio",
+    # Seedream settings
+    "seedream_size", "seedream_batch_mode", "seedream_batch_count",
+    # Kling Motion Control settings
+    "kling_mc_mode", "kling_mc_orientation", "kling_mc_sound",
+]
+
+
+async def clear_state_preserve_settings(state: FSMContext):
+    """Clear FSM state but preserve user's generation settings."""
+    data = await state.get_data()
+    saved_settings = {k: data[k] for k in PERSISTENT_SETTINGS_KEYS if k in data}
+    await state.clear()
+    if saved_settings:
+        await state.update_data(**saved_settings)
 
 
 @dataclass

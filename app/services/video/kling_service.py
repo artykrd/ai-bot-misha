@@ -538,7 +538,7 @@ class KlingService(BaseVideoProvider):
 
                         # Check if failed
                         if status in ["failed", "error"]:
-                            error_msg = status_msg or "Неизвестная ошибка"
+                            error_msg = self._translate_kling_error(status_msg) if status_msg else "Неизвестная ошибка"
                             raise Exception(f"Генерация не удалась: {error_msg}")
 
                 except aiohttp.ClientError as e:
@@ -759,6 +759,30 @@ class KlingService(BaseVideoProvider):
                 processing_time=time.time() - start_time
             )
 
+    def _translate_kling_error(self, error_msg: str) -> str:
+        """Translate common Kling API error messages to Russian."""
+        translations = {
+            "No complete upper body detected in the video": "В видео не обнаружена верхняя часть тела. Убедитесь, что верхняя часть тела полностью видна",
+            "ensure the upper body is clearly visible": "",
+            "The input was rejected": "Входные данные были отклонены",
+            "No face detected": "Лицо не обнаружено. Убедитесь, что лицо чётко видно на изображении",
+            "No human detected": "Человек не обнаружен на изображении",
+            "Image resolution is too low": "Разрешение изображения слишком низкое",
+            "Video resolution is too low": "Разрешение видео слишком низкое",
+            "Content moderation failed": "Контент не прошёл модерацию. Попробуйте другое изображение или видео",
+            "Task timeout": "Время ожидания генерации истекло. Попробуйте ещё раз",
+        }
+
+        translated = error_msg
+        for eng, rus in translations.items():
+            if eng.lower() in translated.lower():
+                if rus:
+                    translated = translated.replace(eng, rus)
+                else:
+                    translated = translated.replace(eng, "").strip(", ;.")
+
+        return translated.strip() if translated.strip() else error_msg
+
     async def _create_motion_control_task(
         self,
         image_path: str,
@@ -867,7 +891,7 @@ class KlingService(BaseVideoProvider):
                         raise Exception("URL видео не найден в ответе")
 
                     if status in ["failed", "error"]:
-                        error_msg = status_msg or "Неизвестная ошибка"
+                        error_msg = self._translate_kling_error(status_msg) if status_msg else "Неизвестная ошибка"
                         raise Exception(f"Motion Control не удался: {error_msg}")
 
                 await asyncio.sleep(poll_interval)

@@ -13,6 +13,7 @@ from app.bot.keyboards.inline import back_to_main_keyboard, subscription_keyboar
 from app.bot.keyboards.reply import main_menu_reply_keyboard
 from app.bot.handlers.dialog_context import clear_active_dialog
 from app.database.models.user import User
+from app.bot.states.media import clear_state_preserve_settings
 
 router = Router(name="common")
 
@@ -21,7 +22,7 @@ async def start_promocode_activation(message: Message, state: FSMContext, user: 
     """Start promocode activation from menu or command."""
     from app.bot.states import PromocodeStates
 
-    await state.clear()
+    await clear_state_preserve_settings(state)
     await clear_active_dialog(user.telegram_id)
     await state.set_state(PromocodeStates.waiting_for_code)
 
@@ -105,7 +106,7 @@ async def cmd_faq(event):
 @router.message(F.text.in_(["🆘 Поддержка", "Помощь"]))
 async def help_from_reply(message: Message, user: User, state: FSMContext):
     """Help from reply keyboard."""
-    await state.clear()
+    await clear_state_preserve_settings(state)
     await clear_active_dialog(user.telegram_id)
     text = """🆘 <b>Помощь</b>
 
@@ -127,7 +128,7 @@ async def help_from_reply(message: Message, user: User, state: FSMContext):
 @router.message(Command("ref"))
 async def cmd_ref(message: Message, user: User, state: FSMContext):
     """Referral command."""
-    await state.clear()
+    await clear_state_preserve_settings(state)
     await clear_active_dialog(user.telegram_id)
     from app.bot.handlers.navigation import build_referral_text
 
@@ -439,7 +440,7 @@ async def cmd_kling(message: Message, state, user: User):
     from app.bot.states.media import KlingSettings
     from app.core.billing_config import get_kling_tokens_cost
 
-    await state.clear()  # Clear any previous state
+    await clear_state_preserve_settings(state)  # Clear any previous state
 
     # Get or create Kling settings from FSM
     data = await state.get_data()
@@ -572,7 +573,7 @@ async def audio_tools(callback: CallbackQuery):
 @router.callback_query(F.data == "referral")
 async def referral(callback: CallbackQuery, user: User, state: FSMContext):
     """Referral program."""
-    await state.clear()
+    await clear_state_preserve_settings(state)
     await clear_active_dialog(user.telegram_id)
     from app.bot.handlers.navigation import build_referral_text
 

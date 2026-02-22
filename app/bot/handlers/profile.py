@@ -17,6 +17,7 @@ from app.core.billing_config import (
     get_video_model_billing,
     format_token_amount,
 )
+from app.bot.states.media import clear_state_preserve_settings
 
 router = Router(name="profile")
 
@@ -88,7 +89,7 @@ async def show_profile(event, user: User, state: FSMContext):
 
     # CRITICAL FIX: Always clear FSM state when entering profile
     # This prevents state conflicts (e.g., hailuo video generation continuing after entering profile)
-    await state.clear()
+    await clear_state_preserve_settings(state)
 
     # Handle both callback and message
     is_callback = isinstance(event, CallbackQuery)
