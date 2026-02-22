@@ -18,7 +18,6 @@ from app.core.logger import get_logger
 from app.core.redis_client import redis_client
 from app.database.database import init_db, close_db
 from app.admin.keyboards.inline import (
-    main_admin_menu,
     unlimited_links_menu,
     promo_menu,
     ban_menu,
@@ -141,11 +140,11 @@ async def admin_start(message: Message):
         await message.answer("❌ У вас нет доступа к админ-панели.")
         return
 
-    # Send persistent reply keyboard
-    await message.answer("🔐 Админ-панель", reply_markup=admin_reply_keyboard())
-    # Send inline menu
-    text = "Выберите действие из меню ниже:"
-    await message.answer(text, reply_markup=main_admin_menu())
+    # Send persistent reply keyboard only
+    await message.answer(
+        "🔐 Админ-панель\n\nИспользуйте кнопки меню внизу.",
+        reply_markup=admin_reply_keyboard()
+    )
 
 
 # ==================== REPLY KEYBOARD HANDLERS ====================
@@ -174,6 +173,8 @@ async def handle_reply_keyboard(message: Message, state: FSMContext):
     if callback_data == "admin:stats":
         text = await _build_stats_text()
         await message.answer(text, reply_markup=back_keyboard())
+    elif callback_data == "admin:users":
+        await _show_users_page_message(message, page=0)
     elif callback_data == "admin:broadcast":
         from app.admin.keyboards.inline import broadcast_type_menu
         await message.answer(
@@ -186,6 +187,8 @@ async def handle_reply_keyboard(message: Message, state: FSMContext):
             "🔨 Управление банами\n\nВыберите действие:",
             reply_markup=ban_menu()
         )
+    elif callback_data == "admin:give_tokens":
+        await _show_give_tokens_message(message)
     elif callback_data == "admin:promo_menu":
         from app.admin.keyboards.inline import promo_menu
         await message.answer(
@@ -202,12 +205,92 @@ async def handle_reply_keyboard(message: Message, state: FSMContext):
         text = await _build_finance_text("all")
         keyboard = _finance_period_keyboard()
         await message.answer(text, reply_markup=keyboard)
-    else:
-        # For users, give_tokens — show full inline menu
-        await message.answer(
-            "🔐 Админ-панель\n\nВыберите действие:",
-            reply_markup=main_admin_menu()
+
+
+# ==================== REPLY KEYBOARD HELPER FUNCTIONS ====================
+
+
+async def _show_users_page_message(message: Message, page: int = 0):
+    """Show users page as a new message (for reply keyboard handler)."""
+    from app.database.database import async_session_maker
+    from app.database.models import User
+    from sqlalchemy import select, func
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    users_per_page = 10
+    offset = page * users_per_page
+
+    async with async_session_maker() as session:
+        total_users = await session.scalar(select(func.count()).select_from(User))
+        total_pages = (total_users + users_per_page - 1) // users_per_page
+
+        result = await session.execute(
+            select(User)
+            .order_by(User.created_at.desc())
+            .limit(users_per_page)
+            .offset(offset)
         )
+        users = result.scalars().all()
+
+    text = f"👥 Пользователи (стр. {page + 1}/{total_pages})\n"
+    text += f"Всего: {total_users}\n\n"
+
+    builder = InlineKeyboardBuilder()
+
+    for user in users:
+        ban_status = "🚫" if user.is_banned else ""
+        active_sub = user.get_active_subscription()
+        sub_emoji = "💎" if active_sub else ""
+
+        button_text = f"{ban_status}{sub_emoji} {safe_text(user.full_name)} (ID: {user.telegram_id})"
+        builder.button(
+            text=button_text[:64],
+            callback_data=f"admin:user_view:{user.telegram_id}"
+        )
+
+    if page > 0:
+        builder.button(text="◀️ Назад", callback_data=f"admin:users_page:{page - 1}")
+    if page < total_pages - 1:
+        builder.button(text="Вперед ▶️", callback_data=f"admin:users_page:{page + 1}")
+
+    builder.button(text="🔍 Поиск пользователя", callback_data="admin:search_user")
+    builder.adjust(1)
+
+    await message.answer(text, reply_markup=builder.as_markup())
+
+
+async def _show_give_tokens_message(message: Message):
+    """Show give tokens panel as a new message (for reply keyboard handler)."""
+    from app.database.database import async_session_maker
+    from app.database.models import User
+    from sqlalchemy import select
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(User).order_by(User.last_activity.desc().nullslast()).limit(10)
+        )
+        recent_users = result.scalars().all()
+
+    text = f"💰 Выдача токенов\n\n"
+    text += f"Последние активные пользователи:\n"
+
+    builder = InlineKeyboardBuilder()
+
+    for user in recent_users:
+        active_sub = user.get_active_subscription()
+        sub_emoji = "💎" if active_sub else ""
+        button_text = f"{sub_emoji} {safe_text(user.full_name)} (ID: {user.telegram_id})"
+        builder.button(
+            text=button_text[:64],
+            callback_data=f"admin:give_tokens_to:{user.telegram_id}"
+        )
+
+    builder.button(text="🔍 Поиск пользователя", callback_data="admin:give_tokens_search")
+    builder.button(text="✏️ Ввести ID вручную", callback_data="admin:give_tokens_manual")
+    builder.adjust(1)
+
+    await message.answer(text, reply_markup=builder.as_markup())
 
 
 # ==================== CALLBACK HANDLERS ====================
@@ -220,8 +303,12 @@ async def back_to_menu(callback: CallbackQuery, state: FSMContext):
         return
 
     await state.clear()
-    text = "🔐 Админ-панель\n\nВыберите действие из меню ниже:"
-    await callback.message.edit_text(text, reply_markup=main_admin_menu())
+    try:
+        await callback.message.edit_text(
+            "🔐 Используйте кнопки меню внизу."
+        )
+    except Exception:
+        pass
     await callback.answer()
 
 
