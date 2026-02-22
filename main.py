@@ -259,6 +259,62 @@ async def yookassa_webhook(request: Request):
                                     user_id=payment.user_id,
                                     payment_id=payment.payment_id
                                 )
+                        # Send admin notification about purchase
+                        try:
+                            from aiogram import Bot as AdminBot
+                            from app.database.models.payment import Payment as PaymentModel
+                            from sqlalchemy import func as sql_func
+
+                            admin_bot_instance = AdminBot(token=settings.telegram_admin_bot_token)
+
+                            # Count total purchases by this user
+                            total_purchases = await session.scalar(
+                                select(sql_func.count()).select_from(PaymentModel).where(
+                                    PaymentModel.user_id == payment.user_id,
+                                    PaymentModel.status == "success"
+                                )
+                            ) or 0
+
+                            # Get plan display name
+                            subscription_type = metadata.get("subscription_type", "")
+                            plan_name = subscription_type
+                            try:
+                                from app.core.subscription_plans import ETERNAL_PLANS, SUBSCRIPTION_PLANS
+                                if subscription_type in ETERNAL_PLANS:
+                                    plan_name = ETERNAL_PLANS[subscription_type].display_name
+                                else:
+                                    for sp in SUBSCRIPTION_PLANS.values():
+                                        if sp.subscription_type == subscription_type:
+                                            plan_name = sp.display_name
+                                            break
+                            except Exception:
+                                pass
+
+                            user_display = user.full_name
+                            if user.username:
+                                user_display = f"@{user.username} ({user.full_name})"
+
+                            admin_message = (
+                                f"💰 Новая покупка!\n\n"
+                                f"👤 Пользователь: {user_display}\n"
+                                f"📦 Тариф: {plan_name}\n"
+                                f"💵 Сумма: {float(payment.amount):.0f} RUB\n"
+                                f"📊 Всего покупок: {total_purchases}"
+                            )
+
+                            for aid in settings.admin_user_ids:
+                                try:
+                                    await admin_bot_instance.send_message(aid, admin_message)
+                                except Exception:
+                                    pass
+
+                            await admin_bot_instance.session.close()
+                        except Exception as admin_err:
+                            logger.error(
+                                "admin_purchase_notification_failed",
+                                error=str(admin_err)
+                            )
+
                     else:
                         logger.error(
                             "yukassa_user_not_found_for_notification",
@@ -386,6 +442,145 @@ async def main() -> None:
 
         # Run every hour
         scheduler.add_interval_job(cleanup_expired_subscriptions, hours=1)
+
+        # Background task: send post-expiry notifications
+        async def send_expiry_notifications():
+            """Check for expired subscriptions and send configured notifications."""
+            from app.database.models.expiry_notification import ExpiryNotificationSettings, ExpiryNotificationLog
+            from app.database.models.user import User
+            from app.database.models.subscription import Subscription
+            from app.database.models.promocode import Promocode, PromocodeUse
+            from sqlalchemy import select, and_, func
+            from datetime import datetime, timezone, timedelta
+            import uuid
+
+            try:
+                async with async_session_maker() as session:
+                    # Get active notification rules
+                    result = await session.execute(
+                        select(ExpiryNotificationSettings).where(
+                            ExpiryNotificationSettings.is_active == True
+                        )
+                    )
+                    rules = result.scalars().all()
+
+                    if not rules:
+                        return
+
+                    now = datetime.now(timezone.utc)
+
+                    for rule in rules:
+                        # Find subscriptions that expired exactly `delay_days` ago (within a 1-hour window)
+                        target_date = now - timedelta(days=rule.delay_days)
+                        window_start = target_date - timedelta(hours=1)
+                        window_end = target_date
+
+                        # Find users with expired subscriptions in this window
+                        # who haven't already received this notification
+                        expired_subs = await session.execute(
+                            select(Subscription, User).join(
+                                User, Subscription.user_id == User.id
+                            ).where(
+                                and_(
+                                    Subscription.is_active == False,
+                                    Subscription.expires_at >= window_start,
+                                    Subscription.expires_at <= window_end,
+                                    User.is_banned == False,
+                                    User.is_bot_blocked == False,
+                                )
+                            )
+                        )
+                        rows = expired_subs.all()
+
+                        for sub, user in rows:
+                            # Check if we already sent notification for this subscription + rule
+                            existing = await session.scalar(
+                                select(func.count()).select_from(ExpiryNotificationLog).where(
+                                    and_(
+                                        ExpiryNotificationLog.user_id == user.id,
+                                        ExpiryNotificationLog.subscription_id == sub.id,
+                                        ExpiryNotificationLog.settings_id == rule.id,
+                                    )
+                                )
+                            )
+                            if existing > 0:
+                                continue
+
+                            # Check if user already has a new active subscription
+                            active_sub = await session.scalar(
+                                select(func.count()).select_from(Subscription).where(
+                                    and_(
+                                        Subscription.user_id == user.id,
+                                        Subscription.is_active == True,
+                                        Subscription.tokens_amount > Subscription.tokens_used,
+                                    )
+                                )
+                            )
+                            if active_sub > 0:
+                                continue
+
+                            # Build message
+                            msg_text = rule.message_text.replace(
+                                "{name}", user.full_name
+                            ).replace(
+                                "{days}", str(rule.delay_days)
+                            )
+
+                            # Add discount info if applicable
+                            if rule.has_discount and rule.discount_percent > 0:
+                                # Create a discount promocode for this user
+                                promo_code = f"BACK{rule.discount_percent}_{uuid.uuid4().hex[:6].upper()}"
+
+                                promo = Promocode(
+                                    code=promo_code,
+                                    bonus_type="discount_percent",
+                                    bonus_value=rule.discount_percent,
+                                    max_uses=1,
+                                    current_uses=0,
+                                    is_active=True,
+                                    expires_at=now + timedelta(days=7),
+                                )
+                                session.add(promo)
+                                await session.flush()
+
+                                msg_text += (
+                                    f"\n\n🎁 Специальная скидка {rule.discount_percent}%!\n"
+                                    f"Промокод: {promo_code}\n"
+                                    f"Действует 7 дней."
+                                )
+
+                            # Send notification
+                            delivered = True
+                            try:
+                                await bot.send_message(user.telegram_id, msg_text)
+                            except Exception as send_err:
+                                delivered = False
+                                error_msg = str(send_err)
+                                if "bot was blocked by the user" in error_msg or "user is deactivated" in error_msg:
+                                    user.is_bot_blocked = True
+                                logger.error(
+                                    "expiry_notification_send_failed",
+                                    user_id=user.id,
+                                    error=error_msg
+                                )
+
+                            # Log the notification
+                            log_entry = ExpiryNotificationLog(
+                                user_id=user.id,
+                                subscription_id=sub.id,
+                                settings_id=rule.id,
+                                sent_at=now,
+                                delivered=delivered,
+                            )
+                            session.add(log_entry)
+
+                        await session.commit()
+
+            except Exception as e:
+                logger.error("expiry_notifications_task_error", error=str(e))
+
+        # Run every hour
+        scheduler.add_interval_job(send_expiry_notifications, hours=1)
 
         # Start system monitoring (if available)
         if MONITORING_AVAILABLE:

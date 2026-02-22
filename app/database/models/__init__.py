@@ -20,6 +20,7 @@ from app.database.models.system import (
 from app.database.models.model_cost import ModelCost, OperationCategory
 from app.database.models.video_job import VideoGenerationJob
 from app.database.models.broadcast import BroadcastMessage, BroadcastClick
+from app.database.models.expiry_notification import ExpiryNotificationSettings, ExpiryNotificationLog
 
 __all__ = [
     "User",
@@ -47,4 +48,7 @@ __all__ = [
     # Broadcast
     "BroadcastMessage",
     "BroadcastClick",
+    # Expiry notifications
+    "ExpiryNotificationSettings",
+    "ExpiryNotificationLog",
 ]

@@ -29,6 +29,7 @@ def main_admin_menu() -> InlineKeyboardMarkup:
     # System
     builder.button(text="📝 Логи", callback_data="admin:logs")
     builder.button(text="📢 Рассылка", callback_data="admin:broadcast")
+    builder.button(text="⏰ Напоминания", callback_data="admin:expiry_notifications")
 
     builder.adjust(2)
     return builder.as_markup()

@@ -68,3 +68,11 @@ class BroadcastWithButtons(StatesGroup):
 class SendUserMessage(StatesGroup):
     """States for sending message to specific user."""
     waiting_for_message = State()
+
+
+class ExpiryNotification(StatesGroup):
+    """States for configuring post-expiry notifications."""
+    waiting_for_delay_days = State()
+    waiting_for_message_text = State()
+    waiting_for_discount = State()
+    waiting_for_discount_percent = State()

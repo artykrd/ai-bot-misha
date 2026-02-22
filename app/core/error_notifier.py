@@ -63,6 +63,19 @@ class ErrorNotifier:
             "• Сложности промпта или референсного изображения",
             "• Технической проблемы на стороне API",
             "• Несовместимости параметров",
+            # Safety filter / content policy errors
+            "Генерация заблокирована фильтром безопасности",
+            "фильтром безопасности",
+            "API не сгенерировал изображение",
+            "Попробуйте изменить промпт",
+            "FinishReason.PROHIBITED_CONTENT",
+            "PROHIBITED_CONTENT",
+            "Генерация прервана",
+            "причина: FinishReason",
+            "content_policy_violation",
+            "safety_filter",
+            "Your request was rejected",
+            "blocked by safety",
         ]
 
         # Check if error message contains user-facing error text

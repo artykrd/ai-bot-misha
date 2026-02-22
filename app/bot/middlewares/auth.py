@@ -70,6 +70,16 @@ class AuthMiddleware(BaseMiddleware):
                         bonus_tokens=5000
                     )
 
+                # If user was marked as blocked, clear the flag (they unblocked the bot)
+                if user.is_bot_blocked:
+                    user.is_bot_blocked = False
+                    await session.commit()
+                    logger.info(
+                        "user_unblocked_bot",
+                        user_id=user.id,
+                        telegram_id=telegram_user.id
+                    )
+
                 # Add user to handler data
                 data["user"] = user
                 data["user_service"] = user_service
