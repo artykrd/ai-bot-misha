@@ -38,6 +38,7 @@ class User(Base, BaseModel, TimestampMixin):
     # Status
     is_banned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
     ban_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_bot_blocked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="false", index=True)
 
     # Activity tracking
     last_activity: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

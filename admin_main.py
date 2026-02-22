@@ -38,7 +38,8 @@ from app.admin.states import (
     BroadcastWithButtons,
     SearchUser,
     ManageUserTariff,
-    SendUserMessage
+    SendUserMessage,
+    ExpiryNotification
 )
 
 logger = get_logger(__name__)
@@ -317,9 +318,17 @@ async def _build_stats_text() -> str:
             )
         ) or 0
 
+        # Blocked users (who blocked the bot)
+        blocked_users = await session.scalar(
+            select(func.count()).select_from(User).where(User.is_bot_blocked == True)
+        )
+
+    active_users = total_users - blocked_users
     text = (
         f"📊 Статистика\n\n"
         f"👥 Пользователи: {total_users}\n"
+        f"✅ Активных: {active_users}\n"
+        f"🚫 Заблокировали бота: {blocked_users}\n"
         f"🆕 Новых сегодня: {new_today}\n\n"
         f"📦 Активные подписки: {active_subs}\n"
         f"💳 Оплаченных подписок: {paid_subs}\n\n"
@@ -2242,8 +2251,8 @@ async def process_broadcast_message(message: Message, state: FSMContext):
         main_bot = Bot(token=settings.telegram_bot_token, default=DefaultBotProperties())
 
         async with async_session_maker() as session:
-            # Build query based on filter
-            query = select(User).where(User.is_banned == False)
+            # Build query based on filter (exclude blocked users)
+            query = select(User).where(User.is_banned == False, User.is_bot_blocked == False)
 
             if filter_type == "subscribed":
                 # Get users with active subscription
@@ -2274,6 +2283,7 @@ async def process_broadcast_message(message: Message, state: FSMContext):
             )
 
             # Send messages
+            blocked_users = []
             for i, user in enumerate(users, 1):
                 try:
                     await send_broadcast_message(
@@ -2285,6 +2295,9 @@ async def process_broadcast_message(message: Message, state: FSMContext):
                 except Exception as e:
                     failed_count += 1
                     error_msg = str(e)
+                    # Mark user as blocked if they blocked the bot or deactivated
+                    if "bot was blocked by the user" in error_msg or "user is deactivated" in error_msg:
+                        blocked_users.append(user.id)
                     errors.append(f"User {user.telegram_id}: {error_msg[:50]}")
                     logger.error(
                         "broadcast_send_error",
@@ -2304,6 +2317,21 @@ async def process_broadcast_message(message: Message, state: FSMContext):
                         )
                     except:
                         pass
+
+            # Mark blocked users in database
+            if blocked_users:
+                for uid in blocked_users:
+                    blocked_user_result = await session.execute(
+                        select(User).where(User.id == uid)
+                    )
+                    blocked_user = blocked_user_result.scalar_one_or_none()
+                    if blocked_user:
+                        blocked_user.is_bot_blocked = True
+                await session.commit()
+                logger.info(
+                    "broadcast_blocked_users_marked",
+                    count=len(blocked_users)
+                )
 
             # Final status with error details
             final_text = f"✅ Рассылка завершена!\n\n"
@@ -2921,6 +2949,7 @@ async def confirm_broadcast_send(callback: CallbackQuery, state: FSMContext):
             f"⏳ Отправка... 0/{total_users}"
         )
 
+        blocked_user_ids = []
         for i, user in enumerate(recipients, 1):
             try:
                 result = await send_broadcast_message(
@@ -2944,6 +2973,7 @@ async def confirm_broadcast_send(callback: CallbackQuery, state: FSMContext):
                 error_msg = str(e)
                 if "bot was blocked by the user" in error_msg or "user is deactivated" in error_msg:
                     blocked_count += 1
+                    blocked_user_ids.append(user.id)
                 else:
                     error_count += 1
                     logger.error("broadcast_send_error", user_id=user.telegram_id, error=error_msg)
@@ -2959,6 +2989,22 @@ async def confirm_broadcast_send(callback: CallbackQuery, state: FSMContext):
                     )
                 except:
                     pass
+
+        # Mark blocked users in database
+        if blocked_user_ids:
+            async with async_session_maker() as session:
+                for uid in blocked_user_ids:
+                    blocked_user_result = await session.execute(
+                        select(User).where(User.id == uid)
+                    )
+                    blocked_user = blocked_user_result.scalar_one_or_none()
+                    if blocked_user:
+                        blocked_user.is_bot_blocked = True
+                await session.commit()
+                logger.info(
+                    "broadcast_blocked_users_marked",
+                    count=len(blocked_user_ids)
+                )
 
         # Update statistics
         async with async_session_maker() as session:
@@ -3234,6 +3280,324 @@ async def deactivate_unlimited_link(message: Message):
             admin_id=message.from_user.id,
             invite_code=invite_code
         )
+
+
+# ==================== EXPIRY NOTIFICATIONS ====================
+
+
+@admin_router.callback_query(F.data == "admin:expiry_notifications")
+async def show_expiry_notifications(callback: CallbackQuery):
+    """Show expiry notification settings."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    from app.database.database import async_session_maker
+    from app.database.models.expiry_notification import ExpiryNotificationSettings
+    from sqlalchemy import select
+
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(ExpiryNotificationSettings).order_by(ExpiryNotificationSettings.id)
+        )
+        rules = result.scalars().all()
+
+    text = "⏰ Напоминания после истечения подписки\n\n"
+
+    if rules:
+        for rule in rules:
+            status = "✅" if rule.is_active else "❌"
+            discount = f" (скидка {rule.discount_percent}%)" if rule.has_discount else ""
+            text += f"{status} #{rule.id}: через {rule.delay_days} дн.{discount}\n"
+            msg_preview = rule.message_text[:60] + "..." if len(rule.message_text) > 60 else rule.message_text
+            text += f"   \"{msg_preview}\"\n\n"
+    else:
+        text += "Нет настроенных правил.\n\n"
+
+    text += "Добавьте правило, чтобы бот автоматически напоминал\n"
+    text += "пользователям о продлении подписки."
+
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.button(text="➕ Добавить правило", callback_data="admin:expiry_add")
+    if rules:
+        for rule in rules:
+            status_emoji = "✅" if rule.is_active else "❌"
+            builder.button(
+                text=f"{status_emoji} #{rule.id} ({rule.delay_days} дн.) - Вкл/Выкл",
+                callback_data=f"admin:expiry_toggle:{rule.id}"
+            )
+            builder.button(
+                text=f"🗑 Удалить #{rule.id}",
+                callback_data=f"admin:expiry_delete:{rule.id}"
+            )
+    builder.button(text="🔙 Назад", callback_data="admin:back")
+    builder.adjust(1)
+
+    await callback.message.edit_text(text, reply_markup=builder.as_markup())
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data == "admin:expiry_add")
+async def start_add_expiry_rule(callback: CallbackQuery, state: FSMContext):
+    """Start adding a new expiry notification rule."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    await state.set_state(ExpiryNotification.waiting_for_delay_days)
+
+    await callback.message.edit_text(
+        "⏰ Новое правило напоминания\n\n"
+        "Шаг 1/3: Через сколько дней после истечения подписки\n"
+        "отправить напоминание?\n\n"
+        "Введите количество дней (например: 5):",
+        reply_markup=cancel_keyboard()
+    )
+    await callback.answer()
+
+
+@admin_router.message(StateFilter(ExpiryNotification.waiting_for_delay_days))
+async def process_expiry_delay_days(message: Message, state: FSMContext):
+    """Process delay days input."""
+    if not is_admin(message.from_user.id):
+        return
+
+    try:
+        days = int(message.text.strip())
+        if days < 1 or days > 365:
+            await message.answer("❌ Введите число от 1 до 365.")
+            return
+    except ValueError:
+        await message.answer("❌ Введите целое число.")
+        return
+
+    await state.update_data(delay_days=days)
+    await state.set_state(ExpiryNotification.waiting_for_message_text)
+
+    await message.answer(
+        f"✅ Задержка: {days} дней\n\n"
+        f"Шаг 2/3: Введите текст напоминания.\n\n"
+        f"Можно использовать переменные:\n"
+        f"  {{name}} - имя пользователя\n"
+        f"  {{days}} - дней после истечения\n\n"
+        f"Пример:\n"
+        f"Привет, {{name}}! Ваша подписка истекла {{days}} дней назад. "
+        f"Продлите сейчас и получите доступ ко всем функциям!",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@admin_router.message(StateFilter(ExpiryNotification.waiting_for_message_text))
+async def process_expiry_message_text(message: Message, state: FSMContext):
+    """Process notification message text."""
+    if not is_admin(message.from_user.id):
+        return
+
+    text = message.text.strip()
+    if not text:
+        await message.answer("❌ Текст не может быть пустым.")
+        return
+
+    await state.update_data(message_text=text)
+    await state.set_state(ExpiryNotification.waiting_for_discount)
+
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.button(text="✅ Да, добавить скидку", callback_data="admin:expiry_discount_yes")
+    builder.button(text="❌ Без скидки", callback_data="admin:expiry_discount_no")
+    builder.button(text="❌ Отмена", callback_data="admin:cancel")
+    builder.adjust(1)
+
+    await message.answer(
+        f"✅ Текст сохранён\n\n"
+        f"Шаг 3/3: Добавить скидку к напоминанию?",
+        reply_markup=builder.as_markup()
+    )
+
+
+@admin_router.callback_query(F.data == "admin:expiry_discount_no", StateFilter(ExpiryNotification.waiting_for_discount))
+async def expiry_no_discount(callback: CallbackQuery, state: FSMContext):
+    """Create rule without discount."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    data = await state.get_data()
+
+    from app.database.database import async_session_maker
+    from app.database.models.expiry_notification import ExpiryNotificationSettings
+
+    async with async_session_maker() as session:
+        rule = ExpiryNotificationSettings(
+            delay_days=data["delay_days"],
+            message_text=data["message_text"],
+            has_discount=False,
+            discount_percent=0,
+            is_active=True,
+        )
+        session.add(rule)
+        await session.commit()
+        await session.refresh(rule)
+
+    await callback.message.edit_text(
+        f"✅ Правило #{rule.id} создано!\n\n"
+        f"⏰ Задержка: {rule.delay_days} дней\n"
+        f"💬 Текст: {rule.message_text[:100]}...\n"
+        f"🎁 Скидка: нет\n\n"
+        f"Напоминание будет автоматически отправляться пользователям.",
+        reply_markup=back_keyboard()
+    )
+    await state.clear()
+    await callback.answer()
+
+    logger.info(
+        "expiry_notification_rule_created",
+        admin_id=callback.from_user.id,
+        rule_id=rule.id,
+        delay_days=rule.delay_days,
+        has_discount=False
+    )
+
+
+@admin_router.callback_query(F.data == "admin:expiry_discount_yes", StateFilter(ExpiryNotification.waiting_for_discount))
+async def expiry_with_discount(callback: CallbackQuery, state: FSMContext):
+    """Ask for discount percentage."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    await state.set_state(ExpiryNotification.waiting_for_discount_percent)
+
+    await callback.message.edit_text(
+        "🎁 Введите процент скидки (1-99):\n\n"
+        "Например: 20",
+        reply_markup=cancel_keyboard()
+    )
+    await callback.answer()
+
+
+@admin_router.message(StateFilter(ExpiryNotification.waiting_for_discount_percent))
+async def process_expiry_discount_percent(message: Message, state: FSMContext):
+    """Process discount percentage."""
+    if not is_admin(message.from_user.id):
+        return
+
+    try:
+        percent = int(message.text.strip())
+        if percent < 1 or percent > 99:
+            await message.answer("❌ Введите число от 1 до 99.")
+            return
+    except ValueError:
+        await message.answer("❌ Введите целое число.")
+        return
+
+    data = await state.get_data()
+
+    from app.database.database import async_session_maker
+    from app.database.models.expiry_notification import ExpiryNotificationSettings
+
+    async with async_session_maker() as session:
+        rule = ExpiryNotificationSettings(
+            delay_days=data["delay_days"],
+            message_text=data["message_text"],
+            has_discount=True,
+            discount_percent=percent,
+            is_active=True,
+        )
+        session.add(rule)
+        await session.commit()
+        await session.refresh(rule)
+
+    await message.answer(
+        f"✅ Правило #{rule.id} создано!\n\n"
+        f"⏰ Задержка: {rule.delay_days} дней\n"
+        f"💬 Текст: {rule.message_text[:100]}...\n"
+        f"🎁 Скидка: {percent}%\n\n"
+        f"Напоминание будет автоматически отправляться пользователям.",
+        reply_markup=back_keyboard()
+    )
+    await state.clear()
+
+    logger.info(
+        "expiry_notification_rule_created",
+        admin_id=message.from_user.id,
+        rule_id=rule.id,
+        delay_days=rule.delay_days,
+        has_discount=True,
+        discount_percent=percent
+    )
+
+
+@admin_router.callback_query(F.data.startswith("admin:expiry_toggle:"))
+async def toggle_expiry_rule(callback: CallbackQuery):
+    """Toggle expiry notification rule on/off."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    rule_id = int(callback.data.split(":")[-1])
+
+    from app.database.database import async_session_maker
+    from app.database.models.expiry_notification import ExpiryNotificationSettings
+    from sqlalchemy import select
+
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(ExpiryNotificationSettings).where(ExpiryNotificationSettings.id == rule_id)
+        )
+        rule = result.scalar_one_or_none()
+
+        if not rule:
+            await callback.answer("❌ Правило не найдено")
+            return
+
+        rule.is_active = not rule.is_active
+        await session.commit()
+        status = "включено" if rule.is_active else "выключено"
+
+    await callback.answer(f"Правило #{rule_id} {status}")
+
+    # Refresh the page
+    await show_expiry_notifications(callback)
+
+
+@admin_router.callback_query(F.data.startswith("admin:expiry_delete:"))
+async def delete_expiry_rule(callback: CallbackQuery):
+    """Delete expiry notification rule."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    rule_id = int(callback.data.split(":")[-1])
+
+    from app.database.database import async_session_maker
+    from app.database.models.expiry_notification import ExpiryNotificationSettings
+    from sqlalchemy import select
+
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(ExpiryNotificationSettings).where(ExpiryNotificationSettings.id == rule_id)
+        )
+        rule = result.scalar_one_or_none()
+
+        if not rule:
+            await callback.answer("❌ Правило не найдено")
+            return
+
+        await session.delete(rule)
+        await session.commit()
+
+    await callback.answer(f"Правило #{rule_id} удалено")
+
+    logger.info(
+        "expiry_notification_rule_deleted",
+        admin_id=callback.from_user.id,
+        rule_id=rule_id
+    )
+
+    # Refresh the page
+    await show_expiry_notifications(callback)
 
 
 # ==================== MAIN LOOP ====================

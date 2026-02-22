@@ -136,7 +136,9 @@ async def get_recipients_count(session: AsyncSession, filter_type: str) -> int:
     """
     if filter_type == "all":
         result = await session.execute(
-            select(func.count(User.id)).where(User.is_banned == False)
+            select(func.count(User.id)).where(
+                and_(User.is_banned == False, User.is_bot_blocked == False)
+            )
         )
     elif filter_type == "subscribed":
         result = await session.execute(
@@ -145,6 +147,7 @@ async def get_recipients_count(session: AsyncSession, filter_type: str) -> int:
             .where(
                 and_(
                     User.is_banned == False,
+                    User.is_bot_blocked == False,
                     Subscription.is_active == True,
                     Subscription.expires_at > datetime.now(timezone.utc)
                 )
@@ -161,6 +164,7 @@ async def get_recipients_count(session: AsyncSession, filter_type: str) -> int:
             select(func.count(User.id)).where(
                 and_(
                     User.is_banned == False,
+                    User.is_bot_blocked == False,
                     User.id.notin_(subquery)
                 )
             )
@@ -182,7 +186,9 @@ async def get_recipients(session: AsyncSession, filter_type: str) -> list[User]:
     """
     if filter_type == "all":
         result = await session.execute(
-            select(User).where(User.is_banned == False)
+            select(User).where(
+                and_(User.is_banned == False, User.is_bot_blocked == False)
+            )
         )
     elif filter_type == "subscribed":
         result = await session.execute(
@@ -191,6 +197,7 @@ async def get_recipients(session: AsyncSession, filter_type: str) -> list[User]:
             .where(
                 and_(
                     User.is_banned == False,
+                    User.is_bot_blocked == False,
                     Subscription.is_active == True,
                     Subscription.expires_at > datetime.now(timezone.utc)
                 )
@@ -207,6 +214,7 @@ async def get_recipients(session: AsyncSession, filter_type: str) -> list[User]:
             select(User).where(
                 and_(
                     User.is_banned == False,
+                    User.is_bot_blocked == False,
                     User.id.notin_(subquery)
                 )
             )
