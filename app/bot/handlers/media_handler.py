@@ -4834,8 +4834,7 @@ async def handle_photo_action_choice(callback: CallbackQuery, state: FSMContext)
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [
-                InlineKeyboardButton(text="🍌 Nano Banana", callback_data="photo_image:nano"),
-                InlineKeyboardButton(text="🖼 DALL-E", callback_data="photo_image:dalle")
+                InlineKeyboardButton(text="🍌 Nano Banana", callback_data="photo_image:nano")
             ],
             [
                 InlineKeyboardButton(text="◀️ Назад", callback_data="photo_action:back")
@@ -4844,8 +4843,7 @@ async def handle_photo_action_choice(callback: CallbackQuery, state: FSMContext)
 
         caption_text = (
             f"🖼 Выберите модель для генерации изображения:\n\n"
-            f"• Nano Banana - Gemini 2.5 Flash, image-to-image ({format_token_amount(nano_billing.tokens_per_generation)} токенов)\n"
-            f"• DALL-E - Image variation ({format_token_amount(dalle_billing.tokens_per_generation)} токенов)"
+            f"• Nano Banana - Gemini 2.5 Flash, image-to-image ({format_token_amount(nano_billing.tokens_per_generation)} токенов)"
         )
 
         try:
