@@ -13,8 +13,6 @@ MENU_BUTTONS = [
     ("Выбрать модель", "bot.llm_models"),
     ("Nano Banana", "bot.nano"),
     ("Midjourney", "bot.midjourney"),
-    ("DALL·E 3", "bot.gpt_image"),
-    ("Gpt image 1", "bot.gpt_image"),
     ("Veo 3.1", "bot.veo"),
     ("Kling", "bot.kling_main"),
     ("Sora", "bot.sora"),
@@ -252,18 +250,17 @@ def create_photo_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
     builder.row(
-        InlineKeyboardButton(text="🖼 DALL-E 3", callback_data="bot.gpt_image"),
-        InlineKeyboardButton(text="👁 GPT Vision", callback_data="bot.gpt_vision")
-    )
-    builder.row(
         InlineKeyboardButton(text="🍌 Nano Banana", callback_data="bot.nano"),
         InlineKeyboardButton(text="🍌✨ Banana PRO", callback_data="bot.nano_pro")
+    )
+    builder.row(
+        InlineKeyboardButton(text="✨ Seedream 4.5", callback_data="bot.seedream_4.5")
     )
     builder.row(
         InlineKeyboardButton(text="🌆 Midjourney", callback_data="bot.midjourney")
     )
     builder.row(
-        InlineKeyboardButton(text="✨ Seedream 4.5", callback_data="bot.seedream_4.5")
+        InlineKeyboardButton(text="👁 GPT Vision", callback_data="bot.gpt_vision")
     )
     builder.row(
         InlineKeyboardButton(text="🛠 Редактировать фото", callback_data="bot.pi")

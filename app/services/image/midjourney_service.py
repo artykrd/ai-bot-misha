@@ -214,7 +214,7 @@ class MidjourneyService:
         self,
         task_id: str,
         progress_callback: Optional[Callable[[str], Awaitable[None]]] = None,
-        max_wait_time: int = 600,
+        max_wait_time: int = 1200,
         poll_interval: int = 10
     ) -> list:
         """Poll task status until complete. Returns list of result URLs."""
@@ -233,7 +233,7 @@ class MidjourneyService:
         async with aiohttp.ClientSession() as session:
             while True:
                 if time.time() - start_time > max_wait_time:
-                    raise Exception("Таймаут генерации изображения (10 минут)")
+                    raise Exception("Таймаут генерации изображения (20 минут)")
 
                 async with session.get(url, headers=headers, params=params) as response:
                     data = await response.json()
