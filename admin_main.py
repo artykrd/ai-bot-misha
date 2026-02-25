@@ -2257,6 +2257,55 @@ async def show_logs_callback(callback: CallbackQuery):
 
 # ==================== BROADCAST ====================
 
+
+async def _resolve_specific_users(session, user_identifiers: list[str]) -> list:
+    """
+    Resolve user identifiers (IDs, @usernames) to User objects.
+
+    Args:
+        session: Database session
+        user_identifiers: List of strings - telegram IDs or @usernames
+
+    Returns:
+        List of User objects
+    """
+    from app.database.models import User
+    from sqlalchemy import select as sa_select, or_
+
+    users = []
+    telegram_ids = []
+    usernames = []
+
+    for identifier in user_identifiers:
+        identifier = identifier.strip()
+        if identifier.startswith("@"):
+            usernames.append(identifier[1:].lower())
+        elif identifier.lstrip("-").isdigit():
+            telegram_ids.append(int(identifier))
+        else:
+            # Try as username without @
+            usernames.append(identifier.lower())
+
+    conditions = []
+    if telegram_ids:
+        conditions.append(User.telegram_id.in_(telegram_ids))
+    if usernames:
+        from sqlalchemy import func as sa_func
+        conditions.append(sa_func.lower(User.username).in_(usernames))
+
+    if conditions:
+        result = await session.execute(
+            sa_select(User).where(
+                or_(*conditions),
+                User.is_banned == False,
+                User.is_bot_blocked == False,
+            )
+        )
+        users = list(result.scalars().all())
+
+    return users
+
+
 @admin_router.callback_query(F.data == "admin:broadcast")
 async def start_broadcast(callback: CallbackQuery, state: FSMContext):
     """Show broadcast type selection."""
@@ -4216,57 +4265,6 @@ async def confirm_cb_broadcast_send(callback: CallbackQuery, state: FSMContext):
     )
 
     await state.clear()
-
-
-# ==================== TARGETED / TEST BROADCAST HELPERS ====================
-
-
-async def _resolve_specific_users(session, user_identifiers: list[str]) -> list:
-    """
-    Resolve user identifiers (IDs, @usernames) to User objects.
-
-    Args:
-        session: Database session
-        user_identifiers: List of strings - telegram IDs or @usernames
-
-    Returns:
-        List of User objects
-    """
-    from app.database.models import User
-    from sqlalchemy import select as sa_select, or_
-
-    users = []
-    telegram_ids = []
-    usernames = []
-
-    for identifier in user_identifiers:
-        identifier = identifier.strip()
-        if identifier.startswith("@"):
-            usernames.append(identifier[1:].lower())
-        elif identifier.lstrip("-").isdigit():
-            telegram_ids.append(int(identifier))
-        else:
-            # Try as username without @
-            usernames.append(identifier.lower())
-
-    conditions = []
-    if telegram_ids:
-        conditions.append(User.telegram_id.in_(telegram_ids))
-    if usernames:
-        from sqlalchemy import func as sa_func
-        conditions.append(sa_func.lower(User.username).in_(usernames))
-
-    if conditions:
-        result = await session.execute(
-            sa_select(User).where(
-                or_(*conditions),
-                User.is_banned == False,
-                User.is_bot_blocked == False,
-            )
-        )
-        users = list(result.scalars().all())
-
-    return users
 
 
 @admin_router.message(StateFilter(BroadcastTargeted.waiting_for_users))
