@@ -52,9 +52,11 @@ async def setup_bot() -> Dispatcher:
         async_kling_handler  # Async Kling handler for job queue
     )
     from app.bot.handlers import dialog_handler
+    from app.bot.handlers import channel_bonus
 
     # Order matters! Commands should come before FSM handlers, dialog_handler should be last
     dp.include_router(start.router)
+    dp.include_router(channel_bonus.router)  # Channel subscription bonus callbacks
     dp.include_router(subscription.router)  # Promocode & subscription callbacks
     dp.include_router(navigation.router)
     dp.include_router(common.router)  # Commands BEFORE FSM handlers

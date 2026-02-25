@@ -38,7 +38,10 @@ from app.admin.states import (
     SearchUser,
     ManageUserTariff,
     SendUserMessage,
-    ExpiryNotification
+    ExpiryNotification,
+    ChannelBonusSetup,
+    BroadcastWithChannelBonus,
+    BroadcastTargeted,
 )
 
 logger = get_logger(__name__)
@@ -110,6 +113,7 @@ def admin_reply_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(text="📢 Рассылка"), KeyboardButton(text="💰 Выдать токены")],
             [KeyboardButton(text="🔨 Бан/Разбан"), KeyboardButton(text="💵 Финансы")],
             [KeyboardButton(text="🎁 Промокоды"), KeyboardButton(text="🔗 Безлимит ссылки")],
+            [KeyboardButton(text="📢 Бонус за подписку")],
         ],
         resize_keyboard=True,
         is_persistent=True,
@@ -158,6 +162,7 @@ REPLY_KEYBOARD_MAP = {
     "🎁 Промокоды": "admin:promo_menu",
     "🔗 Безлимит ссылки": "admin:unlimited_menu",
     "💵 Финансы": "admin:finance",
+    "📢 Бонус за подписку": "admin:channel_bonus_menu",
 }
 
 
@@ -205,6 +210,15 @@ async def handle_reply_keyboard(message: Message, state: FSMContext):
         text = await _build_finance_text("all")
         keyboard = _finance_period_keyboard()
         await message.answer(text, reply_markup=keyboard)
+    elif callback_data == "admin:channel_bonus_menu":
+        from app.admin.keyboards.inline import channel_bonus_menu
+        await message.answer(
+            "📢 Бонус за подписку на канал/группу\n\n"
+            "Создайте бонус за подписку или управляйте существующими.\n"
+            "При рассылке пользователи получат кнопку для проверки подписки\n"
+            "и начисления бонусных токенов.",
+            reply_markup=channel_bonus_menu()
+        )
 
 
 # ==================== REPLY KEYBOARD HELPER FUNCTIONS ====================
@@ -2281,6 +2295,8 @@ async def start_simple_broadcast(callback: CallbackQuery, state: FSMContext):
     builder.button(text="👥 Всем пользователям", callback_data="admin:broadcast_filter:all")
     builder.button(text="💎 С активной подпиской", callback_data="admin:broadcast_filter:subscribed")
     builder.button(text="🆓 Без подписки", callback_data="admin:broadcast_filter:no_subscription")
+    builder.button(text="🎯 Выборочно (по ID/username)", callback_data="admin:broadcast_filter:specific")
+    builder.button(text="🧪 Тестовая отправка", callback_data="admin:broadcast_filter:test")
     builder.button(text="🔙 Назад", callback_data="admin:broadcast")
     builder.adjust(1)
 
@@ -2297,12 +2313,43 @@ async def broadcast_filter_selected(callback: CallbackQuery, state: FSMContext):
 
     filter_type = callback.data.split(":")[-1]
     await state.update_data(broadcast_filter=filter_type)
+
+    # Handle specific users - ask for user list first
+    if filter_type == "specific":
+        await state.set_state(BroadcastTargeted.waiting_for_users)
+        await callback.message.edit_text(
+            "🎯 Выборочная рассылка\n\n"
+            "Введите список пользователей через запятую, пробел или новую строку.\n\n"
+            "Поддерживаемые форматы:\n"
+            "• Telegram ID: 123456789\n"
+            "• Username: @username\n"
+            "• Смешанный: 123456789, @user1, @user2\n\n"
+            "Пример:\n"
+            "123456789, @user1, @user2",
+            reply_markup=cancel_keyboard()
+        )
+        await callback.answer()
+        return
+
+    # Handle test - proceed to message input
+    if filter_type == "test":
+        admin_count = len(settings.admin_user_ids)
+        await state.set_state(Broadcast.waiting_for_message)
+        await callback.message.edit_text(
+            f"🧪 Тестовая рассылка\n\n"
+            f"Сообщение будет отправлено только администраторам ({admin_count} чел.)\n\n"
+            f"Введите текст сообщения:",
+            reply_markup=cancel_keyboard()
+        )
+        await callback.answer()
+        return
+
     await state.set_state(Broadcast.waiting_for_message)
 
     filter_names = {
         "all": "всем пользователям",
         "subscribed": "пользователям с активной подпиской",
-        "no_subscription": "пользователям без подписки"
+        "no_subscription": "пользователям без подписки",
     }
 
     await callback.message.edit_text(
@@ -2341,7 +2388,16 @@ async def process_broadcast_message(message: Message, state: FSMContext):
             # Build query based on filter (exclude blocked users)
             query = select(User).where(User.is_banned == False, User.is_bot_blocked == False)
 
-            if filter_type == "subscribed":
+            if filter_type == "test":
+                # Send to admin IDs only
+                result = await session.execute(
+                    select(User).where(User.telegram_id.in_(settings.admin_user_ids))
+                )
+                users = list(result.scalars().all())
+            elif filter_type == "specific":
+                specific_users = data.get("specific_users", [])
+                users = await _resolve_specific_users(session, specific_users)
+            elif filter_type == "subscribed":
                 # Get users with active subscription
                 users_result = await session.execute(query)
                 all_users = users_result.scalars().all()
@@ -2863,12 +2919,52 @@ async def select_broadcast_filter(callback: CallbackQuery, state: FSMContext):
         await callback.answer("❌ Нет доступа")
         return
 
+    filter_type = callback.data.split(":")[-1]
+    await state.update_data(filter_type=filter_type)
+
+    # Handle specific users - ask for user list
+    if filter_type == "specific":
+        await state.update_data(awaiting_specific_users=True)
+        await callback.message.edit_text(
+            "🎯 Выборочная отправка\n\n"
+            "Введите список пользователей через запятую:\n"
+            "• Telegram ID: 123456789\n"
+            "• Username: @username\n\n"
+            "Пример: 123456789, @user1, @user2",
+            reply_markup=cancel_keyboard()
+        )
+        await callback.answer()
+        return
+
+    # Handle test filter
+    if filter_type == "test":
+        await state.set_state(BroadcastWithButtons.waiting_for_confirmation)
+        from app.admin.keyboards.inline import broadcast_confirmation_keyboard
+
+        admin_count = len(settings.admin_user_ids)
+        data = await state.get_data()
+        text = data.get("text", "")
+        buttons = data.get("buttons", [])
+        image_file_id = data.get("image_file_id")
+
+        preview = (
+            f"📋 Шаг 5/5: Превью (ТЕСТОВАЯ РАССЫЛКА)\n\n"
+            f"─────────────────\n"
+            f"{text}\n"
+            f"─────────────────\n\n"
+            f"🧪 Тестовая отправка: {admin_count} админам\n"
+            f"📸 Фото: {'Да' if image_file_id else 'Нет'}\n"
+            f"🔘 Кнопок: {len(buttons)}"
+        )
+
+        await callback.message.edit_text(preview, reply_markup=broadcast_confirmation_keyboard())
+        await callback.answer()
+        return
+
     from app.database.database import async_session_maker
     from app.admin.services import get_recipients_count
     from app.admin.keyboards.inline import broadcast_confirmation_keyboard, build_user_broadcast_keyboard
 
-    filter_type = callback.data.split(":")[-1]
-    await state.update_data(filter_type=filter_type)
     await state.set_state(BroadcastWithButtons.waiting_for_confirmation)
 
     # Get recipient count
@@ -2893,7 +2989,7 @@ async def select_broadcast_filter(callback: CallbackQuery, state: FSMContext):
     filter_names = {
         "all": "Все пользователи",
         "subscribed": "С подпиской",
-        "free": "Без подписки"
+        "free": "Без подписки",
     }
 
     # Send preview message
@@ -3000,8 +3096,18 @@ async def confirm_broadcast_send(callback: CallbackQuery, state: FSMContext):
                 filter_type=filter_type
             )
 
-            # Get recipients
-            recipients = await get_recipients(session, filter_type)
+            # Get recipients based on filter type
+            if filter_type == "test":
+                from sqlalchemy import select as sa_sel
+                r = await session.execute(
+                    sa_sel(User).where(User.telegram_id.in_(settings.admin_user_ids))
+                )
+                recipients = list(r.scalars().all())
+            elif filter_type == "specific":
+                specific_users = data.get("specific_users", [])
+                recipients = await _resolve_specific_users(session, specific_users)
+            else:
+                recipients = await get_recipients(session, filter_type)
 
         # Send broadcast - create bot without default parse_mode to avoid Markdown issues
         from aiogram.client.default import DefaultBotProperties
@@ -3226,6 +3332,1017 @@ async def show_broadcast_stats_page(callback: CallbackQuery, page: int = 0):
         reply_markup=broadcast_stats_keyboard(page=page, total_pages=total_pages)
     )
     await callback.answer()
+
+
+# ==================== CHANNEL SUBSCRIPTION BONUS ====================
+
+
+@admin_router.callback_query(F.data == "admin:channel_bonus_menu")
+async def show_channel_bonus_menu(callback: CallbackQuery, state: FSMContext):
+    """Show channel bonus management menu."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    await state.clear()
+    from app.admin.keyboards.inline import channel_bonus_menu
+
+    await callback.message.edit_text(
+        "📢 Бонус за подписку на канал/группу\n\n"
+        "Создайте бонус за подписку или управляйте существующими.\n"
+        "При рассылке пользователи получат кнопку «Проверить подписку»\n"
+        "и после проверки — бонусные токены.\n\n"
+        "Как это работает:\n"
+        "1. Создайте бонус (укажите канал и кол-во токенов)\n"
+        "2. Запустите рассылку с бонусом (из меню рассылки)\n"
+        "3. Пользователь подписывается на канал\n"
+        "4. Нажимает «Проверить подписку» — получает токены",
+        reply_markup=channel_bonus_menu()
+    )
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data == "admin:channel_bonus_create")
+async def start_channel_bonus_create(callback: CallbackQuery, state: FSMContext):
+    """Start creating a new channel subscription bonus."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    await state.set_state(ChannelBonusSetup.waiting_for_channel)
+
+    await callback.message.edit_text(
+        "➕ Создание бонуса за подписку\n\n"
+        "Шаг 1/3: Укажите канал или группу\n\n"
+        "Отправьте ссылку на канал/группу в одном из форматов:\n"
+        "• @username (например: @mychannel)\n"
+        "• https://t.me/mychannel\n"
+        "• Числовой ID канала (например: -1001234567890)\n\n"
+        "⚠️ Важно: бот должен быть администратором канала/группы,\n"
+        "чтобы проверять подписку пользователей!",
+        reply_markup=cancel_keyboard()
+    )
+    await callback.answer()
+
+
+@admin_router.message(StateFilter(ChannelBonusSetup.waiting_for_channel))
+async def process_channel_bonus_channel(message: Message, state: FSMContext):
+    """Process channel input for bonus setup."""
+    if not is_admin(message.from_user.id):
+        return
+
+    from app.core.config import settings
+    from aiogram import Bot
+    from aiogram.client.default import DefaultBotProperties
+
+    channel_input = message.text.strip()
+
+    # Parse channel input
+    channel_id = None
+    channel_username = None
+
+    if channel_input.startswith("https://t.me/"):
+        channel_username = channel_input.replace("https://t.me/", "").strip("/")
+        channel_input = f"@{channel_username}"
+    elif channel_input.startswith("@"):
+        channel_username = channel_input[1:]
+    elif channel_input.lstrip("-").isdigit():
+        channel_id = int(channel_input)
+    else:
+        await message.answer(
+            "❌ Неверный формат. Укажите @username, ссылку t.me или числовой ID.\n\n"
+            "Примеры:\n"
+            "• @mychannel\n"
+            "• https://t.me/mychannel\n"
+            "• -1001234567890",
+            reply_markup=cancel_keyboard()
+        )
+        return
+
+    # Verify channel with the main bot
+    main_bot = Bot(token=settings.telegram_bot_token, default=DefaultBotProperties())
+    try:
+        chat_identifier = channel_id if channel_id else channel_input
+        chat = await main_bot.get_chat(chat_identifier)
+        channel_id = chat.id
+        channel_username = chat.username
+        channel_title = chat.title or chat.full_name or str(channel_id)
+
+        # Check if bot is admin
+        bot_member = await main_bot.get_chat_member(chat.id, (await main_bot.get_me()).id)
+        if bot_member.status not in ("administrator", "creator"):
+            await message.answer(
+                f"⚠️ Бот не является администратором в «{channel_title}».\n\n"
+                "Добавьте основного бота (@ваш_бот) в администраторы канала/группы,\n"
+                "чтобы он мог проверять подписку пользователей.\n\n"
+                "После добавления — отправьте ссылку ещё раз.",
+                reply_markup=cancel_keyboard()
+            )
+            await main_bot.session.close()
+            return
+    except Exception as e:
+        await message.answer(
+            f"❌ Не удалось найти канал/группу.\n\n"
+            f"Ошибка: {str(e)[:200]}\n\n"
+            "Убедитесь, что:\n"
+            "1. Канал/группа существует\n"
+            "2. Основной бот добавлен в канал/группу\n"
+            "3. Указан правильный формат",
+            reply_markup=cancel_keyboard()
+        )
+        await main_bot.session.close()
+        return
+
+    await main_bot.session.close()
+
+    await state.update_data(
+        channel_id=channel_id,
+        channel_username=channel_username,
+        channel_title=channel_title,
+    )
+    await state.set_state(ChannelBonusSetup.waiting_for_tokens)
+
+    await message.answer(
+        f"✅ Канал найден: {channel_title}"
+        + (f" (@{channel_username})" if channel_username else "")
+        + f"\nID: {channel_id}\n\n"
+        "Шаг 2/3: Сколько токенов начислить за подписку?\n\n"
+        "Введите число (по умолчанию: 1000):\n"
+        "Примеры: 500, 1000, 5000",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@admin_router.message(StateFilter(ChannelBonusSetup.waiting_for_tokens))
+async def process_channel_bonus_tokens(message: Message, state: FSMContext):
+    """Process token amount for channel bonus."""
+    if not is_admin(message.from_user.id):
+        return
+
+    try:
+        tokens = int(message.text.strip())
+        if tokens < 1 or tokens > 10000000:
+            await message.answer("❌ Введите число от 1 до 10 000 000.", reply_markup=cancel_keyboard())
+            return
+    except ValueError:
+        await message.answer("❌ Введите целое число.", reply_markup=cancel_keyboard())
+        return
+
+    await state.update_data(bonus_tokens=tokens)
+    await state.set_state(ChannelBonusSetup.waiting_for_welcome_message)
+
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.button(text="⏭ Использовать стандартное", callback_data="admin:cb_default_welcome")
+    builder.button(text="❌ Отмена", callback_data="admin:cancel")
+    builder.adjust(1)
+
+    await message.answer(
+        f"✅ Бонус: {tokens:,} токенов\n\n"
+        "Шаг 3/3: Текст сообщения при получении бонуса\n\n"
+        "Введите текст, который увидит пользователь после проверки подписки.\n"
+        "Или нажмите «Использовать стандартное».\n\n"
+        "Стандартное сообщение:\n"
+        f"«Поздравляем! Вам начислено {tokens:,} бонусных токенов\n"
+        "за подписку на канал!»",
+        reply_markup=builder.as_markup()
+    )
+
+
+@admin_router.callback_query(F.data == "admin:cb_default_welcome")
+async def channel_bonus_default_welcome(callback: CallbackQuery, state: FSMContext):
+    """Use default welcome message for channel bonus."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    data = await state.get_data()
+    tokens = data.get("bonus_tokens", 1000)
+    welcome = f"🎉 Поздравляем! Вам начислено {tokens:,} бонусных токенов за подписку на канал!"
+
+    await state.update_data(welcome_message=welcome)
+    await _save_channel_bonus(callback.message, state)
+    await callback.answer()
+
+
+@admin_router.message(StateFilter(ChannelBonusSetup.waiting_for_welcome_message))
+async def process_channel_bonus_welcome(message: Message, state: FSMContext):
+    """Process custom welcome message for channel bonus."""
+    if not is_admin(message.from_user.id):
+        return
+
+    text = message.text.strip()
+    if not text:
+        await message.answer("❌ Текст не может быть пустым.", reply_markup=cancel_keyboard())
+        return
+
+    await state.update_data(welcome_message=text)
+    await _save_channel_bonus(message, state)
+
+
+async def _save_channel_bonus(message_or_callback, state: FSMContext):
+    """Save channel bonus to database."""
+    from app.database.database import async_session_maker
+    from app.services.channel_bonus import ChannelBonusService
+
+    data = await state.get_data()
+
+    # Determine the reply target
+    if hasattr(message_or_callback, 'answer'):
+        reply = message_or_callback.answer
+    else:
+        reply = message_or_callback.answer
+
+    async with async_session_maker() as session:
+        service = ChannelBonusService(session)
+        bonus = await service.create_bonus(
+            channel_id=data["channel_id"],
+            bonus_tokens=data.get("bonus_tokens", 1000),
+            channel_username=data.get("channel_username"),
+            channel_title=data.get("channel_title"),
+            welcome_message=data.get("welcome_message"),
+        )
+
+    from app.admin.keyboards.inline import channel_bonus_menu
+
+    text = (
+        f"✅ Бонус #{bonus.id} создан!\n\n"
+        f"📢 Канал: {bonus.channel_title or 'N/A'}"
+        + (f" (@{bonus.channel_username})" if bonus.channel_username else "")
+        + f"\n💰 Бонус: {bonus.bonus_tokens:,} токенов\n"
+        f"✅ Статус: активен\n\n"
+        "Теперь запустите рассылку с бонусом через меню:\n"
+        "📢 Рассылка → Рассылка с бонусом за подписку"
+    )
+
+    await reply(text, reply_markup=channel_bonus_menu())
+    await state.clear()
+
+
+@admin_router.callback_query(F.data == "admin:channel_bonus_list")
+async def show_channel_bonus_list(callback: CallbackQuery):
+    """Show list of all channel bonuses."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    from app.database.database import async_session_maker
+    from app.services.channel_bonus import ChannelBonusService
+
+    async with async_session_maker() as session:
+        service = ChannelBonusService(session)
+        bonuses = await service.get_all_bonuses()
+
+        if not bonuses:
+            await callback.message.edit_text(
+                "📋 Список бонусов за подписку\n\n"
+                "Пока нет бонусов. Создайте первый!",
+                reply_markup=back_keyboard()
+            )
+            await callback.answer()
+            return
+
+        text = "📋 Бонусы за подписку на канал\n\n"
+
+        for bonus in bonuses:
+            status = "✅ Активен" if bonus.is_active else "❌ Неактивен"
+            stats = await service.get_bonus_stats(bonus.id)
+            ch_name = bonus.channel_title or str(bonus.channel_id)
+            if bonus.channel_username:
+                ch_name += f" (@{bonus.channel_username})"
+
+            text += (
+                f"#{bonus.id} | {ch_name}\n"
+                f"   💰 {bonus.bonus_tokens:,} токенов | {status}\n"
+                f"   👥 Получили: {stats['total_claims']} чел. "
+                f"({stats['total_tokens_awarded']:,} токенов)\n\n"
+            )
+
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    for bonus in bonuses:
+        status_emoji = "✅" if bonus.is_active else "❌"
+        builder.button(
+            text=f"{status_emoji} #{bonus.id} - Вкл/Выкл",
+            callback_data=f"admin:cb_toggle:{bonus.id}"
+        )
+    builder.button(text="➕ Создать бонус", callback_data="admin:channel_bonus_create")
+    builder.button(text="🔙 Назад", callback_data="admin:channel_bonus_menu")
+    builder.adjust(1)
+
+    await callback.message.edit_text(text, reply_markup=builder.as_markup())
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data.startswith("admin:cb_toggle:"))
+async def toggle_channel_bonus(callback: CallbackQuery):
+    """Toggle channel bonus on/off."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    bonus_id = int(callback.data.split(":")[-1])
+
+    from app.database.database import async_session_maker
+    from app.services.channel_bonus import ChannelBonusService
+
+    async with async_session_maker() as session:
+        service = ChannelBonusService(session)
+        new_state = await service.toggle_bonus(bonus_id)
+
+    if new_state is None:
+        await callback.answer("❌ Бонус не найден")
+        return
+
+    status = "включён" if new_state else "выключен"
+    await callback.answer(f"Бонус #{bonus_id} {status}")
+
+    # Refresh the list
+    await show_channel_bonus_list(callback)
+
+
+# ==================== BROADCAST WITH CHANNEL BONUS ====================
+
+
+@admin_router.callback_query(F.data == "admin:broadcast_type:channel_bonus")
+async def start_channel_bonus_broadcast(callback: CallbackQuery, state: FSMContext):
+    """Start broadcast with channel subscription bonus."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    # Check if there are active bonuses
+    from app.database.database import async_session_maker
+    from app.services.channel_bonus import ChannelBonusService
+
+    async with async_session_maker() as session:
+        service = ChannelBonusService(session)
+        bonuses = await service.get_active_bonuses()
+
+    if not bonuses:
+        await callback.message.edit_text(
+            "❌ Нет активных бонусов за подписку.\n\n"
+            "Сначала создайте бонус:\n"
+            "📢 Бонус за подписку → Создать бонус за подписку",
+            reply_markup=back_keyboard()
+        )
+        await callback.answer()
+        return
+
+    await state.set_state(BroadcastWithChannelBonus.waiting_for_text)
+
+    await callback.message.edit_text(
+        "📢 Рассылка с бонусом за подписку на канал\n\n"
+        "Шаг 1/5: Введите текст рассылки\n\n"
+        "Это основное сообщение, которое увидят пользователи.\n"
+        "К нему автоматически добавится кнопка для проверки подписки.\n\n"
+        "Пример:\n"
+        "«Подпишись на наш канал и получи 1000 бонусных токенов!\n"
+        "Подпишись → нажми кнопку ниже → получи токены!»",
+        reply_markup=cancel_keyboard()
+    )
+    await callback.answer()
+
+
+@admin_router.message(StateFilter(BroadcastWithChannelBonus.waiting_for_text))
+async def process_cb_broadcast_text(message: Message, state: FSMContext):
+    """Process text for channel bonus broadcast."""
+    if not is_admin(message.from_user.id):
+        return
+
+    text = message.text.strip()
+    if not text:
+        await message.answer("❌ Текст не может быть пустым.", reply_markup=cancel_keyboard())
+        return
+
+    await state.update_data(text=text)
+    await state.set_state(BroadcastWithChannelBonus.waiting_for_image)
+
+    from app.admin.keyboards.inline import skip_image_cb_keyboard
+    await message.answer(
+        f"✅ Текст сохранён ({len(text)} символов)\n\n"
+        "Шаг 2/5: Отправьте фото для сообщения\n"
+        "или нажмите «Пропустить».",
+        reply_markup=skip_image_cb_keyboard()
+    )
+
+
+@admin_router.message(StateFilter(BroadcastWithChannelBonus.waiting_for_image), F.photo)
+async def process_cb_broadcast_image(message: Message, state: FSMContext):
+    """Process image for channel bonus broadcast."""
+    if not is_admin(message.from_user.id):
+        return
+
+    photo = message.photo[-1]
+    await state.update_data(image_file_id=photo.file_id)
+    await _show_channel_selection(message.answer, state)
+
+
+@admin_router.callback_query(F.data == "admin:cb_skip_image")
+async def skip_cb_broadcast_image(callback: CallbackQuery, state: FSMContext):
+    """Skip image for channel bonus broadcast."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    await state.update_data(image_file_id=None)
+    await _show_channel_selection(callback.message.edit_text, state)
+    await callback.answer()
+
+
+async def _show_channel_selection(reply_func, state: FSMContext):
+    """Show channel/bonus selection step."""
+    from app.database.database import async_session_maker
+    from app.services.channel_bonus import ChannelBonusService
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    async with async_session_maker() as session:
+        service = ChannelBonusService(session)
+        bonuses = await service.get_active_bonuses()
+
+    builder = InlineKeyboardBuilder()
+    for bonus in bonuses:
+        ch_name = bonus.channel_title or str(bonus.channel_id)
+        if bonus.channel_username:
+            ch_name = f"@{bonus.channel_username}"
+        builder.button(
+            text=f"{ch_name} ({bonus.bonus_tokens:,} токенов)",
+            callback_data=f"admin:cb_select_bonus:{bonus.id}"
+        )
+    builder.button(text="❌ Отмена", callback_data="admin:cancel")
+    builder.adjust(1)
+
+    await state.set_state(BroadcastWithChannelBonus.waiting_for_channel)
+
+    await reply_func(
+        "Шаг 3/5: Выберите бонус за подписку\n\n"
+        "Выберите канал/группу, на который пользователи\n"
+        "должны подписаться для получения токенов:",
+        reply_markup=builder.as_markup()
+    )
+
+
+@admin_router.callback_query(F.data.startswith("admin:cb_select_bonus:"), StateFilter(BroadcastWithChannelBonus.waiting_for_channel))
+async def select_cb_bonus(callback: CallbackQuery, state: FSMContext):
+    """Select which bonus to use for broadcast."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    bonus_id = int(callback.data.split(":")[-1])
+    await state.update_data(bonus_id=bonus_id)
+
+    from app.database.database import async_session_maker
+    from app.services.channel_bonus import ChannelBonusService
+
+    async with async_session_maker() as session:
+        service = ChannelBonusService(session)
+        bonus = await service.get_bonus_by_id(bonus_id)
+
+    if not bonus:
+        await callback.answer("❌ Бонус не найден")
+        return
+
+    ch_name = bonus.channel_title or str(bonus.channel_id)
+    if bonus.channel_username:
+        ch_name += f" (@{bonus.channel_username})"
+
+    await state.set_state(BroadcastWithChannelBonus.waiting_for_filter)
+
+    from app.admin.keyboards.inline import channel_bonus_filter_keyboard
+
+    await callback.message.edit_text(
+        f"✅ Выбран: {ch_name}\n"
+        f"💰 Бонус: {bonus.bonus_tokens:,} токенов\n\n"
+        "Шаг 4/5: Выберите получателей рассылки\n\n"
+        "• Все пользователи — рассылка всем\n"
+        "• С подпиской — только у кого есть активная подписка\n"
+        "• Без подписки — у кого нет подписки\n"
+        "• Выборочно — укажите конкретных пользователей по ID/username\n"
+        "• Тестовая — отправить только администраторам",
+        reply_markup=channel_bonus_filter_keyboard()
+    )
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data.startswith("admin:cb_filter:"), StateFilter(BroadcastWithChannelBonus.waiting_for_filter))
+async def select_cb_broadcast_filter(callback: CallbackQuery, state: FSMContext):
+    """Select recipient filter for channel bonus broadcast."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    filter_type = callback.data.split(":")[-1]
+    await state.update_data(filter_type=filter_type)
+
+    # If specific users - ask for user list
+    if filter_type == "specific":
+        await state.set_state(BroadcastWithChannelBonus.waiting_for_specific_users)
+        await callback.message.edit_text(
+            "🎯 Выборочная отправка\n\n"
+            "Введите список пользователей через запятую, пробел или новую строку.\n\n"
+            "Поддерживаемые форматы:\n"
+            "• Telegram ID: 123456789\n"
+            "• Username: @username\n"
+            "• Смешанный: 123456789, @username, 987654321\n\n"
+            "Пример:\n"
+            "123456789, @user1, @user2, 987654321",
+            reply_markup=cancel_keyboard()
+        )
+        await callback.answer()
+        return
+
+    # For test - use admin IDs
+    if filter_type == "test":
+        await state.update_data(filter_type="test")
+
+    await _show_cb_confirmation(callback, state)
+    await callback.answer()
+
+
+@admin_router.message(StateFilter(BroadcastWithChannelBonus.waiting_for_specific_users))
+async def process_cb_specific_users(message: Message, state: FSMContext):
+    """Process specific users input for channel bonus broadcast."""
+    if not is_admin(message.from_user.id):
+        return
+
+    import re
+    raw = message.text.strip()
+    # Split by comma, space, newline
+    parts = re.split(r'[,\s\n]+', raw)
+    parts = [p.strip() for p in parts if p.strip()]
+
+    if not parts:
+        await message.answer(
+            "❌ Не указано ни одного пользователя. Попробуйте ещё раз.",
+            reply_markup=cancel_keyboard()
+        )
+        return
+
+    await state.update_data(specific_users=parts)
+
+    # Create a fake callback for reuse
+    await state.set_state(BroadcastWithChannelBonus.waiting_for_confirmation)
+    await _show_cb_confirmation_msg(message, state)
+
+
+async def _show_cb_confirmation(callback: CallbackQuery, state: FSMContext):
+    """Show confirmation for channel bonus broadcast."""
+    await state.set_state(BroadcastWithChannelBonus.waiting_for_confirmation)
+
+    from app.database.database import async_session_maker
+    from app.services.channel_bonus import ChannelBonusService
+    from app.admin.services import get_recipients_count
+    from app.admin.keyboards.inline import channel_bonus_confirm_keyboard
+
+    data = await state.get_data()
+    filter_type = data.get("filter_type", "all")
+    bonus_id = data.get("bonus_id")
+
+    async with async_session_maker() as session:
+        service = ChannelBonusService(session)
+        bonus = await service.get_bonus_by_id(bonus_id)
+
+        if filter_type == "test":
+            recipient_count = len(settings.admin_user_ids)
+        elif filter_type == "specific":
+            recipient_count = len(data.get("specific_users", []))
+        else:
+            recipient_count = await get_recipients_count(session, filter_type)
+
+    filter_names = {
+        "all": "Все пользователи",
+        "subscribed": "С подпиской",
+        "free": "Без подписки",
+        "specific": f"Выборочно ({len(data.get('specific_users', []))} чел.)",
+        "test": f"Тестовая (админы: {len(settings.admin_user_ids)})",
+    }
+
+    ch_name = bonus.channel_title or str(bonus.channel_id)
+    if bonus.channel_username:
+        ch_name += f" (@{bonus.channel_username})"
+
+    text = data.get("text", "")
+    image_info = "Да" if data.get("image_file_id") else "Нет"
+
+    preview = (
+        f"📋 Шаг 5/5: Подтверждение рассылки\n\n"
+        f"─────────────────\n"
+        f"{text}\n"
+        f"─────────────────\n\n"
+        f"📢 Канал: {ch_name}\n"
+        f"💰 Бонус: {bonus.bonus_tokens:,} токенов\n"
+        f"📸 Фото: {image_info}\n"
+        f"🎯 Фильтр: {filter_names.get(filter_type, 'Неизвестно')}\n"
+        f"📊 Получателей: ~{recipient_count}\n\n"
+        f"Пользователи получат сообщение с кнопкой\n"
+        f"«✅ Проверить подписку и получить {bonus.bonus_tokens:,} токенов»"
+    )
+
+    await callback.message.edit_text(preview, reply_markup=channel_bonus_confirm_keyboard())
+
+
+async def _show_cb_confirmation_msg(message: Message, state: FSMContext):
+    """Show confirmation for channel bonus broadcast (message variant)."""
+    from app.database.database import async_session_maker
+    from app.services.channel_bonus import ChannelBonusService
+    from app.admin.services import get_recipients_count
+    from app.admin.keyboards.inline import channel_bonus_confirm_keyboard
+
+    data = await state.get_data()
+    filter_type = data.get("filter_type", "all")
+    bonus_id = data.get("bonus_id")
+
+    async with async_session_maker() as session:
+        service = ChannelBonusService(session)
+        bonus = await service.get_bonus_by_id(bonus_id)
+
+        if filter_type == "test":
+            recipient_count = len(settings.admin_user_ids)
+        elif filter_type == "specific":
+            recipient_count = len(data.get("specific_users", []))
+        else:
+            recipient_count = await get_recipients_count(session, filter_type)
+
+    filter_names = {
+        "all": "Все пользователи",
+        "subscribed": "С подпиской",
+        "free": "Без подписки",
+        "specific": f"Выборочно ({len(data.get('specific_users', []))} чел.)",
+        "test": f"Тестовая (админы: {len(settings.admin_user_ids)})",
+    }
+
+    ch_name = bonus.channel_title or str(bonus.channel_id)
+    if bonus.channel_username:
+        ch_name += f" (@{bonus.channel_username})"
+
+    text = data.get("text", "")
+    image_info = "Да" if data.get("image_file_id") else "Нет"
+
+    preview = (
+        f"📋 Шаг 5/5: Подтверждение рассылки\n\n"
+        f"─────────────────\n"
+        f"{text}\n"
+        f"─────────────────\n\n"
+        f"📢 Канал: {ch_name}\n"
+        f"💰 Бонус: {bonus.bonus_tokens:,} токенов\n"
+        f"📸 Фото: {image_info}\n"
+        f"🎯 Фильтр: {filter_names.get(filter_type, 'Неизвестно')}\n"
+        f"📊 Получателей: ~{recipient_count}\n\n"
+        f"Пользователи получат сообщение с кнопкой\n"
+        f"«✅ Проверить подписку и получить {bonus.bonus_tokens:,} токенов»"
+    )
+
+    await message.answer(preview, reply_markup=channel_bonus_confirm_keyboard())
+
+
+@admin_router.callback_query(F.data == "admin:cb_confirm_send")
+async def confirm_cb_broadcast_send(callback: CallbackQuery, state: FSMContext):
+    """Confirm and send channel bonus broadcast."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    await callback.answer()
+
+    from app.database.database import async_session_maker
+    from app.admin.services import (
+        send_broadcast_message,
+        create_broadcast_message,
+        get_recipients,
+        update_broadcast_stats,
+    )
+    from app.services.channel_bonus import ChannelBonusService
+    from aiogram import Bot
+    from aiogram.client.default import DefaultBotProperties
+    from aiogram.types import BufferedInputFile, InlineKeyboardMarkup, InlineKeyboardButton
+
+    data = await state.get_data()
+    text = data.get("text", "")
+    image_file_id = data.get("image_file_id")
+    bonus_id = data.get("bonus_id")
+    filter_type = data.get("filter_type", "all")
+    specific_users = data.get("specific_users", [])
+
+    # Get bonus info
+    async with async_session_maker() as session:
+        service = ChannelBonusService(session)
+        bonus = await service.get_bonus_by_id(bonus_id)
+
+    if not bonus:
+        await callback.message.answer("❌ Бонус не найден.", reply_markup=back_keyboard())
+        await state.clear()
+        return
+
+    # Build the subscription check button
+    channel_link = f"https://t.me/{bonus.channel_username}" if bonus.channel_username else None
+    check_button_rows = []
+    if channel_link:
+        check_button_rows.append([
+            InlineKeyboardButton(
+                text=f"📢 Подписаться на канал",
+                url=channel_link
+            )
+        ])
+    check_button_rows.append([
+        InlineKeyboardButton(
+            text=f"✅ Проверить подписку и получить {bonus.bonus_tokens:,} токенов",
+            callback_data=f"bot.check_channel_sub:{bonus.id}"
+        )
+    ])
+    keyboard = InlineKeyboardMarkup(inline_keyboard=check_button_rows)
+
+    # Create broadcast record
+    buttons_data = []
+    if channel_link:
+        buttons_data.append({"text": "Подписаться на канал", "url": channel_link})
+    buttons_data.append({
+        "text": f"Проверить подписку ({bonus.bonus_tokens:,} токенов)",
+        "callback_data": f"bot.check_channel_sub:{bonus.id}",
+    })
+
+    # Resolve admin ID
+    admin_telegram_id = callback.from_user.id
+    try:
+        from app.database.models import User
+        from sqlalchemy import select as sa_select
+        async with async_session_maker() as session:
+            result = await session.execute(
+                sa_select(User.id).where(User.telegram_id == admin_telegram_id)
+            )
+            internal_admin_id = result.scalar_one_or_none()
+    except Exception:
+        internal_admin_id = None
+
+    async with async_session_maker() as session:
+        broadcast = await create_broadcast_message(
+            session=session,
+            admin_id=internal_admin_id,
+            text=text,
+            image_file_id=image_file_id,
+            buttons=buttons_data,
+            filter_type=filter_type,
+        )
+
+    # Get recipients
+    async with async_session_maker() as session:
+        if filter_type == "test":
+            # Send to admin IDs only
+            from app.database.models import User
+            from sqlalchemy import select as sa_select
+            result = await session.execute(
+                sa_select(User).where(User.telegram_id.in_(settings.admin_user_ids))
+            )
+            recipients = list(result.scalars().all())
+        elif filter_type == "specific":
+            recipients = await _resolve_specific_users(session, specific_users)
+        else:
+            recipients = await get_recipients(session, filter_type)
+
+    # Create main bot without parse_mode to avoid Markdown issues
+    main_bot = Bot(token=settings.telegram_bot_token, default=DefaultBotProperties())
+
+    # Re-upload photo if needed
+    main_bot_photo = None
+    if image_file_id:
+        try:
+            admin_bot_instance = Bot(token=settings.telegram_admin_bot_token, default=DefaultBotProperties())
+            file = await admin_bot_instance.get_file(image_file_id)
+            photo_bytes = await admin_bot_instance.download_file(file.file_path)
+            main_bot_photo = BufferedInputFile(
+                file=photo_bytes.read(),
+                filename="broadcast_photo.jpg"
+            )
+            await admin_bot_instance.session.close()
+        except Exception as e:
+            logger.error("cb_broadcast_photo_download_error", error=str(e))
+            main_bot_photo = None
+
+    total_users = len(recipients)
+    success_count = 0
+    error_count = 0
+    blocked_count = 0
+    blocked_user_ids = []
+
+    status_msg = await callback.message.answer(f"⏳ Отправка... 0/{total_users}")
+
+    for i, user in enumerate(recipients, 1):
+        try:
+            result = await send_broadcast_message(
+                bot=main_bot,
+                chat_id=user.telegram_id,
+                text=text,
+                photo=main_bot_photo if main_bot_photo else None,
+                keyboard=keyboard,
+            )
+            # Cache photo file_id after first successful send
+            if main_bot_photo and isinstance(main_bot_photo, BufferedInputFile) and result:
+                try:
+                    new_file_id = result.photo[-1].file_id
+                    main_bot_photo = new_file_id
+                except (AttributeError, IndexError):
+                    pass
+            success_count += 1
+        except Exception as e:
+            error_msg = str(e)
+            if "bot was blocked by the user" in error_msg or "user is deactivated" in error_msg:
+                blocked_count += 1
+                blocked_user_ids.append(user.id)
+            else:
+                error_count += 1
+                logger.error("cb_broadcast_send_error", user_id=user.telegram_id, error=error_msg)
+
+        if i % 100 == 0 or i == total_users:
+            try:
+                await status_msg.edit_text(
+                    f"⏳ Отправка... {i}/{total_users}\n"
+                    f"✅ Успешно: {success_count}\n"
+                    f"🚫 Заблокировали: {blocked_count}\n"
+                    f"❌ Ошибок: {error_count}"
+                )
+            except:
+                pass
+
+    # Mark blocked users
+    if blocked_user_ids:
+        from app.database.models import User
+        from sqlalchemy import select as sa_select
+        async with async_session_maker() as session:
+            for uid in blocked_user_ids:
+                r = await session.execute(sa_select(User).where(User.id == uid))
+                blocked_user = r.scalar_one_or_none()
+                if blocked_user:
+                    blocked_user.is_bot_blocked = True
+            await session.commit()
+
+    # Update stats
+    async with async_session_maker() as session:
+        await update_broadcast_stats(
+            session=session,
+            broadcast_id=broadcast.id,
+            sent_count=success_count,
+            error_count=error_count + blocked_count,
+        )
+
+    # Final status
+    final_text = (
+        f"✅ Рассылка с бонусом за подписку завершена!\n\n"
+        f"📊 Статистика:\n"
+        f"  • Отправлено: {success_count}\n"
+    )
+    if blocked_count > 0:
+        final_text += f"  • Заблокировали бота: {blocked_count}\n"
+    if error_count > 0:
+        final_text += f"  • Ошибки: {error_count}\n"
+    rate = success_count * 100 // total_users if total_users > 0 else 0
+    final_text += (
+        f"  • Успешность: {rate}%\n\n"
+        f"🔗 ID рассылки: #{broadcast.id}\n"
+        f"📢 Канал: {bonus.channel_title}\n"
+        f"💰 Бонус: {bonus.bonus_tokens:,} токенов"
+    )
+
+    await status_msg.edit_text(final_text, reply_markup=back_keyboard())
+    await main_bot.session.close()
+
+    logger.info(
+        "cb_broadcast_complete",
+        admin_id=callback.from_user.id,
+        broadcast_id=broadcast.id,
+        bonus_id=bonus.id,
+        filter=filter_type,
+        total=total_users,
+        success=success_count,
+    )
+
+    await state.clear()
+
+
+# ==================== TARGETED / TEST BROADCAST HELPERS ====================
+
+
+async def _resolve_specific_users(session, user_identifiers: list[str]) -> list:
+    """
+    Resolve user identifiers (IDs, @usernames) to User objects.
+
+    Args:
+        session: Database session
+        user_identifiers: List of strings - telegram IDs or @usernames
+
+    Returns:
+        List of User objects
+    """
+    from app.database.models import User
+    from sqlalchemy import select as sa_select, or_
+
+    users = []
+    telegram_ids = []
+    usernames = []
+
+    for identifier in user_identifiers:
+        identifier = identifier.strip()
+        if identifier.startswith("@"):
+            usernames.append(identifier[1:].lower())
+        elif identifier.lstrip("-").isdigit():
+            telegram_ids.append(int(identifier))
+        else:
+            # Try as username without @
+            usernames.append(identifier.lower())
+
+    conditions = []
+    if telegram_ids:
+        conditions.append(User.telegram_id.in_(telegram_ids))
+    if usernames:
+        from sqlalchemy import func as sa_func
+        conditions.append(sa_func.lower(User.username).in_(usernames))
+
+    if conditions:
+        result = await session.execute(
+            sa_select(User).where(
+                or_(*conditions),
+                User.is_banned == False,
+                User.is_bot_blocked == False,
+            )
+        )
+        users = list(result.scalars().all())
+
+    return users
+
+
+@admin_router.message(StateFilter(BroadcastTargeted.waiting_for_users))
+async def process_targeted_users(message: Message, state: FSMContext):
+    """Process specific users for targeted simple broadcast."""
+    if not is_admin(message.from_user.id):
+        return
+
+    import re
+    raw = message.text.strip()
+    parts = re.split(r'[,\s\n]+', raw)
+    parts = [p.strip() for p in parts if p.strip()]
+
+    if not parts:
+        await message.answer(
+            "❌ Не указано ни одного пользователя.",
+            reply_markup=cancel_keyboard()
+        )
+        return
+
+    await state.update_data(specific_users=parts, broadcast_filter="specific")
+    await state.set_state(Broadcast.waiting_for_message)
+
+    await message.answer(
+        f"✅ Указано {len(parts)} получателей\n\n"
+        "Теперь введите текст сообщения:",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@admin_router.message(StateFilter(BroadcastWithButtons.waiting_for_filter))
+async def process_advanced_specific_users_input(message: Message, state: FSMContext):
+    """Process specific users input for advanced broadcast with buttons."""
+    if not is_admin(message.from_user.id):
+        return
+
+    data = await state.get_data()
+    if not data.get("awaiting_specific_users"):
+        return  # Not waiting for user list, ignore
+
+    import re
+    raw = message.text.strip()
+    parts = re.split(r'[,\s\n]+', raw)
+    parts = [p.strip() for p in parts if p.strip()]
+
+    if not parts:
+        await message.answer(
+            "❌ Не указано ни одного пользователя.",
+            reply_markup=cancel_keyboard()
+        )
+        return
+
+    await state.update_data(
+        specific_users=parts,
+        filter_type="specific",
+        awaiting_specific_users=False,
+    )
+    await state.set_state(BroadcastWithButtons.waiting_for_confirmation)
+
+    from app.admin.keyboards.inline import broadcast_confirmation_keyboard
+
+    text_content = data.get("text", "")
+    buttons = data.get("buttons", [])
+    image_file_id = data.get("image_file_id")
+
+    preview = (
+        f"📋 Шаг 5/5: Превью (ВЫБОРОЧНАЯ РАССЫЛКА)\n\n"
+        f"─────────────────\n"
+        f"{text_content}\n"
+        f"─────────────────\n\n"
+        f"🎯 Получателей: {len(parts)}\n"
+        f"📸 Фото: {'Да' if image_file_id else 'Нет'}\n"
+        f"🔘 Кнопок: {len(buttons)}"
+    )
+
+    await message.answer(preview, reply_markup=broadcast_confirmation_keyboard())
 
 
 # ==================== LEGACY COMMAND HANDLERS ====================
