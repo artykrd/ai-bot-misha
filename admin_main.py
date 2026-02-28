@@ -3470,19 +3470,45 @@ async def process_channel_bonus_channel(message: Message, state: FSMContext):
 
     # Verify channel with the main bot
     main_bot = Bot(token=settings.telegram_bot_token, default=DefaultBotProperties())
+    chat_identifier = channel_id if channel_id else channel_input
+
+    # Step 1: Try to get chat info
     try:
-        chat_identifier = channel_id if channel_id else channel_input
         chat = await main_bot.get_chat(chat_identifier)
         channel_id = chat.id
         channel_username = chat.username
         channel_title = chat.title or chat.full_name or str(channel_id)
+    except Exception as e:
+        error_msg = str(e).lower()
+        if "member list is inaccessible" in error_msg:
+            await message.answer(
+                "❌ Бот не имеет доступа к этой группе/каналу.\n\n"
+                "Для настройки бонуса за подписку:\n"
+                "1. Откройте настройки канала/группы\n"
+                "2. Добавьте основного бота как администратора\n"
+                "3. После этого отправьте ссылку ещё раз",
+                reply_markup=cancel_keyboard()
+            )
+        else:
+            await message.answer(
+                f"❌ Не удалось найти канал/группу.\n\n"
+                f"Ошибка: {str(e)[:200]}\n\n"
+                "Убедитесь, что:\n"
+                "1. Канал/группа существует\n"
+                "2. Основной бот добавлен в канал/группу как администратор\n"
+                "3. Указан правильный формат",
+                reply_markup=cancel_keyboard()
+            )
+        await main_bot.session.close()
+        return
 
-        # Check if bot is admin
+    # Step 2: Check if bot is admin in the chat
+    try:
         bot_member = await main_bot.get_chat_member(chat.id, (await main_bot.get_me()).id)
         if bot_member.status not in ("administrator", "creator"):
             await message.answer(
                 f"⚠️ Бот не является администратором в «{channel_title}».\n\n"
-                "Добавьте основного бота (@ваш_бот) в администраторы канала/группы,\n"
+                "Добавьте основного бота в администраторы канала/группы,\n"
                 "чтобы он мог проверять подписку пользователей.\n\n"
                 "После добавления — отправьте ссылку ещё раз.",
                 reply_markup=cancel_keyboard()
@@ -3490,15 +3516,23 @@ async def process_channel_bonus_channel(message: Message, state: FSMContext):
             await main_bot.session.close()
             return
     except Exception as e:
-        await message.answer(
-            f"❌ Не удалось найти канал/группу.\n\n"
-            f"Ошибка: {str(e)[:200]}\n\n"
-            "Убедитесь, что:\n"
-            "1. Канал/группа существует\n"
-            "2. Основной бот добавлен в канал/группу\n"
-            "3. Указан правильный формат",
-            reply_markup=cancel_keyboard()
-        )
+        error_msg = str(e).lower()
+        if "member list is inaccessible" in error_msg or "user not found" in error_msg:
+            await message.answer(
+                f"❌ Бот не добавлен в «{channel_title}».\n\n"
+                "Для настройки бонуса за подписку:\n"
+                "1. Добавьте основного бота в канал/группу\n"
+                "2. Назначьте бота администратором\n"
+                "3. После этого отправьте ссылку ещё раз",
+                reply_markup=cancel_keyboard()
+            )
+        else:
+            await message.answer(
+                f"❌ Не удалось проверить права бота в «{channel_title}».\n\n"
+                f"Ошибка: {str(e)[:200]}\n\n"
+                "Убедитесь, что бот добавлен в канал/группу как администратор.",
+                reply_markup=cancel_keyboard()
+            )
         await main_bot.session.close()
         return
 
