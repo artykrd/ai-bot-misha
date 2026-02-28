@@ -815,7 +815,10 @@ async def tariff_selected(callback: CallbackQuery, user: User):
     # Build payment message
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="💳 Оплатить", url=confirmation_url)
+        InlineKeyboardButton(text="💳 Оплатить Картой/СБП", url=confirmation_url)
+    )
+    builder.row(
+        InlineKeyboardButton(text="⭐ Оплатить Звёздами Telegram", callback_data=f"stars_pay:sub:{tariff_id}")
     )
     builder.row(
         InlineKeyboardButton(text="⬅️ Назад", callback_data="bot#shop")
@@ -921,8 +924,9 @@ async def build_referral_text(user: User) -> str:
 
 Приглашайте друзей и получайте награды:
 
-🎁 **+50 токенов** вам и другу при первом запуске
-💰 **10% деньгами** от каждой покупки приглашенного
+🎁 **+100 токенов** вам за каждого приглашённого друга
+🎁 **+5 000 приветственных токенов** другу при первом запуске
+💰 **10% деньгами** от каждой покупки приглашённого
 
 👥 Приглашено пользователей: **{referral_count}**
 🔶 Заработано токенов: **{tokens_earned:,}**

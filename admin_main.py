@@ -706,14 +706,22 @@ async def user_details_callback(callback: CallbackQuery):
                 return
 
             # Get statistics
+            # Count only paid subscriptions (those linked to a successful payment)
             total_subs = await session.scalar(
-                select(func.count()).select_from(Subscription).where(Subscription.user_id == user.id)
+                select(func.count()).select_from(Payment).where(
+                    Payment.user_id == user.id,
+                    Payment.status == "success",
+                    Payment.subscription_id.isnot(None),
+                )
             )
             total_requests = await session.scalar(
                 select(func.count()).select_from(AIRequest).where(AIRequest.user_id == user.id)
             )
             total_payments = await session.scalar(
-                select(func.count()).select_from(Payment).where(Payment.user_id == user.id)
+                select(func.count()).select_from(Payment).where(
+                    Payment.user_id == user.id,
+                    Payment.status == "success",
+                )
             )
 
             # Get active subscription

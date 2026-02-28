@@ -130,17 +130,18 @@ async def cmd_start(message: Message, user: User, state: FSMContext):
                         )
 
                         if referral:
-                            # Give signup bonus to new user
+                            # Give signup bonus: inviter gets 100 tokens
+                            # Invited user already gets 5000 welcome tokens via auth middleware
                             bonus_given = await referral_service.give_signup_bonus(
                                 referrer_id=referrer.id,
                                 referred_id=user.id,
-                                bonus_tokens=50
+                                referrer_bonus=100,
                             )
 
                             if bonus_given:
                                 await message.answer(
                                     f"🎉 Вы были приглашены пользователем {referrer.full_name}!\n"
-                                    f"Вам начислено 50 бонусных токенов!"
+                                    f"Вам начислено 5 000 приветственных токенов!"
                                 )
                             else:
                                 # Referral created but bonus failed

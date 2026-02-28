@@ -4829,12 +4829,33 @@ async def handle_photo_action_choice(callback: CallbackQuery, state: FSMContext)
         await callback.answer()
 
     elif action == "image":
-        # Show image models
+        # Show all image generation models
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+        banana_pro_billing = get_image_model_billing("banana-pro")
+        mj_billing = get_image_model_billing("midjourney")
+        dalle_billing_img = get_image_model_billing("dalle3")
+        recraft_billing = get_image_model_billing("recraft")
+        sd_billing = get_image_model_billing("stable-diffusion")
+        seedream_billing = get_image_model_billing("seedream-4.5")
+        kling_img_billing = get_image_model_billing("kling-image")
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [
-                InlineKeyboardButton(text="🍌 Nano Banana", callback_data="photo_image:nano")
+                InlineKeyboardButton(text="🍌 Nano Banana", callback_data="photo_image:nano"),
+                InlineKeyboardButton(text="🍌 Banana PRO", callback_data="photo_image:banana_pro"),
+            ],
+            [
+                InlineKeyboardButton(text="💥 GPT Image", callback_data="photo_image:dalle"),
+                InlineKeyboardButton(text="🎨 Midjourney", callback_data="photo_image:midjourney"),
+            ],
+            [
+                InlineKeyboardButton(text="✏️ Recraft", callback_data="photo_image:recraft"),
+                InlineKeyboardButton(text="🖼 Stable Diffusion", callback_data="photo_image:sd"),
+            ],
+            [
+                InlineKeyboardButton(text="🌟 Seedream", callback_data="photo_image:seedream"),
+                InlineKeyboardButton(text="✨ Kling Image", callback_data="photo_image:kling_image"),
             ],
             [
                 InlineKeyboardButton(text="◀️ Назад", callback_data="photo_action:back")
@@ -4843,7 +4864,14 @@ async def handle_photo_action_choice(callback: CallbackQuery, state: FSMContext)
 
         caption_text = (
             f"🖼 Выберите модель для генерации изображения:\n\n"
-            f"• Nano Banana - Gemini 2.5 Flash, image-to-image ({format_token_amount(nano_billing.tokens_per_generation)} токенов)"
+            f"• Nano Banana — {format_token_amount(nano_billing.tokens_per_generation)} токенов\n"
+            f"• Banana PRO — {format_token_amount(banana_pro_billing.tokens_per_generation)} токенов\n"
+            f"• GPT Image (DALL-E 3) — {format_token_amount(dalle_billing_img.tokens_per_generation)} токенов\n"
+            f"• Midjourney — {format_token_amount(mj_billing.tokens_per_generation)} токенов\n"
+            f"• Recraft — {format_token_amount(recraft_billing.tokens_per_generation)} токенов\n"
+            f"• Stable Diffusion — {format_token_amount(sd_billing.tokens_per_generation)} токенов\n"
+            f"• Seedream 4.5 — {format_token_amount(seedream_billing.tokens_per_generation)} токенов\n"
+            f"• Kling Image — {format_token_amount(kling_img_billing.tokens_per_generation)} токенов"
         )
 
         try:
@@ -4992,28 +5020,55 @@ async def handle_photo_image_model_choice(callback: CallbackQuery, state: FSMCon
     # Map service names
     service_map = {
         "nano": "nano_banana",
-        "dalle": "dalle"
+        "banana_pro": "nano_banana_pro",
+        "dalle": "dalle",
+        "midjourney": "midjourney",
+        "recraft": "recraft",
+        "sd": "stable_diffusion",
+        "seedream": "seedream",
+        "kling_image": "kling_image",
     }
 
+    # For Banana PRO, set flag
+    extra_data = {}
+    if model == "banana_pro":
+        extra_data["nano_is_pro"] = True
+
     # Move photo to reference_image_path for image generation
-    await state.update_data(reference_image_path=saved_photo_path, service=service_map.get(model, model))
+    await state.update_data(
+        reference_image_path=saved_photo_path,
+        service=service_map.get(model, model),
+        **extra_data,
+    )
     await state.set_state(MediaState.waiting_for_image_prompt)
 
     model_names = {
         "nano": "Nano Banana",
-        "dalle": "DALL-E"
+        "banana_pro": "Banana PRO",
+        "dalle": "GPT Image (DALL-E 3)",
+        "midjourney": "Midjourney",
+        "recraft": "Recraft",
+        "sd": "Stable Diffusion",
+        "seedream": "Seedream 4.5",
+        "kling_image": "Kling Image",
     }
 
     examples = {
         "nano": "• \"Сделай в стиле аниме\"\n• \"Преобразуй в акварельный рисунок\"\n• \"Сделай фон космическим\"",
-        "dalle": "• Отправьте любой текст для создания вариации"
+        "banana_pro": "• \"Преврати в профессиональный портрет\"\n• \"Сделай в стиле киберпанк\"",
+        "dalle": "• Отправьте любой текст для создания вариации",
+        "midjourney": "• \"Стилизуй под масляную живопись\"\n• \"Сделай в стиле фэнтези\"",
+        "recraft": "• \"Преврати в иллюстрацию\"\n• \"Сделай в стиле логотипа\"",
+        "sd": "• \"Преобразуй в реалистичный стиль\"\n• \"Добавь эффект HDR\"",
+        "seedream": "• \"Улучши качество фото\"\n• \"Преврати в художественное фото\"",
+        "kling_image": "• \"Преобразуй в новый стиль\"\n• \"Сделай в стиле комикса\"",
     }
 
     caption_text = (
         f"✅ Фото сохранено!\n\n"
         f"🖼 {model_names.get(model, model)}\n\n"
         f"📝 Теперь отправьте описание изображения, которое вы хотите создать на основе этого фото.\n\n"
-        f"Примеры:\n{examples.get(model, '')}"
+        f"Примеры:\n{examples.get(model, '• Отправьте описание желаемого изображения')}"
     )
 
     try:
