@@ -56,6 +56,7 @@ class EternalTokenPlan:
     tokens: int
     price: Decimal
     display_name: str
+    star_price: int = 0
 
 
 def _build_display_name(package: TokenPackage) -> str:
@@ -104,6 +105,8 @@ UNLIMITED_PLAN = Tariff(
     price=Decimal("649.00"),
 )
 
+UNLIMITED_PLAN_STAR_PRICE = 369
+
 
 ETERNAL_PLANS: Dict[str, EternalTokenPlan] = {
     "eternal_150k": EternalTokenPlan(
@@ -111,24 +114,28 @@ ETERNAL_PLANS: Dict[str, EternalTokenPlan] = {
         tokens=150_000,
         price=Decimal("149.00"),
         display_name="150,000 токенов",
+        star_price=85,
     ),
     "eternal_250k": EternalTokenPlan(
         subscription_type="eternal_250k",
         tokens=250_000,
         price=Decimal("279.00"),
         display_name="250,000 токенов",
+        star_price=155,
     ),
     "eternal_500k": EternalTokenPlan(
         subscription_type="eternal_500k",
         tokens=500_000,
         price=Decimal("519.00"),
         display_name="500,000 токенов",
+        star_price=295,
     ),
     "eternal_1m": EternalTokenPlan(
         subscription_type="eternal_1m",
         tokens=1_000_000,
         price=Decimal("999.00"),
         display_name="1,000,000 токенов",
+        star_price=565,
     ),
 }
 

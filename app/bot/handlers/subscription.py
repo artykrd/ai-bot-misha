@@ -194,7 +194,10 @@ async def process_subscription_purchase(callback: CallbackQuery, user: User):
 
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="💳 Оплатить", url=confirmation_url)
+        InlineKeyboardButton(text="💳 Оплатить Картой/СБП", url=confirmation_url)
+    )
+    builder.row(
+        InlineKeyboardButton(text="⭐ Оплатить Звёздами Telegram", callback_data=f"stars_pay:eternal:{subscription_type}")
     )
     builder.row(
         InlineKeyboardButton(text="⬅️ Назад", callback_data="bot#shop")

@@ -49,12 +49,14 @@ async def setup_bot() -> Dispatcher:
         text_ai,
         common,
         download_handler,
-        async_kling_handler  # Async Kling handler for job queue
+        async_kling_handler,  # Async Kling handler for job queue
+        stars_payment,  # Telegram Stars payment handler
     )
     from app.bot.handlers import dialog_handler
     from app.bot.handlers import channel_bonus
 
     # Order matters! Commands should come before FSM handlers, dialog_handler should be last
+    dp.include_router(stars_payment.router)  # Stars payment (pre_checkout must be early)
     dp.include_router(start.router)
     dp.include_router(channel_bonus.router)  # Channel subscription bonus callbacks
     dp.include_router(subscription.router)  # Promocode & subscription callbacks

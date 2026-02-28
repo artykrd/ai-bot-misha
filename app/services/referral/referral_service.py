@@ -210,15 +210,16 @@ class ReferralService:
         self,
         referrer_id: int,
         referred_id: int,
-        bonus_tokens: int = 50
+        referrer_bonus: int = 100,
     ) -> bool:
         """
-        Give signup bonus tokens to referrer and referred user (once).
+        Give signup bonus tokens to referrer when a new user is invited.
+        The invited user already receives 5 000 welcome tokens via the auth middleware.
 
         Args:
             referrer_id: ID of user who invited
             referred_id: ID of user who was invited
-            bonus_tokens: Number of bonus tokens (default: 50)
+            referrer_bonus: Tokens for the inviter (default: 100)
 
         Returns:
             True if successful, False otherwise
@@ -235,36 +236,26 @@ class ReferralService:
             if not referral:
                 return False
 
-            if referral.tokens_earned >= bonus_tokens:
+            if referral.tokens_earned > 0:
                 return False
 
-            # Create subscriptions with bonus tokens
-            referred_subscription = Subscription(
-                user_id=referred_id,
-                subscription_type="referral_signup_bonus",
-                tokens_amount=bonus_tokens,
-                tokens_used=0,
-                price=Decimal("0.00"),
-                is_active=True,
-                started_at=datetime.now(timezone.utc),
-                expires_at=None  # Eternal tokens
-            )
+            # Create subscription with bonus for inviter only
+            # (invited user already gets 5000 welcome tokens from auth middleware)
             referrer_subscription = Subscription(
                 user_id=referrer_id,
                 subscription_type="referral_signup_bonus_referrer",
-                tokens_amount=bonus_tokens,
+                tokens_amount=referrer_bonus,
                 tokens_used=0,
                 price=Decimal("0.00"),
                 is_active=True,
                 started_at=datetime.now(timezone.utc),
                 expires_at=None  # Eternal tokens
             )
-            self.session.add(referred_subscription)
             self.session.add(referrer_subscription)
 
-            referral.tokens_earned += bonus_tokens
+            referral.tokens_earned += referrer_bonus
             balance = await self._get_or_create_balance(referrer_id)
-            balance.tokens_balance += bonus_tokens
+            balance.tokens_balance += referrer_bonus
 
             await self.session.commit()
 
@@ -272,7 +263,7 @@ class ReferralService:
                 "referral_signup_bonus_given",
                 referrer_id=referrer_id,
                 referred_id=referred_id,
-                bonus_tokens=bonus_tokens
+                referrer_bonus=referrer_bonus,
             )
 
             return True
