@@ -3511,36 +3511,30 @@ async def process_channel_bonus_channel(message: Message, state: FSMContext):
         return
 
     # Step 2: Check if bot is admin in the chat
+    bot_me = await main_bot.get_me()
+    bot_is_admin = False
+
     try:
-        bot_member = await main_bot.get_chat_member(chat.id, (await main_bot.get_me()).id)
-        if bot_member.status not in ("administrator", "creator"):
-            await message.answer(
-                f"⚠️ Бот не является администратором в «{channel_title}».\n\n"
-                "Добавьте основного бота в администраторы канала/группы,\n"
-                "чтобы он мог проверять подписку пользователей.\n\n"
-                "После добавления — отправьте ссылку ещё раз.",
-                reply_markup=cancel_keyboard()
-            )
-            await main_bot.session.close()
-            return
-    except Exception as e:
-        error_msg = str(e).lower()
-        if "member list is inaccessible" in error_msg or "user not found" in error_msg:
-            await message.answer(
-                f"❌ Бот не добавлен в «{channel_title}».\n\n"
-                "Для настройки бонуса за подписку:\n"
-                "1. Добавьте основного бота в канал/группу\n"
-                "2. Назначьте бота администратором\n"
-                "3. После этого отправьте ссылку ещё раз",
-                reply_markup=cancel_keyboard()
-            )
-        else:
-            await message.answer(
-                f"❌ Не удалось проверить права бота в «{channel_title}».\n\n"
-                f"Ошибка: {str(e)[:200]}\n\n"
-                "Убедитесь, что бот добавлен в канал/группу как администратор.",
-                reply_markup=cancel_keyboard()
-            )
+        bot_member = await main_bot.get_chat_member(chat.id, bot_me.id)
+        bot_is_admin = bot_member.status in ("administrator", "creator")
+    except Exception:
+        # get_chat_member fails for groups with hidden members,
+        # fall back to get_chat_administrators
+        try:
+            admins = await main_bot.get_chat_administrators(chat.id)
+            bot_is_admin = any(admin.user.id == bot_me.id for admin in admins)
+        except Exception:
+            pass
+
+    if not bot_is_admin:
+        await message.answer(
+            f"⚠️ Бот не является администратором в «{channel_title}».\n\n"
+            "Для настройки бонуса за подписку:\n"
+            "1. Добавьте основного бота в канал/группу\n"
+            "2. Назначьте бота администратором\n"
+            "3. После этого отправьте ссылку ещё раз",
+            reply_markup=cancel_keyboard()
+        )
         await main_bot.session.close()
         return
 
