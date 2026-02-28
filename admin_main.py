@@ -3521,10 +3521,12 @@ async def process_channel_bonus_channel(message: Message, state: FSMContext):
         await main_bot.session.close()
         return
 
-    # Step 2: Check if bot is admin in the chat
+    # Step 2: Check if bot is admin in the chat (non-blocking)
     bot_me = await main_bot.get_me()
+    bot_name = f"@{bot_me.username}" if bot_me.username else f"ID: {bot_me.id}"
     logger.info("channel_bonus_bot_identity", bot_id=bot_me.id, bot_username=bot_me.username)
     bot_is_admin = False
+    admin_check_failed = False
 
     try:
         bot_member = await main_bot.get_chat_member(chat.id, bot_me.id)
@@ -3562,9 +3564,13 @@ async def process_channel_bonus_channel(message: Message, state: FSMContext):
                 error=str(e2),
                 error_type=type(e2).__name__,
             )
+            # Both methods failed — can't verify, proceed with warning
+            admin_check_failed = True
 
-    if not bot_is_admin:
-        bot_name = f"@{bot_me.username}" if bot_me.username else f"ID: {bot_me.id}"
+    await main_bot.session.close()
+
+    if not bot_is_admin and not admin_check_failed:
+        # We definitively know bot is NOT admin
         await message.answer(
             f"⚠️ Основной бот ({bot_name}) не является администратором "
             f"в «{channel_title}».\n\n"
@@ -3576,10 +3582,16 @@ async def process_channel_bonus_channel(message: Message, state: FSMContext):
             "3. После этого отправьте ссылку ещё раз",
             reply_markup=cancel_keyboard()
         )
-        await main_bot.session.close()
         return
 
-    await main_bot.session.close()
+    # Build warning if admin status couldn't be verified
+    warning = ""
+    if admin_check_failed:
+        warning = (
+            f"\n\n⚠️ Не удалось проверить, является ли {bot_name} "
+            f"администратором в этой группе. Убедитесь, что бот {bot_name} "
+            f"добавлен как администратор, иначе проверка подписки не будет работать."
+        )
 
     await state.update_data(
         channel_id=channel_id,
@@ -3591,8 +3603,9 @@ async def process_channel_bonus_channel(message: Message, state: FSMContext):
     await message.answer(
         f"✅ Канал найден: {channel_title}"
         + (f" (@{channel_username})" if channel_username else "")
-        + f"\nID: {channel_id}\n\n"
-        "Шаг 2/3: Сколько токенов начислить за подписку?\n\n"
+        + f"\nID: {channel_id}"
+        + warning
+        + "\n\nШаг 2/3: Сколько токенов начислить за подписку?\n\n"
         "Введите число (по умолчанию: 1000):\n"
         "Примеры: 500, 1000, 5000",
         reply_markup=cancel_keyboard()
