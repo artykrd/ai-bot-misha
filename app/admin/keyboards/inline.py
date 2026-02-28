@@ -149,6 +149,7 @@ def broadcast_type_menu() -> InlineKeyboardMarkup:
 
     builder.button(text="📨 Простая рассылка", callback_data="admin:broadcast_type:simple")
     builder.button(text="📨 Рассылка с кнопками", callback_data="admin:broadcast_type:advanced")
+    builder.button(text="📢 Рассылка с бонусом за подписку", callback_data="admin:broadcast_type:channel_bonus")
     builder.button(text="📊 Статистика рассылок", callback_data="admin:broadcast_stats")
     builder.button(text="🔙 Назад", callback_data="admin:back")
 
@@ -246,6 +247,8 @@ def broadcast_filter_keyboard() -> InlineKeyboardMarkup:
     builder.button(text="👤 Все пользователи", callback_data="admin:broadcast_filter:all")
     builder.button(text="💎 С подпиской", callback_data="admin:broadcast_filter:subscribed")
     builder.button(text="🆓 Без подписки", callback_data="admin:broadcast_filter:free")
+    builder.button(text="🎯 Выборочно (по ID/username)", callback_data="admin:broadcast_filter:specific")
+    builder.button(text="🧪 Тестовая отправка", callback_data="admin:broadcast_filter:test")
     builder.button(text="❌ Отмена", callback_data="admin:cancel")
 
     builder.adjust(1)
@@ -337,4 +340,56 @@ def broadcast_stats_keyboard(page: int = 0, total_pages: int = 1) -> InlineKeybo
     builder.button(text="🔙 Назад в меню", callback_data="admin:back")
 
     builder.adjust(2, 1)
+    return builder.as_markup()
+
+
+# ==================== Channel Bonus Keyboards ====================
+
+
+def channel_bonus_menu() -> InlineKeyboardMarkup:
+    """Channel bonus management menu."""
+    builder = InlineKeyboardBuilder()
+
+    builder.button(text="➕ Создать бонус за подписку", callback_data="admin:channel_bonus_create")
+    builder.button(text="📋 Список бонусов", callback_data="admin:channel_bonus_list")
+    builder.button(text="🔙 Назад", callback_data="admin:back")
+
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def channel_bonus_filter_keyboard() -> InlineKeyboardMarkup:
+    """Select broadcast recipients filter for channel bonus broadcast."""
+    builder = InlineKeyboardBuilder()
+
+    builder.button(text="👤 Все пользователи", callback_data="admin:cb_filter:all")
+    builder.button(text="💎 С подпиской", callback_data="admin:cb_filter:subscribed")
+    builder.button(text="🆓 Без подписки", callback_data="admin:cb_filter:free")
+    builder.button(text="🎯 Выборочно (по ID/username)", callback_data="admin:cb_filter:specific")
+    builder.button(text="🧪 Тестовая отправка", callback_data="admin:cb_filter:test")
+    builder.button(text="❌ Отмена", callback_data="admin:cancel")
+
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def channel_bonus_confirm_keyboard() -> InlineKeyboardMarkup:
+    """Confirm channel bonus broadcast."""
+    builder = InlineKeyboardBuilder()
+
+    builder.button(text="✅ ОТПРАВИТЬ", callback_data="admin:cb_confirm_send")
+    builder.button(text="❌ Отменить", callback_data="admin:cancel")
+
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def skip_image_cb_keyboard() -> InlineKeyboardMarkup:
+    """Skip image for channel bonus broadcast."""
+    builder = InlineKeyboardBuilder()
+
+    builder.button(text="⏭ Пропустить", callback_data="admin:cb_skip_image")
+    builder.button(text="❌ Отмена", callback_data="admin:cancel")
+
+    builder.adjust(1)
     return builder.as_markup()

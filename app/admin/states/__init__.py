@@ -76,3 +76,26 @@ class ExpiryNotification(StatesGroup):
     waiting_for_message_text = State()
     waiting_for_discount = State()
     waiting_for_discount_percent = State()
+
+
+class ChannelBonusSetup(StatesGroup):
+    """States for configuring channel subscription bonus."""
+    waiting_for_channel = State()
+    waiting_for_tokens = State()
+    waiting_for_welcome_message = State()
+
+
+class BroadcastWithChannelBonus(StatesGroup):
+    """States for broadcast with channel subscription bonus."""
+    waiting_for_text = State()
+    waiting_for_image = State()
+    waiting_for_channel = State()
+    waiting_for_bonus_tokens = State()
+    waiting_for_filter = State()
+    waiting_for_specific_users = State()
+    waiting_for_confirmation = State()
+
+
+class BroadcastTargeted(StatesGroup):
+    """States for targeted broadcast to specific users."""
+    waiting_for_users = State()

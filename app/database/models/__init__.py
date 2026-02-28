@@ -21,6 +21,7 @@ from app.database.models.model_cost import ModelCost, OperationCategory
 from app.database.models.video_job import VideoGenerationJob
 from app.database.models.broadcast import BroadcastMessage, BroadcastClick
 from app.database.models.expiry_notification import ExpiryNotificationSettings, ExpiryNotificationLog
+from app.database.models.channel_bonus import ChannelSubscriptionBonus, ChannelBonusClaim
 
 __all__ = [
     "User",
@@ -51,4 +52,7 @@ __all__ = [
     # Expiry notifications
     "ExpiryNotificationSettings",
     "ExpiryNotificationLog",
+    # Channel bonus
+    "ChannelSubscriptionBonus",
+    "ChannelBonusClaim",
 ]
