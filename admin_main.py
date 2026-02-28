@@ -3480,13 +3480,32 @@ async def process_channel_bonus_channel(message: Message, state: FSMContext):
     main_bot = Bot(token=settings.telegram_bot_token, default=DefaultBotProperties())
     chat_identifier = channel_id if channel_id else channel_input
 
+    logger.info(
+        "channel_bonus_lookup_start",
+        chat_identifier=str(chat_identifier),
+        input_type="id" if channel_id else "username",
+    )
+
     # Step 1: Try to get chat info
     try:
         chat = await main_bot.get_chat(chat_identifier)
         channel_id = chat.id
         channel_username = chat.username
         channel_title = chat.title or chat.full_name or str(channel_id)
+        logger.info(
+            "channel_bonus_get_chat_ok",
+            chat_id=chat.id,
+            chat_type=chat.type,
+            chat_title=channel_title,
+            chat_username=channel_username,
+        )
     except Exception as e:
+        logger.error(
+            "channel_bonus_get_chat_failed",
+            chat_identifier=str(chat_identifier),
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         error_msg = str(e).lower()
         if "member list is inaccessible" in error_msg:
             await message.answer(
@@ -3512,26 +3531,56 @@ async def process_channel_bonus_channel(message: Message, state: FSMContext):
 
     # Step 2: Check if bot is admin in the chat
     bot_me = await main_bot.get_me()
+    logger.info("channel_bonus_bot_identity", bot_id=bot_me.id, bot_username=bot_me.username)
     bot_is_admin = False
 
     try:
         bot_member = await main_bot.get_chat_member(chat.id, bot_me.id)
         bot_is_admin = bot_member.status in ("administrator", "creator")
-    except Exception:
+        logger.info(
+            "channel_bonus_get_chat_member_ok",
+            bot_status=bot_member.status,
+            bot_is_admin=bot_is_admin,
+        )
+    except Exception as e:
+        logger.warning(
+            "channel_bonus_get_chat_member_failed",
+            chat_id=chat.id,
+            bot_id=bot_me.id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         # get_chat_member fails for groups with hidden members,
         # fall back to get_chat_administrators
         try:
             admins = await main_bot.get_chat_administrators(chat.id)
-            bot_is_admin = any(admin.user.id == bot_me.id for admin in admins)
-        except Exception:
-            pass
+            admin_ids = [a.user.id for a in admins]
+            bot_is_admin = bot_me.id in admin_ids
+            logger.info(
+                "channel_bonus_get_admins_fallback_ok",
+                admin_count=len(admins),
+                admin_ids=admin_ids,
+                bot_id=bot_me.id,
+                bot_is_admin=bot_is_admin,
+            )
+        except Exception as e2:
+            logger.error(
+                "channel_bonus_get_admins_fallback_failed",
+                chat_id=chat.id,
+                error=str(e2),
+                error_type=type(e2).__name__,
+            )
 
     if not bot_is_admin:
+        bot_name = f"@{bot_me.username}" if bot_me.username else f"ID: {bot_me.id}"
         await message.answer(
-            f"⚠️ Бот не является администратором в «{channel_title}».\n\n"
+            f"⚠️ Основной бот ({bot_name}) не является администратором "
+            f"в «{channel_title}».\n\n"
+            f"⚠️ Важно: добавить нужно именно основного бота {bot_name}, "
+            f"а не админ-бота!\n\n"
             "Для настройки бонуса за подписку:\n"
-            "1. Добавьте основного бота в канал/группу\n"
-            "2. Назначьте бота администратором\n"
+            f"1. Добавьте {bot_name} в канал/группу\n"
+            "2. Назначьте его администратором\n"
             "3. После этого отправьте ссылку ещё раз",
             reply_markup=cancel_keyboard()
         )
