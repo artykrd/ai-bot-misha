@@ -4832,11 +4832,11 @@ async def handle_photo_action_choice(callback: CallbackQuery, state: FSMContext)
         # Show all image generation models
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
+        nano_billing = get_image_model_billing("nano-banana-image")
         banana_pro_billing = get_image_model_billing("banana-pro")
         mj_billing = get_image_model_billing("midjourney")
         dalle_billing_img = get_image_model_billing("dalle3")
         recraft_billing = get_image_model_billing("recraft")
-        sd_billing = get_image_model_billing("stable-diffusion")
         seedream_billing = get_image_model_billing("seedream-4.5")
         kling_img_billing = get_image_model_billing("kling-image")
 
@@ -4851,34 +4851,34 @@ async def handle_photo_action_choice(callback: CallbackQuery, state: FSMContext)
             ],
             [
                 InlineKeyboardButton(text="✏️ Recraft", callback_data="photo_image:recraft"),
-                InlineKeyboardButton(text="🖼 Stable Diffusion", callback_data="photo_image:sd"),
+                InlineKeyboardButton(text="🌙 Gemini Image", callback_data="photo_image:gemini"),
             ],
             [
                 InlineKeyboardButton(text="🌟 Seedream", callback_data="photo_image:seedream"),
                 InlineKeyboardButton(text="✨ Kling Image", callback_data="photo_image:kling_image"),
             ],
             [
-                InlineKeyboardButton(text="◀️ Назад", callback_data="photo_action:back")
+                InlineKeyboardButton(text="Назад", callback_data="photo_action:back")
             ]
         ])
 
         caption_text = (
-            f"🖼 Выберите модель для генерации изображения:\n\n"
-            f"• Nano Banana — {format_token_amount(nano_billing.tokens_per_generation)} токенов\n"
-            f"• Banana PRO — {format_token_amount(banana_pro_billing.tokens_per_generation)} токенов\n"
-            f"• GPT Image (DALL-E 3) — {format_token_amount(dalle_billing_img.tokens_per_generation)} токенов\n"
-            f"• Midjourney — {format_token_amount(mj_billing.tokens_per_generation)} токенов\n"
-            f"• Recraft — {format_token_amount(recraft_billing.tokens_per_generation)} токенов\n"
-            f"• Stable Diffusion — {format_token_amount(sd_billing.tokens_per_generation)} токенов\n"
-            f"• Seedream 4.5 — {format_token_amount(seedream_billing.tokens_per_generation)} токенов\n"
-            f"• Kling Image — {format_token_amount(kling_img_billing.tokens_per_generation)} токенов"
+            "Выберите модель для генерации изображения:\n\n"
+            f"Nano Banana — {format_token_amount(nano_billing.tokens_per_generation)} токенов\n"
+            f"Banana PRO — {format_token_amount(banana_pro_billing.tokens_per_generation)} токенов\n"
+            f"GPT Image (DALL-E 3) — {format_token_amount(dalle_billing_img.tokens_per_generation)} токенов\n"
+            f"Midjourney — {format_token_amount(mj_billing.tokens_per_generation)} токенов\n"
+            f"Recraft — {format_token_amount(recraft_billing.tokens_per_generation)} токенов\n"
+            f"Gemini Image — {format_token_amount(nano_billing.tokens_per_generation)} токенов\n"
+            f"Seedream 4.5 — {format_token_amount(seedream_billing.tokens_per_generation)} токенов\n"
+            f"Kling Image — {format_token_amount(kling_img_billing.tokens_per_generation)} токенов"
         )
 
         try:
-            await callback.message.edit_caption(caption=caption_text, reply_markup=keyboard)
+            await callback.message.edit_caption(caption=caption_text, reply_markup=keyboard, parse_mode=None)
         except Exception:
             try:
-                await callback.message.answer(caption_text, reply_markup=keyboard)
+                await callback.message.answer(caption_text, reply_markup=keyboard, parse_mode=None)
             except Exception:
                 pass
         await callback.answer()
@@ -5012,35 +5012,51 @@ async def handle_photo_video_model_choice(callback: CallbackQuery, state: FSMCon
 @router.callback_query(F.data.startswith("photo_image:"))
 async def handle_photo_image_model_choice(callback: CallbackQuery, state: FSMContext):
     """Handle image model choice after photo upload."""
+    # Answer callback immediately to stop spinner
+    try:
+        await callback.answer()
+    except Exception:
+        pass
+
     model = callback.data.split(":")[1]
 
     data = await state.get_data()
     saved_photo_path = data.get("saved_photo_path")
 
-    # Map service names
+    # Map button key → service name used in process_image_prompt
     service_map = {
         "nano": "nano_banana",
-        "banana_pro": "nano_banana_pro",
+        "banana_pro": "nano_banana",  # Banana PRO uses nano_banana with is_pro flag
         "dalle": "dalle",
         "midjourney": "midjourney",
         "recraft": "recraft",
-        "sd": "stable_diffusion",
+        "gemini": "gemini_image",
         "seedream": "seedream",
         "kling_image": "kling_image",
     }
 
-    # For Banana PRO, set flag
-    extra_data = {}
-    if model == "banana_pro":
-        extra_data["nano_is_pro"] = True
-
-    # Move photo to reference_image_path for image generation
-    await state.update_data(
-        reference_image_path=saved_photo_path,
-        service=service_map.get(model, model),
-        **extra_data,
-    )
-    await state.set_state(MediaState.waiting_for_image_prompt)
+    try:
+        # Build state update dict without unpacking a separate dict
+        service = service_map.get(model, model)
+        if model == "banana_pro":
+            await state.update_data(
+                reference_image_path=saved_photo_path,
+                service=service,
+                nano_is_pro=True,
+            )
+        else:
+            await state.update_data(
+                reference_image_path=saved_photo_path,
+                service=service,
+            )
+        await state.set_state(MediaState.waiting_for_image_prompt)
+    except Exception as e:
+        logger.error("photo_image_state_update_error", error=str(e), model=model)
+        try:
+            await callback.message.answer("Ошибка при выборе модели. Попробуйте снова.", parse_mode=None)
+        except Exception:
+            pass
+        return
 
     model_names = {
         "nano": "Nano Banana",
@@ -5048,37 +5064,36 @@ async def handle_photo_image_model_choice(callback: CallbackQuery, state: FSMCon
         "dalle": "GPT Image (DALL-E 3)",
         "midjourney": "Midjourney",
         "recraft": "Recraft",
-        "sd": "Stable Diffusion",
+        "gemini": "Gemini Image",
         "seedream": "Seedream 4.5",
         "kling_image": "Kling Image",
     }
 
     examples = {
-        "nano": "• \"Сделай в стиле аниме\"\n• \"Преобразуй в акварельный рисунок\"\n• \"Сделай фон космическим\"",
-        "banana_pro": "• \"Преврати в профессиональный портрет\"\n• \"Сделай в стиле киберпанк\"",
-        "dalle": "• Отправьте любой текст для создания вариации",
-        "midjourney": "• \"Стилизуй под масляную живопись\"\n• \"Сделай в стиле фэнтези\"",
-        "recraft": "• \"Преврати в иллюстрацию\"\n• \"Сделай в стиле логотипа\"",
-        "sd": "• \"Преобразуй в реалистичный стиль\"\n• \"Добавь эффект HDR\"",
-        "seedream": "• \"Улучши качество фото\"\n• \"Преврати в художественное фото\"",
-        "kling_image": "• \"Преобразуй в новый стиль\"\n• \"Сделай в стиле комикса\"",
+        "nano": "Сделай в стиле аниме\nПреобразуй в акварельный рисунок",
+        "banana_pro": "Преврати в профессиональный портрет\nСделай в стиле киберпанк",
+        "dalle": "Отправьте описание нового изображения",
+        "midjourney": "Стилизуй под масляную живопись\nСделай в стиле фэнтези",
+        "recraft": "Преврати в иллюстрацию\nСделай в стиле логотипа",
+        "gemini": "Измени стиль изображения\nДобавь художественный эффект",
+        "seedream": "Улучши качество фото\nПреврати в художественное фото",
+        "kling_image": "Преобразуй в новый стиль\nСделай в стиле комикса",
     }
 
     caption_text = (
-        f"✅ Фото сохранено!\n\n"
-        f"🖼 {model_names.get(model, model)}\n\n"
-        f"📝 Теперь отправьте описание изображения, которое вы хотите создать на основе этого фото.\n\n"
-        f"Примеры:\n{examples.get(model, '• Отправьте описание желаемого изображения')}"
+        f"Фото сохранено!\n\n"
+        f"Модель: {model_names.get(model, model)}\n\n"
+        f"Отправьте описание того, что хотите создать.\n\n"
+        f"Примеры:\n{examples.get(model, 'Отправьте описание желаемого изображения')}"
     )
 
     try:
-        await callback.message.edit_caption(caption=caption_text)
+        await callback.message.edit_caption(caption=caption_text, parse_mode=None)
     except Exception:
         try:
-            await callback.message.answer(caption_text)
+            await callback.message.answer(caption_text, parse_mode=None)
         except Exception:
             pass
-    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("photo_tool:"))
