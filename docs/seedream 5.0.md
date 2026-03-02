@@ -1,190 +1,416 @@
-'''
-Usage:
-Ark v3 sdk
-pip install 'volcengine-python-sdk[ark]'
-'''
+# 5 Lite Text To Image API Documentation
 
-from volcenginesdkarkruntime import Ark
+> Generate content using the 5 Lite Text To Image model
 
-# fetch ak&sk from environmental variables "VOLC_ACCESSKEY", "VOLC_SECRETKEY"
-# or specify ak&sk by Ark(ak="${YOUR_AK}", sk="${YOUR_SK}").
-# you can get ak&sk follow this document(https://www.volcengine.com/docs/6291/65568)
-client = Ark()
+## Overview
 
-if __name__ == "__main__":
-    # Non-streaming:
-    print("----- standard request -----")
-    completion = client.chat.completions.create(
-        model="ep-20260225012508-xzgdk",
-        messages=[
-            {
-                "role": "user",
-                "content": "Say this is a test",
-            },
-        ]
-    )
-    print(completion.choices[0].message.content)
+This document describes how to use the 5 Lite Text To Image model for content generation. The process consists of two steps:
+1. Create a generation task
+2. Query task status and results
 
-    # Streaming:
-    print("----- streaming request -----")
-    stream = client.chat.completions.create(
-        model="ep-20260225012508-xzgdk",
-        messages=[
-            {
-                "role": "user",
-                "content": "How do I output all files in a directory using Python?",
-            },
-        ],
-        stream=True
-    )
-    for chunk in stream:
-        if not chunk.choices:
-            continue
+## Authentication
 
-        print(chunk.choices[0].delta.content, end="")
-    print()
-ModelArk offers SDKs for Python, Go, and Java, enabling you to quickly integrate ModelArk’s model services into your existing tech stack.
-<span id="2708d57e"></span>
-# Python SDK
-<span id="f2baa8aa"></span>
-## Prerequisites
-Python is installed locally, version 3.7 or later.
-> You can verify the Python version in the terminal. If installation is needed, refer to the [Python installation guide](https://wiki.python.org/moin/BeginnersGuide/Download) and choose version 3.7 or later.
+All API requests require a Bearer Token in the request header:
 
-```Bash
-python -V
+```
+Authorization: Bearer YOUR_API_KEY
 ```
 
-<span id="bb014324"></span>
-## Install the Python SDK
-Run the following command in the terminal to install the Python SDK.
-```Bash
-pip install byteplus-python-sdk-v2 
+Get API Key:
+1. Visit [API Key Management Page](https://kie.ai/api-key) to get your API Key
+2. Add to request header: `Authorization: Bearer YOUR_API_KEY`
+
+---
+
+## 1. Create Generation Task
+
+### API Information
+- **URL**: `POST https://api.kie.ai/api/v1/jobs/createTask`
+- **Content-Type**: `application/json`
+
+### Request Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| model | string | Yes | Model name, format: `seedream/5-lite-text-to-image` |
+| input | object | Yes | Input parameters object |
+| callBackUrl | string | No | Callback URL for task completion notifications. If provided, the system will send POST requests to this URL when the task completes (success or fail). If not provided, no callback notifications will be sent. Example: `"https://your-domain.com/api/callback"` |
+
+### Model Parameter
+
+The `model` parameter specifies which AI model to use for content generation.
+
+| Property | Value | Description |
+|----------|-------|-------------|
+| **Format** | `seedream/5-lite-text-to-image` | The exact model identifier for this API |
+| **Type** | string | Must be passed as a string value |
+| **Required** | Yes | This parameter is mandatory for all requests |
+
+> **Note**: The model parameter must match exactly as shown above. Different models have different capabilities and parameter requirements.
+
+### Callback URL Parameter
+
+The `callBackUrl` parameter allows you to receive automatic notifications when your task completes.
+
+| Property | Value | Description |
+|----------|-------|-------------|
+| **Purpose** | Task completion notification | Receive real-time updates when your task finishes |
+| **Method** | POST request | The system sends POST requests to your callback URL |
+| **Timing** | When task completes | Notifications sent for both success and failure states |
+| **Content** | Query Task API response | Callback content structure is identical to the Query Task API response |
+| **Parameters** | Complete request data | The `param` field contains the complete Create Task request parameters, not just the input section |
+| **Optional** | Yes | If not provided, no callback notifications will be sent |
+
+**Important Notes:**
+- The callback content structure is identical to the Query Task API response
+- The `param` field contains the complete Create Task request parameters, not just the input section  
+- If `callBackUrl` is not provided, no callback notifications will be sent
+
+### input Object Parameters
+
+#### prompt
+- **Type**: `string`
+- **Required**: Yes
+- **Description**: A text description of the image you want to generate
+- **Max Length**: 2995 characters
+- **Default Value**: `"Vintage museum–themed handbook stickers, featuring ancient artifacts, fossils, sculptures, and other elements, exquisitely captured in retro tones, illuminated by sepia, rust, and aged gold hues, full of cultural atmosphere. These stickers use the eclectic charm of museum artifacts, transforming them into designs suitable for journaling enthusiasts and culture lovers. A retro color palette and nostalgic essence, combined with grainy textures, capture the passage of time, echoing the artifacts depicted. Multi-layered stickers and collage elements surround the composition. Sticker borders feature bright white, dopamine-style aesthetics, high resolution, and a hand-drawn feel.\n"`
+
+#### aspect_ratio
+- **Type**: `string`
+- **Required**: Yes
+- **Description**: Width-height ratio of the image, determining its visual form.
+- **Options**:
+  - `1:1`: 1:1
+  - `4:3`: 4:3
+  - `3:4`: 3:4
+  - `16:9`: 16:9
+  - `9:16`: 9:16
+  - `2:3`: 2:3
+  - `3:2`: 3:2
+  - `21:9`: 21:9
+- **Default Value**: `"1:1"`
+
+#### quality
+- **Type**: `string`
+- **Required**: Yes
+- **Description**: Basic outputs 2K images, while High outputs 3K images.
+- **Options**:
+  - `basic`: Basic
+  - `high`: High
+- **Default Value**: `"basic"`
+
+### Request Example
+
+```json
+{
+  "model": "seedream/5-lite-text-to-image",
+  "input": {
+    "prompt": "Vintage museum–themed handbook stickers, featuring ancient artifacts, fossils, sculptures, and other elements, exquisitely captured in retro tones, illuminated by sepia, rust, and aged gold hues, full of cultural atmosphere. These stickers use the eclectic charm of museum artifacts, transforming them into designs suitable for journaling enthusiasts and culture lovers. A retro color palette and nostalgic essence, combined with grainy textures, capture the passage of time, echoing the artifacts depicted. Multi-layered stickers and collage elements surround the composition. Sticker borders feature bright white, dopamine-style aesthetics, high resolution, and a hand-drawn feel.\n",
+    "aspect_ratio": "1:1",
+    "quality": "basic"
+  }
+}
+```
+### Response Example
+
+```json
+{
+  "code": 200,
+  "msg": "success",
+  "data": {
+    "taskId": "281e5b0*********************f39b9"
+  }
+}
 ```
 
-:::tip
-* If local installation errors occur, try the following:
-   * Run `pip install byteplus-python-sdk[ark]`
-* If source code installation is needed, download and unzip the corresponding version of the SDK package, enter the directory and run: `python setup.py install --user`
-:::
-<span id="d6b883b8"></span>
-## Upgrade the Python SDK
-To access ModelArk's latest capabilities, upgrade the SDK to the latest version.
-```Bash
-pip install byteplus-python-sdk-v2  -U
+### Response Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| code | integer | Response status code, 200 indicates success |
+| msg | string | Response message |
+| data.taskId | string | Task ID for querying task status |
+
+---
+
+## 2. Query Task Status
+
+### API Information
+- **URL**: `GET https://api.kie.ai/api/v1/jobs/recordInfo`
+- **Parameter**: `taskId` (passed via URL parameter)
+
+### Request Example
+```
+GET https://api.kie.ai/api/v1/jobs/recordInfo?taskId=281e5b0*********************f39b9
 ```
 
-<span id="f116fb9f"></span>
-# Go SDK
-<span id="0fa8c2bc"></span>
-## Prerequisites
-Check the version of Go; it must be 1.18 or later.
-```Bash
-go version
+### Response Example
+
+```json
+{
+  "code": 200,
+  "msg": "success",
+  "data": {
+    "taskId": "281e5b0*********************f39b9",
+    "model": "seedream/5-lite-text-to-image",
+    "state": "waiting",
+    "param": "{\"model\":\"seedream/5-lite-text-to-image\",\"input\":{\"prompt\":\"Vintage museum–themed handbook stickers, featuring ancient artifacts, fossils, sculptures, and other elements, exquisitely captured in retro tones, illuminated by sepia, rust, and aged gold hues, full of cultural atmosphere. These stickers use the eclectic charm of museum artifacts, transforming them into designs suitable for journaling enthusiasts and culture lovers. A retro color palette and nostalgic essence, combined with grainy textures, capture the passage of time, echoing the artifacts depicted. Multi-layered stickers and collage elements surround the composition. Sticker borders feature bright white, dopamine-style aesthetics, high resolution, and a hand-drawn feel.\n\",\"aspect_ratio\":\"1:1\",\"quality\":\"basic\"}}",
+    "resultJson": "{\"resultUrls\":[\"https://static.aiquickdraw.com/tools/example/1772014690021_LtvrdqvT.webp\"]}",
+    "failCode": null,
+    "failMsg": null,
+    "costTime": null,
+    "completeTime": null,
+    "createTime": 1757584164490
+  }
+}
 ```
 
-If Go isn’t installed or the version is too old, visit the [official Go website](https://golang.google.cn/dl/) to download and install version 1.18 or later.
-<span id="ae8b42ab"></span>
-## Install the Go SDK
+### Response Parameters
 
-1. The Go SDK is managed via go mod; run the following command to initialize go mod. Replace `<your-project-name>` with the actual project name.
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| code | integer | Response status code, 200 indicates success |
+| msg | string | Response message |
+| data.taskId | string | Task ID |
+| data.model | string | Model name used |
+| data.state | string | Task status: `waiting`(waiting),  `success`(success), `fail`(fail) |
+| data.param | string | Task parameters (JSON string) |
+| data.resultJson | string | Task result (JSON string, available when task is success). Structure depends on outputMediaType: `{resultUrls: []}` for image/media/video, `{resultObject: {}}` for text |
+| data.failCode | string | Failure code (available when task fails) |
+| data.failMsg | string | Failure message (available when task fails) |
+| data.costTime | integer | Task duration in milliseconds (available when task is success) |
+| data.completeTime | integer | Completion timestamp (available when task is success) |
+| data.createTime | integer | Creation timestamp |
 
-```Bash
-go mod init <your-project-name>
+---
+
+## Usage Flow
+
+1. **Create Task**: Call `POST https://api.kie.ai/api/v1/jobs/createTask` to create a generation task
+2. **Get Task ID**: Extract `taskId` from the response
+3. **Wait for Results**: 
+   - If you provided a `callBackUrl`, wait for the callback notification
+   - If no `callBackUrl`, poll status by calling `GET https://api.kie.ai/api/v1/jobs/recordInfo`
+4. **Get Results**: When `state` is `success`, extract generation results from `resultJson`
+
+## Error Codes
+
+| Status Code | Description |
+|-------------|-------------|
+| 200 | Request successful |
+| 400 | Invalid request parameters |
+| 401 | Authentication failed, please check API Key |
+| 402 | Insufficient account balance |
+| 404 | Resource not found |
+| 422 | Parameter validation failed |
+| 429 | Request rate limit exceeded |
+| 500 | Internal server error |
+
+# 5 Lite Text To Image API Documentation
+
+> Generate content using the 5 Lite Text To Image model
+
+## Overview
+
+This document describes how to use the 5 Lite Text To Image model for content generation. The process consists of two steps:
+1. Create a generation task
+2. Query task status and results
+
+## Authentication
+
+All API requests require a Bearer Token in the request header:
+
+```
+Authorization: Bearer YOUR_API_KEY
 ```
 
+Get API Key:
+1. Visit [API Key Management Page](https://kie.ai/api-key) to get your API Key
+2. Add to request header: `Authorization: Bearer YOUR_API_KEY`
 
-2. After initializing go mod locally, run the following command to install the latest SDK version.
+---
 
-```Bash
-go get -u github.com/byteplus-sdk/byteplus-go-sdk-v2 
+## 1. Create Generation Task
+
+### API Information
+- **URL**: `POST https://api.kie.ai/api/v1/jobs/createTask`
+- **Content-Type**: `application/json`
+
+### Request Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| model | string | Yes | Model name, format: `seedream/5-lite-text-to-image` |
+| input | object | Yes | Input parameters object |
+| callBackUrl | string | No | Callback URL for task completion notifications. If provided, the system will send POST requests to this URL when the task completes (success or fail). If not provided, no callback notifications will be sent. Example: `"https://your-domain.com/api/callback"` |
+
+### Model Parameter
+
+The `model` parameter specifies which AI model to use for content generation.
+
+| Property | Value | Description |
+|----------|-------|-------------|
+| **Format** | `seedream/5-lite-text-to-image` | The exact model identifier for this API |
+| **Type** | string | Must be passed as a string value |
+| **Required** | Yes | This parameter is mandatory for all requests |
+
+> **Note**: The model parameter must match exactly as shown above. Different models have different capabilities and parameter requirements.
+
+### Callback URL Parameter
+
+The `callBackUrl` parameter allows you to receive automatic notifications when your task completes.
+
+| Property | Value | Description |
+|----------|-------|-------------|
+| **Purpose** | Task completion notification | Receive real-time updates when your task finishes |
+| **Method** | POST request | The system sends POST requests to your callback URL |
+| **Timing** | When task completes | Notifications sent for both success and failure states |
+| **Content** | Query Task API response | Callback content structure is identical to the Query Task API response |
+| **Parameters** | Complete request data | The `param` field contains the complete Create Task request parameters, not just the input section |
+| **Optional** | Yes | If not provided, no callback notifications will be sent |
+
+**Important Notes:**
+- The callback content structure is identical to the Query Task API response
+- The `param` field contains the complete Create Task request parameters, not just the input section  
+- If `callBackUrl` is not provided, no callback notifications will be sent
+
+### input Object Parameters
+
+#### prompt
+- **Type**: `string`
+- **Required**: Yes
+- **Description**: A text description of the image you want to generate
+- **Max Length**: 2995 characters
+- **Default Value**: `"Vintage museum–themed handbook stickers, featuring ancient artifacts, fossils, sculptures, and other elements, exquisitely captured in retro tones, illuminated by sepia, rust, and aged gold hues, full of cultural atmosphere. These stickers use the eclectic charm of museum artifacts, transforming them into designs suitable for journaling enthusiasts and culture lovers. A retro color palette and nostalgic essence, combined with grainy textures, capture the passage of time, echoing the artifacts depicted. Multi-layered stickers and collage elements surround the composition. Sticker borders feature bright white, dopamine-style aesthetics, high resolution, and a hand-drawn feel.\n"`
+
+#### aspect_ratio
+- **Type**: `string`
+- **Required**: Yes
+- **Description**: Width-height ratio of the image, determining its visual form.
+- **Options**:
+  - `1:1`: 1:1
+  - `4:3`: 4:3
+  - `3:4`: 3:4
+  - `16:9`: 16:9
+  - `9:16`: 9:16
+  - `2:3`: 2:3
+  - `3:2`: 3:2
+  - `21:9`: 21:9
+- **Default Value**: `"1:1"`
+
+#### quality
+- **Type**: `string`
+- **Required**: Yes
+- **Description**: Basic outputs 2K images, while High outputs 3K images.
+- **Options**:
+  - `basic`: Basic
+  - `high`: High
+- **Default Value**: `"basic"`
+
+### Request Example
+
+```json
+{
+  "model": "seedream/5-lite-text-to-image",
+  "input": {
+    "prompt": "Vintage museum–themed handbook stickers, featuring ancient artifacts, fossils, sculptures, and other elements, exquisitely captured in retro tones, illuminated by sepia, rust, and aged gold hues, full of cultural atmosphere. These stickers use the eclectic charm of museum artifacts, transforming them into designs suitable for journaling enthusiasts and culture lovers. A retro color palette and nostalgic essence, combined with grainy textures, capture the passage of time, echoing the artifacts depicted. Multi-layered stickers and collage elements surround the composition. Sticker borders feature bright white, dopamine-style aesthetics, high resolution, and a hand-drawn feel.\n",
+    "aspect_ratio": "1:1",
+    "quality": "basic"
+  }
+}
+```
+### Response Example
+
+```json
+{
+  "code": 200,
+  "msg": "success",
+  "data": {
+    "taskId": "281e5b0*********************f39b9"
+  }
+}
 ```
 
-:::tip
-If you need to install a specific SDK version, use the following command:
-`go get -u github.com/byteplus-sdk/byteplus-go-sdk-v2@<VERSION>`
-Replace `<VERSION>` with the actual version number. View available SDK versions at: https://github.com/byteplus-sdk/byteplus-go-sdk-v2/releases
-:::
+### Response Parameters
 
-3. Import the SDK into your code.
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| code | integer | Response status code, 200 indicates success |
+| msg | string | Response message |
+| data.taskId | string | Task ID for querying task status |
 
-```Go
-import "github.com/byteplus-sdk/byteplus-go-sdk-v2/service/arkruntime"
+---
+
+## 2. Query Task Status
+
+### API Information
+- **URL**: `GET https://api.kie.ai/api/v1/jobs/recordInfo`
+- **Parameter**: `taskId` (passed via URL parameter)
+
+### Request Example
+```
+GET https://api.kie.ai/api/v1/jobs/recordInfo?taskId=281e5b0*********************f39b9
 ```
 
+### Response Example
 
-4. After updating dependencies, use the following command to clean up unnecessary dependencies and organize the `go.mod` and `go.sum` files.
-
-```Bash
-go mod tidy
+```json
+{
+  "code": 200,
+  "msg": "success",
+  "data": {
+    "taskId": "281e5b0*********************f39b9",
+    "model": "seedream/5-lite-text-to-image",
+    "state": "waiting",
+    "param": "{\"model\":\"seedream/5-lite-text-to-image\",\"input\":{\"prompt\":\"Vintage museum–themed handbook stickers, featuring ancient artifacts, fossils, sculptures, and other elements, exquisitely captured in retro tones, illuminated by sepia, rust, and aged gold hues, full of cultural atmosphere. These stickers use the eclectic charm of museum artifacts, transforming them into designs suitable for journaling enthusiasts and culture lovers. A retro color palette and nostalgic essence, combined with grainy textures, capture the passage of time, echoing the artifacts depicted. Multi-layered stickers and collage elements surround the composition. Sticker borders feature bright white, dopamine-style aesthetics, high resolution, and a hand-drawn feel.\n\",\"aspect_ratio\":\"1:1\",\"quality\":\"basic\"}}",
+    "resultJson": "{\"resultUrls\":[\"https://static.aiquickdraw.com/tools/example/1772014690021_LtvrdqvT.webp\"]}",
+    "failCode": null,
+    "failMsg": null,
+    "costTime": null,
+    "completeTime": null,
+    "createTime": 1757584164490
+  }
+}
 ```
 
-<span id="f0739bb0"></span>
-## Upgrade the Go SDK
-Refer to Step 1 and 2 in the **Install the Go SDK** section to upgrade to the latest/specified SDK version.
+### Response Parameters
 
-* Upgrade to the latest version
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| code | integer | Response status code, 200 indicates success |
+| msg | string | Response message |
+| data.taskId | string | Task ID |
+| data.model | string | Model name used |
+| data.state | string | Task status: `waiting`(waiting),  `success`(success), `fail`(fail) |
+| data.param | string | Task parameters (JSON string) |
+| data.resultJson | string | Task result (JSON string, available when task is success). Structure depends on outputMediaType: `{resultUrls: []}` for image/media/video, `{resultObject: {}}` for text |
+| data.failCode | string | Failure code (available when task fails) |
+| data.failMsg | string | Failure message (available when task fails) |
+| data.costTime | integer | Task duration in milliseconds (available when task is success) |
+| data.completeTime | integer | Completion timestamp (available when task is success) |
+| data.createTime | integer | Creation timestamp |
 
-```Bash
-go get -u github.com/byteplus-sdk/byteplus-go-sdk-v2
-```
+---
 
+## Usage Flow
 
-* Upgrade to a specific version
+1. **Create Task**: Call `POST https://api.kie.ai/api/v1/jobs/createTask` to create a generation task
+2. **Get Task ID**: Extract `taskId` from the response
+3. **Wait for Results**: 
+   - If you provided a `callBackUrl`, wait for the callback notification
+   - If no `callBackUrl`, poll status by calling `GET https://api.kie.ai/api/v1/jobs/recordInfo`
+4. **Get Results**: When `state` is `success`, extract generation results from `resultJson`
 
-```Bash
-go get -u github.com/byteplus-sdk/byteplus-go-sdk-v2@<VERSION>
-```
+## Error Codes
 
-<span id="e7ae2925"></span>
-# Java SDK
-<span id="41f31f3c"></span>
-## Applicability
-This SDK supports Java server-side development only and does not currently support Android platforms. For Android, you need to implement your own integration.
-<span id="e3518e9f"></span>
-## Prerequisites
-
-1. Check the Java version; it must be 1.8 or later.
-
-```Bash
-java -version
-```
-
-If Java isn’t installed or the version is too old, visit the [official Oracle website](https://www.java.com/en/download/help/index_installing.html) to download and install version 1.8 or later.
-<span id="ae8db863"></span>
-## Install the Java SDK
-The ModelArk Java SDK can be installed using either Maven or Gradle.
-<span id="db12484d"></span>
-### Install via Maven
-In `pom.xml`, add the following configuration. For the full setup, see [Maven Central](https://central.sonatype.com/artifact/com.byteplus/byteplus-java-sdk-v2-ark-runtime):
-```XML
-...
-<dependency>
-  <groupId>com.byteplus</groupId>
-  <artifactId>byteplus-java-sdk-v2-ark-runtime</artifactId>
-  <version>LATEST</version>
-</dependency>
-...
-```
-
-<span id="4858e8c3"></span>
-### Install via Gradle
-In `build.gradle`, add the following configuration. Add the dependency to the `dependencies` section.
-```Plain Text
-implementation 'com.byteplus:byteplus-java-sdk-v2-ark-runtime:LATEST'
-```
-
-<span id="4ab4182d"></span>
-## Upgrade the Java SDK
-:::tip
-Get the SDK version information, replace 'LATEST' with a specific/latest version number. Version information can be found at: https://github.com/byteplus-sdk/byteplus-java-sdk-v2/releases
-:::
-Use the same methods described in the **Install the Java SDK** section to upgrade, replace 'LATEST' with a specific/latest version number.
-<span id="6f32c555"></span>
-# Third-party SDKs
-ModelArk's model invocation APIs are compatible with the OpenAI API protocol. You can use OpenAI-compatible multi-language community SDK to call ModelArk's models or applications. It's easy to migrate your services to the ModelArk platform and the Seed model family. For details, see [Compatible with OpenAI API](/docs/ModelArk/1330626).
-<span id="4b8511f6"></span>
-# See also
-[Common SDK usage examples](/docs/ModelArk/1544136)
-
+| Status Code | Description |
+|-------------|-------------|
+| 200 | Request successful |
+| 400 | Invalid request parameters |
+| 401 | Authentication failed, please check API Key |
+| 402 | Insufficient account balance |
+| 404 | Resource not found |
+| 422 | Parameter validation failed |
+| 429 | Request rate limit exceeded |
+| 500 | Internal server error |
 
