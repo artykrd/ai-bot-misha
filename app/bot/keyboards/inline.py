@@ -15,6 +15,7 @@ MENU_BUTTONS = [
     ("Midjourney", "bot.midjourney"),
     ("Veo 3.1", "bot.veo"),
     ("Kling", "bot.kling_main"),
+    ("Kling 3", "bot.kling3"),
     ("Sora", "bot.sora"),
     ("Hailuo", "bot.hailuo"),
     ("Midjourney Video", "bot.mjvideo"),
@@ -285,10 +286,11 @@ def create_video_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🎥 Hailuo", callback_data="bot.hailuo")
     )
     builder.row(
+        InlineKeyboardButton(text="⚡ Kling 3", callback_data="bot.kling3"),
         InlineKeyboardButton(text="📹 Luma", callback_data="bot.luma"),
-        InlineKeyboardButton(text="🌆 Midjourney", callback_data="bot.mjvideo")
     )
     builder.row(
+        InlineKeyboardButton(text="🌆 Midjourney", callback_data="bot.mjvideo"),
         InlineKeyboardButton(text="✨ Kling Эффекты", callback_data="bot.kling_effects")
     )
     builder.row(
@@ -976,6 +978,130 @@ def kling_mc_sound_keyboard(current: str = "yes") -> InlineKeyboardMarkup:
 
     builder.row(
         InlineKeyboardButton(text="⬅️ Назад", callback_data="kling_mc.settings")
+    )
+
+    return builder.as_markup()
+
+
+# ======================
+# KLING 3.0 KEYBOARDS
+# ======================
+
+def kling3_main_keyboard() -> InlineKeyboardMarkup:
+    """Main Kling 3.0 video keyboard with settings and instruction buttons."""
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(text="⚙️ Настройки", callback_data="kling3.settings")
+    )
+    builder.row(
+        InlineKeyboardButton(text="📖 Инструкция", callback_data="kling3.instruction")
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ В главное меню", callback_data="bot.back")
+    )
+
+    return builder.as_markup()
+
+
+def kling3_settings_keyboard() -> InlineKeyboardMarkup:
+    """Kling 3.0 settings menu keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(text="📺 Разрешение", callback_data="kling3.settings.mode")
+    )
+    builder.row(
+        InlineKeyboardButton(text="📐 Формат видео", callback_data="kling3.settings.aspect_ratio")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🕓 Длительность", callback_data="kling3.settings.duration")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🔤 Автоперевод", callback_data="kling3.settings.auto_translate")
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад к Kling 3", callback_data="bot.kling3")
+    )
+
+    return builder.as_markup()
+
+
+def kling3_mode_keyboard(current_mode: str = "std") -> InlineKeyboardMarkup:
+    """Kling 3.0 resolution mode selection keyboard (std=720p, pro=1080p)."""
+    builder = InlineKeyboardBuilder()
+
+    modes = [
+        ("std", "720p"),
+        ("pro", "1080p"),
+    ]
+
+    for mode_val, mode_name in modes:
+        text = f"✅ {mode_name}" if mode_val == current_mode else mode_name
+        builder.row(
+            InlineKeyboardButton(text=text, callback_data=f"kling3.set.mode:{mode_val}")
+        )
+
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад к Kling 3", callback_data="bot.kling3")
+    )
+
+    return builder.as_markup()
+
+
+def kling3_aspect_ratio_keyboard(current_ratio: str = "1:1") -> InlineKeyboardMarkup:
+    """Kling 3.0 aspect ratio selection keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    ratios = ["1:1", "16:9", "9:16"]
+
+    for ratio in ratios:
+        text = f"✅ {ratio}" if ratio == current_ratio else ratio
+        builder.row(
+            InlineKeyboardButton(text=text, callback_data=f"kling3.set.aspect_ratio:{ratio}")
+        )
+
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад к Kling 3", callback_data="bot.kling3")
+    )
+
+    return builder.as_markup()
+
+
+def kling3_duration_keyboard(current_duration: int = 5) -> InlineKeyboardMarkup:
+    """Kling 3.0 duration selection keyboard (5, 10, 15 seconds)."""
+    builder = InlineKeyboardBuilder()
+
+    durations = [5, 10, 15]
+
+    for duration in durations:
+        text = f"✅ {duration} сек" if duration == current_duration else f"{duration} сек"
+        builder.row(
+            InlineKeyboardButton(text=text, callback_data=f"kling3.set.duration:{duration}")
+        )
+
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад к Kling 3", callback_data="bot.kling3")
+    )
+
+    return builder.as_markup()
+
+
+def kling3_auto_translate_keyboard(current_value: bool = True) -> InlineKeyboardMarkup:
+    """Kling 3.0 auto-translate toggle keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    yes_text = "✅ Да" if current_value else "Да"
+    no_text = "✅ Нет" if not current_value else "Нет"
+
+    builder.row(
+        InlineKeyboardButton(text=yes_text, callback_data="kling3.set.auto_translate:yes")
+    )
+    builder.row(
+        InlineKeyboardButton(text=no_text, callback_data="kling3.set.auto_translate:no")
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад к Kling 3", callback_data="bot.kling3")
     )
 
     return builder.as_markup()

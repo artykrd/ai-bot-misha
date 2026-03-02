@@ -50,6 +50,7 @@ async def setup_bot() -> Dispatcher:
         common,
         download_handler,
         async_kling_handler,  # Async Kling handler for job queue
+        async_kling3_handler,  # Async Kling 3.0 handler for job queue
         stars_payment,  # Telegram Stars payment handler
     )
     from app.bot.handlers import dialog_handler
@@ -65,6 +66,7 @@ async def setup_bot() -> Dispatcher:
     dp.include_router(download_handler.router)  # Download handler
     dp.include_router(suno_handler.router)  # Suno handlers
     dp.include_router(async_kling_handler.router)  # Async Kling BEFORE media_handler
+    dp.include_router(async_kling3_handler.router)  # Async Kling 3.0 BEFORE media_handler
     dp.include_router(media_handler.router)  # FSM state handlers
     dp.include_router(profile.router)
     dp.include_router(text_ai.router)

@@ -11,7 +11,7 @@ from aiogram.exceptions import TelegramBadRequest
 from app.database.database import async_session_maker
 from app.database.repositories.video_job import VideoJobRepository
 from app.database.models.video_job import VideoGenerationJob
-from app.services.video import KlingService, SoraService, VeoService, LumaService, HailuoService
+from app.services.video import KlingService, SoraService, VeoService, LumaService, HailuoService, Kling3Service
 from app.services.logging import log_ai_operation_background, ai_logger
 from app.core.logger import get_logger
 
@@ -72,6 +72,7 @@ class VideoJobService:
         """Get video service instance by provider."""
         providers = {
             "kling": KlingService,
+            "kling3": Kling3Service,
             "sora": SoraService,
             "veo": VeoService,
             "luma": LumaService,
@@ -182,6 +183,7 @@ class VideoJobService:
             duration = input_data.get("duration", 5)
             aspect_ratio = input_data.get("aspect_ratio", "1:1")
             version = input_data.get("version", "2.5")
+            mode = input_data.get("mode", "std")
 
             # Attempt generation with 20-minute timeout
             try:
@@ -192,7 +194,8 @@ class VideoJobService:
                         images=images,
                         duration=duration,
                         aspect_ratio=aspect_ratio,
-                        version=version
+                        version=version,
+                        mode=mode,
                     ),
                     timeout=1200  # 20 minutes
                 )

@@ -5570,6 +5570,254 @@ async def kling_mc_receive_video_file(message: Message, state: FSMContext, user:
 
 
 # ======================
+# KLING 3.0 HANDLERS
+# ======================
+
+@router.callback_query(F.data == "bot.kling3")
+async def start_kling3_video(callback: CallbackQuery, state: FSMContext, user: User):
+    """Start Kling 3.0 video generation with settings."""
+    from app.bot.keyboards.inline import kling3_main_keyboard
+    from app.bot.states.media import Kling3Settings
+    from app.core.billing_config import get_kling3_tokens_cost
+
+    data = await state.get_data()
+    kling3_settings = Kling3Settings.from_dict(data)
+
+    total_tokens = await get_available_tokens(user.id)
+    tokens_per_request = get_kling3_tokens_cost(kling3_settings.mode, kling3_settings.duration)
+    videos_available = int(total_tokens / tokens_per_request) if total_tokens > 0 else 0
+
+    text = (
+        "⚡ Kling 3 — генерация видео\n\n"
+        "🎬 Суперсовременная модель с реалистичной анимацией "
+        "уровня профессиональной кинематографии, со звуком 🔉.\n"
+        "📺 Качество: 720p и 1080p\n"
+        "🗣 Возможна русская речь с акцентом!\n\n"
+        "Внимание❗️ Модель очень мощная, но новая.\n"
+        "Никто не может гарантировать, что видео получится идеально "
+        "с первого раза — возможны галлюцинации и артефакты.\n"
+        "Если вы не согласны с этим условием, пожалуйста, воздержитесь "
+        "от использования нейросетей.\n\n"
+        "⚙️ Выберите: режим работы — по одному или по 2 фото • длительность • формат\n\n"
+        "📸 Загрузите фото (1 или 2) по одному ❗️\n\n"
+        "Возможности:\n"
+        "• Генерация по тексту\n"
+        "• Генерация по фото + текст\n"
+        "• Смешивание нескольких фото (1-2)\n"
+        f"• Разрешение: {kling3_settings.mode_display}\n\n"
+        f"⚙️ Текущие настройки:\n"
+        f"{kling3_settings.get_display_settings()}\n\n"
+        f"Стоимость: {format_token_amount(tokens_per_request)} токенов\n"
+        f"🔹 Токенов хватит на {videos_available} видео\n\n"
+        "📝 Отправьте:\n"
+        "• Текстовое описание — для генерации по тексту\n"
+        "• Фото + описание — для генерации по фото"
+    )
+
+    await state.set_state(MediaState.kling3_waiting_for_prompt)
+    settings_dict = kling3_settings.to_dict()
+    settings_dict["kling3_images"] = []
+    await state.update_data(
+        service="kling3",
+        image_path=None,
+        photo_caption_prompt=None,
+        **settings_dict
+    )
+
+    try:
+        await callback.message.edit_text(text, reply_markup=kling3_main_keyboard())
+    except Exception:
+        await callback.message.answer(text, reply_markup=kling3_main_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "kling3.settings")
+async def kling3_settings_menu(callback: CallbackQuery, state: FSMContext, user: User):
+    """Show Kling 3.0 settings menu."""
+    from app.bot.keyboards.inline import kling3_settings_keyboard
+
+    text = (
+        "⚙️ Настройки генерации видео Kling 3.0\n\n"
+        "Выберите параметр для изменения:"
+    )
+
+    try:
+        await callback.message.edit_text(text, reply_markup=kling3_settings_keyboard())
+    except Exception:
+        await callback.message.answer(text, reply_markup=kling3_settings_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "kling3.settings.mode")
+async def kling3_settings_mode(callback: CallbackQuery, state: FSMContext, user: User):
+    """Show resolution mode selection for Kling 3.0."""
+    from app.bot.keyboards.inline import kling3_mode_keyboard
+    from app.bot.states.media import Kling3Settings
+
+    data = await state.get_data()
+    kling3_settings = Kling3Settings.from_dict(data)
+
+    text = (
+        "📺 Выберите разрешение видео Kling 3.0\n\n"
+        "720p (std) — стандартное разрешение, быстрее\n"
+        "1080p (pro) — высокое разрешение, дороже"
+    )
+
+    try:
+        await callback.message.edit_text(text, reply_markup=kling3_mode_keyboard(kling3_settings.mode))
+    except Exception:
+        await callback.message.answer(text, reply_markup=kling3_mode_keyboard(kling3_settings.mode))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("kling3.set.mode:"))
+async def kling3_set_mode(callback: CallbackQuery, state: FSMContext, user: User):
+    """Set Kling 3.0 resolution mode."""
+    mode = callback.data.split(":")[1]
+    await state.update_data(kling3_mode=mode)
+    mode_display = "720p" if mode == "std" else "1080p"
+    await callback.answer(f"✅ Разрешение установлено: {mode_display}")
+    await start_kling3_video(callback, state, user)
+
+
+@router.callback_query(F.data == "kling3.settings.aspect_ratio")
+async def kling3_settings_aspect_ratio(callback: CallbackQuery, state: FSMContext, user: User):
+    """Show aspect ratio selection for Kling 3.0."""
+    from app.bot.keyboards.inline import kling3_aspect_ratio_keyboard
+    from app.bot.states.media import Kling3Settings
+
+    data = await state.get_data()
+    kling3_settings = Kling3Settings.from_dict(data)
+
+    text = (
+        "📐 Выберите соотношение сторон видео Kling 3.0\n\n"
+        "1:1 — квадратный формат, для соцсетей\n"
+        "16:9 — горизонтальный, для YouTube\n"
+        "9:16 — вертикальный, для Stories и Reels"
+    )
+
+    try:
+        await callback.message.edit_text(
+            text, reply_markup=kling3_aspect_ratio_keyboard(kling3_settings.aspect_ratio)
+        )
+    except Exception:
+        await callback.message.answer(
+            text, reply_markup=kling3_aspect_ratio_keyboard(kling3_settings.aspect_ratio)
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("kling3.set.aspect_ratio:"))
+async def kling3_set_aspect_ratio(callback: CallbackQuery, state: FSMContext, user: User):
+    """Set Kling 3.0 aspect ratio."""
+    aspect_ratio = callback.data.split(":")[1]
+    await state.update_data(kling3_aspect_ratio=aspect_ratio)
+    await callback.answer(f"✅ Формат видео установлен: {aspect_ratio}")
+    await start_kling3_video(callback, state, user)
+
+
+@router.callback_query(F.data == "kling3.settings.duration")
+async def kling3_settings_duration(callback: CallbackQuery, state: FSMContext, user: User):
+    """Show duration selection for Kling 3.0."""
+    from app.bot.keyboards.inline import kling3_duration_keyboard
+    from app.bot.states.media import Kling3Settings
+
+    data = await state.get_data()
+    kling3_settings = Kling3Settings.from_dict(data)
+
+    text = "🕓 Выберите длительность видео Kling 3.0"
+
+    try:
+        await callback.message.edit_text(
+            text, reply_markup=kling3_duration_keyboard(kling3_settings.duration)
+        )
+    except Exception:
+        await callback.message.answer(
+            text, reply_markup=kling3_duration_keyboard(kling3_settings.duration)
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("kling3.set.duration:"))
+async def kling3_set_duration(callback: CallbackQuery, state: FSMContext, user: User):
+    """Set Kling 3.0 duration."""
+    duration = int(callback.data.split(":")[1])
+    await state.update_data(kling3_duration=duration)
+    await callback.answer(f"✅ Длительность установлена: {duration} сек")
+    await start_kling3_video(callback, state, user)
+
+
+@router.callback_query(F.data == "kling3.settings.auto_translate")
+async def kling3_settings_auto_translate(callback: CallbackQuery, state: FSMContext, user: User):
+    """Show auto-translate selection for Kling 3.0."""
+    from app.bot.keyboards.inline import kling3_auto_translate_keyboard
+    from app.bot.states.media import Kling3Settings
+
+    data = await state.get_data()
+    kling3_settings = Kling3Settings.from_dict(data)
+
+    text = "🔤 Переводить ваш запрос на английский с любого языка?"
+
+    try:
+        await callback.message.edit_text(
+            text, reply_markup=kling3_auto_translate_keyboard(kling3_settings.auto_translate)
+        )
+    except Exception:
+        await callback.message.answer(
+            text, reply_markup=kling3_auto_translate_keyboard(kling3_settings.auto_translate)
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("kling3.set.auto_translate:"))
+async def kling3_set_auto_translate(callback: CallbackQuery, state: FSMContext, user: User):
+    """Set Kling 3.0 auto-translate."""
+    value = callback.data.split(":")[1] == "yes"
+    await state.update_data(kling3_auto_translate=value)
+    status = "включен" if value else "выключен"
+    await callback.answer(f"✅ Автоперевод {status}")
+    await start_kling3_video(callback, state, user)
+
+
+@router.callback_query(F.data == "kling3.instruction")
+async def kling3_instruction(callback: CallbackQuery, state: FSMContext, user: User):
+    """Show Kling 3.0 instruction."""
+    from app.bot.keyboards.inline import kling3_main_keyboard
+
+    text = (
+        "📖 Инструкция Kling 3.0\n\n"
+        "🎬 Как создать профессиональный видеоролик в нейросети\n\n"
+        "Kling 3.0 — одна из самых продвинутых моделей для генерации видео по фото.\n"
+        "Она отлично понимает структуру сцен, динамику движения и способна "
+        "создавать многосценные ролики за одну генерацию.\n\n"
+        "Шаг 1. Подготовка первого кадра\n"
+        "Первый кадр — это фундамент будущего ролика.\n"
+        "От него зависит: ваша внешность, освещение, стиль, атмосфера.\n"
+        "Создать его можно в Banana PRO или Seedream 4.5\n\n"
+        "Шаг 2. Придумайте концепцию видео и создайте промпт\n"
+        "• Что будет происходить в ролике?\n"
+        "• Есть ли другие персонажи?\n"
+        "• Будет ли смена локаций?\n"
+        "• Это спокойная сцена или динамичный экшен?\n\n"
+        "⚠️ Ограничение: 2000 символов на промпт!\n\n"
+        "Шаг 3. Генерация видео\n"
+        "1. Загрузите фото\n"
+        "2. Вставьте промпт\n"
+        "3. Ожидайте завершения (5–15 минут)\n\n"
+        "💡 Рекомендации:\n"
+        "• Соотношение сторон фото и видео должно совпадать\n"
+        "• При артефактах — упростите сцену или сократите описание\n"
+        "• Можно просто повторить генерацию"
+    )
+
+    try:
+        await callback.message.edit_text(text, reply_markup=kling3_main_keyboard())
+    except Exception:
+        await callback.message.answer(text, reply_markup=kling3_main_keyboard())
+    await callback.answer()
+
+
+# ======================
 # SEEDREAM HANDLERS
 # ======================
 

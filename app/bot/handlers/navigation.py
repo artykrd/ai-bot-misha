@@ -841,6 +841,7 @@ async def tariff_selected(callback: CallbackQuery, user: User):
         veo_billing = get_video_model_billing("veo-3.1-fast")
         hailuo_billing = get_video_model_billing("hailuo")
         kling_billing = get_video_model_billing("kling-video")
+        kling3_billing = get_video_model_billing("kling3-std-5s")
 
         price_line = f"💰 **Стоимость:** ~~{original_price}~~ **{final_price} руб.**{discount_text}" if discount_percent > 0 else f"💰 **Стоимость:** {final_price} руб."
         text = f"""💳 **Оплата подписки**
@@ -864,6 +865,7 @@ async def tariff_selected(callback: CallbackQuery, user: User):
 • Veo 3.1 Fast: {format_token_amount(veo_billing.tokens_per_generation)} токенов за видео
 • Hailuo: {format_token_amount(hailuo_billing.tokens_per_generation)} токенов за видео
 • Kling: {format_token_amount(kling_billing.tokens_per_generation)} токенов за видео
+• Kling 3.0 (720p, 5с): {format_token_amount(kling3_billing.tokens_per_generation)} токенов за видео
 
 **🎵 Генерация аудио:**
 • Suno: ~85 песен (по 2 мин)
@@ -1183,6 +1185,8 @@ async def show_help_tokens(callback: CallbackQuery):
 • Hailuo (видео) — {format_token_amount(get_video_model_billing("hailuo").tokens_per_generation)} токенов
 • Kling (видео) — {format_token_amount(get_video_model_billing("kling-video").tokens_per_generation)} токенов
 • Kling Effects (видео) — {format_token_amount(get_video_model_billing("kling-effects").tokens_per_generation)} токенов
+• Kling 3.0 720p 5с (видео) — {format_token_amount(get_video_model_billing("kling3-std-5s").tokens_per_generation)} токенов
+• Kling 3.0 1080p 5с (видео) — {format_token_amount(get_video_model_billing("kling3-pro-5s").tokens_per_generation)} токенов
 • Suno (музыка) — 17,600 токенов
 • Whisper (расшифровка) — 1,200 токенов/мин
 

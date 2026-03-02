@@ -21,6 +21,8 @@ PERSISTENT_SETTINGS_KEYS = [
     "seedream_size", "seedream_batch_mode", "seedream_batch_count",
     # Kling Motion Control settings
     "kling_mc_mode", "kling_mc_orientation", "kling_mc_sound",
+    # Kling 3 settings
+    "kling3_mode", "kling3_duration", "kling3_aspect_ratio", "kling3_auto_translate",
 ]
 
 
@@ -163,6 +165,54 @@ class SoraSettings:
             return "sora-2-image-to-video-stable" if has_image else "sora-2-text-to-video-stable"
 
 
+@dataclass
+class Kling3Settings:
+    """Kling 3.0 video generation settings stored in FSM."""
+    mode: str = "std"  # "std" (720p) or "pro" (1080p)
+    duration: int = 5  # 5, 10, or 15 seconds
+    aspect_ratio: str = "1:1"  # "1:1", "16:9", "9:16"
+    auto_translate: bool = True  # Auto-translate prompt to English
+    images: List[str] = field(default_factory=list)  # List of image paths (0-2 images)
+
+    def to_dict(self) -> dict:
+        """Convert to dict for FSM storage."""
+        return {
+            "kling3_mode": self.mode,
+            "kling3_duration": self.duration,
+            "kling3_aspect_ratio": self.aspect_ratio,
+            "kling3_auto_translate": self.auto_translate,
+            "kling3_images": self.images,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Kling3Settings":
+        """Create from FSM data dict."""
+        return cls(
+            mode=data.get("kling3_mode", "std"),
+            duration=data.get("kling3_duration", 5),
+            aspect_ratio=data.get("kling3_aspect_ratio", "1:1"),
+            auto_translate=data.get("kling3_auto_translate", True),
+            images=data.get("kling3_images", []),
+        )
+
+    def get_display_settings(self) -> str:
+        """Get formatted settings string for display."""
+        mode_names = {
+            "std": "720p",
+            "pro": "1080p",
+        }
+        parts = []
+        parts.append(f"Разрешение: {mode_names.get(self.mode, self.mode)}")
+        parts.append(f"Длительность: {self.duration} секунд")
+        parts.append(f"Формат видео: {self.aspect_ratio}")
+        parts.append(f"Автоперевод: {'включен' if self.auto_translate else 'выключен'}")
+        return "\n".join(parts)
+
+    @property
+    def mode_display(self) -> str:
+        return "720p" if self.mode == "std" else "1080p"
+
+
 class MediaState(StatesGroup):
     """States for media generation."""
     waiting_for_video_prompt = State()
@@ -190,6 +240,8 @@ class MediaState(StatesGroup):
     kling_mc_waiting_for_image = State()  # Waiting for reference image
     kling_mc_waiting_for_video = State()  # Waiting for reference video URL
     kling_mc_waiting_for_prompt = State()  # Waiting for optional prompt
+    # Kling 3.0 video generation states
+    kling3_waiting_for_prompt = State()  # Waiting for text prompt or image
 
 
 class SunoState(StatesGroup):
