@@ -324,6 +324,44 @@ VIDEO_MODELS: Dict[str, FixedModelBilling] = {
         description_suffix="Стоимость генерации Motion Control видео: 240 000 токенов",
         model_type=ModelType.VIDEO
     ),
+    # Kling 3.0 std (720p)
+    "kling3-std-5s": FixedModelBilling(
+        tokens_per_generation=337000,
+        display_name="Kling 3.0 720p",
+        description_suffix="Стоимость генерации видео (5 секунд, 720p): 337 000 токенов",
+        model_type=ModelType.VIDEO
+    ),
+    "kling3-std-10s": FixedModelBilling(
+        tokens_per_generation=674000,
+        display_name="Kling 3.0 720p",
+        description_suffix="Стоимость генерации видео (10 секунд, 720p): 674 000 токенов",
+        model_type=ModelType.VIDEO
+    ),
+    "kling3-std-15s": FixedModelBilling(
+        tokens_per_generation=1011000,
+        display_name="Kling 3.0 720p",
+        description_suffix="Стоимость генерации видео (15 секунд, 720p): 1 011 000 токенов",
+        model_type=ModelType.VIDEO
+    ),
+    # Kling 3.0 pro (1080p)
+    "kling3-pro-5s": FixedModelBilling(
+        tokens_per_generation=449000,
+        display_name="Kling 3.0 1080p",
+        description_suffix="Стоимость генерации видео (5 секунд, 1080p): 449 000 токенов",
+        model_type=ModelType.VIDEO
+    ),
+    "kling3-pro-10s": FixedModelBilling(
+        tokens_per_generation=898000,
+        display_name="Kling 3.0 1080p",
+        description_suffix="Стоимость генерации видео (10 секунд, 1080p): 898 000 токенов",
+        model_type=ModelType.VIDEO
+    ),
+    "kling3-pro-15s": FixedModelBilling(
+        tokens_per_generation=1347000,
+        display_name="Kling 3.0 1080p",
+        description_suffix="Стоимость генерации видео (15 секунд, 1080p): 1 347 000 токенов",
+        model_type=ModelType.VIDEO
+    ),
     "hailuo": FixedModelBilling(
         tokens_per_generation=89500,
         display_name="Hailuo",
@@ -446,6 +484,49 @@ def get_kling_tokens_cost(version: str, duration: int) -> int:
     return VIDEO_MODELS.get("kling-video", FixedModelBilling(
         tokens_per_generation=58000,
         display_name="Kling",
+        description_suffix="",
+        model_type=ModelType.VIDEO
+    )).tokens_per_generation
+
+
+# ==============================================
+# KLING 3 BILLING HELPERS
+# ==============================================
+
+def get_kling3_billing_key(mode: str, duration: int) -> str:
+    """
+    Get billing key for Kling 3.0 based on mode and duration.
+
+    Args:
+        mode: 'std' (720p) or 'pro' (1080p)
+        duration: 5, 10, or 15 seconds
+
+    Returns:
+        Billing key for VIDEO_MODELS dict
+    """
+    return f"kling3-{mode}-{duration}s"
+
+
+def get_kling3_tokens_cost(mode: str, duration: int) -> int:
+    """
+    Get token cost for Kling 3.0 video generation.
+
+    Args:
+        mode: 'std' (720p) or 'pro' (1080p)
+        duration: 5, 10, or 15 seconds
+
+    Returns:
+        Token cost for this generation
+    """
+    billing_key = get_kling3_billing_key(mode, duration)
+    billing = VIDEO_MODELS.get(billing_key)
+    if billing:
+        return billing.tokens_per_generation
+
+    # Fallback to std 5s
+    return VIDEO_MODELS.get("kling3-std-5s", FixedModelBilling(
+        tokens_per_generation=337000,
+        display_name="Kling 3.0",
         description_suffix="",
         model_type=ModelType.VIDEO
     )).tokens_per_generation
