@@ -54,34 +54,74 @@ class NanoBanana2Service(BaseImageProvider):
             "Authorization": f"Bearer {self.api_key}"
         }
 
-    async def _upload_image(self, image_path: str) -> str:
+    UPLOAD_BASE_URL = "https://kieai.redpandaai.co"
+
+    async def _upload_image_to_kie(self, image_path: str) -> str:
         """
-        Convert local image file to base64 data URL for API input.
+        Upload local image file to Kie.ai File Upload API and return the file URL.
+
+        Uses the file-stream-upload endpoint for efficient binary uploads.
 
         Args:
             image_path: Path to local image file
 
         Returns:
-            Base64 data URL string
+            Public URL of the uploaded file
         """
         path = Path(image_path)
         if not path.exists():
             raise FileNotFoundError(f"Image not found: {image_path}")
 
-        with open(path, "rb") as f:
-            image_data = f.read()
+        url = f"{self.UPLOAD_BASE_URL}/api/file-stream-upload"
+        timeout = aiohttp.ClientTimeout(total=60)
 
-        ext = path.suffix.lower()
-        mime_map = {
-            ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg",
-            ".png": "image/png",
-            ".webp": "image/webp",
-        }
-        mime_type = mime_map.get(ext, "image/jpeg")
+        file_bytes = path.read_bytes()
 
-        b64 = base64.b64encode(image_data).decode("utf-8")
-        return f"data:{mime_type};base64,{b64}"
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            data = aiohttp.FormData()
+            data.add_field(
+                'file',
+                file_bytes,
+                filename=path.name,
+                content_type='image/jpeg',
+            )
+            data.add_field('uploadPath', 'nano-banana-2')
+
+            async with session.post(
+                url,
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                data=data,
+            ) as response:
+                response_text = await response.text()
+
+                if response.status != 200:
+                    raise Exception(
+                        f"File upload HTTP {response.status}: {response_text[:300]}"
+                    )
+
+                try:
+                    result = json.loads(response_text)
+                except json.JSONDecodeError:
+                    raise Exception(f"File upload invalid JSON: {response_text[:300]}")
+
+                if result.get("code") != 200:
+                    raise Exception(
+                        f"File upload error: {result.get('msg', 'Unknown')}"
+                    )
+
+                file_url = result.get("data", {}).get("fileUrl")
+                if not file_url:
+                    raise Exception(
+                        f"No fileUrl in upload response: {response_text[:300]}"
+                    )
+
+                logger.info(
+                    "nano_banana_2_image_uploaded",
+                    path=image_path,
+                    url=file_url,
+                )
+
+                return file_url
 
     async def process_image(
         self,
@@ -177,8 +217,9 @@ class NanoBanana2Service(BaseImageProvider):
             )
 
             # Attach images if provided
-            if image_paths:
-                payload = await self._attach_images(payload, image_paths)
+            image_urls = kwargs.get("image_urls", [])
+            if image_paths or image_urls:
+                payload = await self._attach_images(payload, image_paths, image_urls=image_urls)
 
             # Log payload (without image data to avoid huge logs)
             log_payload = {
@@ -303,20 +344,83 @@ class NanoBanana2Service(BaseImageProvider):
 
         return payload
 
-    async def _attach_images(self, payload: dict, image_paths: List[str]) -> dict:
-        """Attach base64-encoded images to the payload."""
-        image_urls = []
-        for path in image_paths[:8]:  # Limit to 8 images as per ТЗ
-            try:
-                data_url = await self._upload_image(path)
-                image_urls.append(data_url)
-            except Exception as e:
-                logger.warning("nano_banana_2_image_attach_failed", path=path, error=str(e))
+    async def _attach_images(self, payload: dict, image_paths: List[str], image_urls: List[str] = None) -> dict:
+        """Upload images and attach their URLs to the payload.
+
+        Args:
+            payload: API request payload
+            image_paths: Local image file paths (used for upload if no URLs provided)
+            image_urls: Pre-existing URLs (e.g. Telegram file URLs). If provided,
+                        these are used directly without uploading local files.
+        """
+        urls = []
 
         if image_urls:
-            payload["input"]["image_input"] = image_urls
+            # Use pre-existing URLs (e.g. from Telegram)
+            # But upload them via Kie.ai URL upload to ensure compatibility
+            for img_url in image_urls[:8]:
+                try:
+                    kie_url = await self._upload_url_to_kie(img_url)
+                    urls.append(kie_url)
+                except Exception as e:
+                    logger.warning("nano_banana_2_url_upload_failed", url=img_url[:100], error=str(e))
+
+        if not urls:
+            # Fall back to uploading local files via file-stream-upload
+            for path in image_paths[:8]:
+                try:
+                    file_url = await self._upload_image_to_kie(path)
+                    urls.append(file_url)
+                except Exception as e:
+                    logger.warning("nano_banana_2_image_upload_failed", path=path, error=str(e))
+
+        if urls:
+            payload["input"]["image_input"] = urls
 
         return payload
+
+    async def _upload_url_to_kie(self, file_url: str) -> str:
+        """Upload a remote file URL to Kie.ai and return the hosted URL."""
+        url = f"{self.UPLOAD_BASE_URL}/api/file-url-upload"
+        timeout = aiohttp.ClientTimeout(total=60)
+
+        payload = {
+            "fileUrl": file_url,
+            "uploadPath": "nano-banana-2",
+        }
+
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(
+                url,
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            ) as response:
+                response_text = await response.text()
+
+                if response.status != 200:
+                    raise Exception(
+                        f"URL upload HTTP {response.status}: {response_text[:300]}"
+                    )
+
+                try:
+                    result = json.loads(response_text)
+                except json.JSONDecodeError:
+                    raise Exception(f"URL upload invalid JSON: {response_text[:300]}")
+
+                if result.get("code") != 200:
+                    raise Exception(
+                        f"URL upload error: {result.get('msg', 'Unknown')}"
+                    )
+
+                hosted_url = result.get("data", {}).get("fileUrl")
+                if not hosted_url:
+                    raise Exception(f"No fileUrl in URL upload response")
+
+                logger.info("nano_banana_2_url_uploaded", source=file_url[:80], hosted=hosted_url)
+                return hosted_url
 
     async def _create_task(self, payload: dict) -> str:
         """Create a generation task via Kie.ai API."""
