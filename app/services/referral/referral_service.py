@@ -153,7 +153,8 @@ class ReferralService:
         money_paid: Decimal
     ) -> Tuple[Optional[int], Optional[Decimal]]:
         """
-        Award referrer when referred user makes a purchase.
+        Award referrer when referred user makes their FIRST subscription purchase.
+        Referrer receives 1,000 tokens (one time only).
 
         Args:
             referred_user_id: ID of user who made purchase
@@ -161,8 +162,12 @@ class ReferralService:
             money_paid: Amount paid in rubles
 
         Returns:
-            Tuple of (tokens_awarded, money_awarded) or (None, None) if no referral
+            Tuple of (tokens_awarded, money_awarded) or (None, None) if no referral or bonus already given
         """
+        # Referrer signup bonus is 100 tokens; if tokens_earned > 100 — subscription bonus already given
+        REFERRER_SIGNUP_BONUS = 100
+        REFERRER_SUBSCRIPTION_BONUS = 1000
+
         try:
             # Find referral
             result = await self.session.execute(
@@ -176,25 +181,44 @@ class ReferralService:
             if not referral:
                 return None, None
 
-            tokens_awarded = None
-            money_awarded = None
+            # Check if subscription bonus already given
+            # tokens_earned > REFERRER_SIGNUP_BONUS means subscription bonus was already awarded
+            if referral.tokens_earned > REFERRER_SIGNUP_BONUS:
+                logger.info(
+                    "referral_subscription_bonus_already_given",
+                    referrer_id=referral.referrer_id,
+                    referred_id=referred_user_id,
+                    tokens_earned=referral.tokens_earned
+                )
+                return None, None
 
-            # Award 10% money for any referral purchase
-            money_awarded = money_paid * Decimal("0.1")
-            referral.money_earned += money_awarded
+            # Give 1,000 tokens to referrer (one-time subscription bonus)
+            referral.tokens_earned += REFERRER_SUBSCRIPTION_BONUS
             balance = await self._get_or_create_balance(referral.referrer_id)
-            balance.money_balance += money_awarded
+            balance.tokens_balance += REFERRER_SUBSCRIPTION_BONUS
 
-            logger.info(
-                "referral_money_awarded",
-                referrer_id=referral.referrer_id,
-                referred_id=referred_user_id,
-                money=float(money_awarded)
+            referrer_subscription = Subscription(
+                user_id=referral.referrer_id,
+                subscription_type="referral_subscription_bonus",
+                tokens_amount=REFERRER_SUBSCRIPTION_BONUS,
+                tokens_used=0,
+                price=Decimal("0.00"),
+                is_active=True,
+                started_at=datetime.now(timezone.utc),
+                expires_at=None
             )
+            self.session.add(referrer_subscription)
 
             await self.session.commit()
 
-            return tokens_awarded, money_awarded
+            logger.info(
+                "referral_subscription_bonus_awarded",
+                referrer_id=referral.referrer_id,
+                referred_id=referred_user_id,
+                tokens_awarded=REFERRER_SUBSCRIPTION_BONUS
+            )
+
+            return REFERRER_SUBSCRIPTION_BONUS, None
 
         except Exception as e:
             logger.error(

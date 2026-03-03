@@ -240,13 +240,13 @@ async def yookassa_webhook(request: Request):
                         )
 
                         if tokens_added > 0:
-                            message = (
+                            notification_text = (
                                 "✅ Бонусы начислены!\n\n"
                                 f"🎁 Начислено: {tokens_added:,} токенов\n"
                                 f"💎 Всего токенов: {total_tokens:,}"
                             )
                             try:
-                                await bot.send_message(user.telegram_id, message)
+                                await bot.send_message(user.telegram_id, notification_text)
                                 logger.info(
                                     "yukassa_notification_sent",
                                     user_id=payment.user_id,
@@ -259,9 +259,66 @@ async def yookassa_webhook(request: Request):
                                     user_id=payment.user_id,
                                     payment_id=payment.payment_id
                                 )
+
+                        # Check and award 10th purchase bonus
+                        try:
+                            from app.services.payment.payment_service import PaymentService as PS2
+                            ps2 = PS2(session)
+                            tenth_purchase_count = await ps2.check_and_award_tenth_purchase_bonus(payment.user_id)
+                            if tenth_purchase_count is not None:
+                                updated_tokens = await subscription_service.get_available_tokens(payment.user_id)
+                                try:
+                                    await bot.send_message(
+                                        user.telegram_id,
+                                        f"🎉 Поздравляем! Это ваша {tenth_purchase_count}-я покупка!\n\n"
+                                        f"🎁 Вам начислено 5 000 бонусных токенов!\n"
+                                        f"💎 Всего токенов: {updated_tokens:,}"
+                                    )
+                                except Exception:
+                                    pass
+                        except Exception as tenth_err:
+                            logger.error("tenth_purchase_bonus_failed", error=str(tenth_err))
+
+                        # Notify referrer about first subscription purchase bonus
+                        try:
+                            from app.services.referral.referral_service import ReferralService as RS2
+                            from app.database.models.referral import Referral
+                            referral_result = await session.execute(
+                                select(Referral).where(
+                                    Referral.referred_id == payment.user_id,
+                                    Referral.is_active == True
+                                )
+                            )
+                            referral_rec = referral_result.scalar_one_or_none()
+                            if referral_rec:
+                                rs2 = RS2(session)
+                                ref_tokens, _ = await rs2.award_referrer_for_purchase(
+                                    referred_user_id=payment.user_id,
+                                    tokens_purchased=tokens_added,
+                                    money_paid=payment.amount
+                                )
+                                if ref_tokens:
+                                    # Find referrer's telegram_id
+                                    referrer_result = await session.execute(
+                                        select(User).where(User.id == referral_rec.referrer_id)
+                                    )
+                                    referrer_user = referrer_result.scalar_one_or_none()
+                                    if referrer_user:
+                                        try:
+                                            await bot.send_message(
+                                                referrer_user.telegram_id,
+                                                f"🎉 Ваш реферал совершил покупку!\n\n"
+                                                f"🎁 Вам начислено {ref_tokens:,} токенов как реферальный бонус!"
+                                            )
+                                        except Exception:
+                                            pass
+                        except Exception as ref_err:
+                            logger.error("referral_notification_failed", error=str(ref_err))
+
                         # Send admin notification about purchase
                         try:
                             from aiogram import Bot as AdminBot
+                            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
                             from app.database.models.payment import Payment as PaymentModel
                             from sqlalchemy import func as sql_func
 
@@ -277,7 +334,8 @@ async def yookassa_webhook(request: Request):
 
                             # Get plan display name
                             subscription_type = metadata.get("subscription_type", "")
-                            plan_name = subscription_type
+                            tariff_id = metadata.get("tariff_id", "")
+                            plan_name = subscription_type or tariff_id
                             try:
                                 from app.core.subscription_plans import ETERNAL_PLANS, SUBSCRIPTION_PLANS
                                 if subscription_type in ETERNAL_PLANS:
@@ -287,6 +345,11 @@ async def yookassa_webhook(request: Request):
                                         if sp.subscription_type == subscription_type:
                                             plan_name = sp.display_name
                                             break
+                                    # Try by tariff_id
+                                    if not plan_name and tariff_id:
+                                        sp = SUBSCRIPTION_PLANS.get(tariff_id)
+                                        if sp:
+                                            plan_name = sp.display_name
                             except Exception:
                                 pass
 
@@ -302,9 +365,23 @@ async def yookassa_webhook(request: Request):
                                 f"📊 Всего покупок: {total_purchases}"
                             )
 
+                            # Inline keyboard for admin bot
+                            admin_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                                [InlineKeyboardButton(
+                                    text="🎁 Начислить бонусы в подарок",
+                                    callback_data=f"admin:give_tokens_to:{user.telegram_id}"
+                                )],
+                                [InlineKeyboardButton(
+                                    text="👤 Перейти в профиль пользователя",
+                                    callback_data=f"admin:user_view:{user.telegram_id}"
+                                )],
+                            ])
+
                             for aid in settings.admin_user_ids:
                                 try:
-                                    await admin_bot_instance.send_message(aid, admin_message)
+                                    await admin_bot_instance.send_message(
+                                        aid, admin_message, reply_markup=admin_keyboard
+                                    )
                                 except Exception:
                                     pass
 

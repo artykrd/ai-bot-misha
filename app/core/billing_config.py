@@ -589,11 +589,11 @@ class TokenPackage:
 
 # Token packages as specified in the task
 TOKEN_PACKAGES = {
-    "7days": TokenPackage(days=7, tokens=150000, price=88, star_price=50),
-    "14days": TokenPackage(days=14, tokens=250000, price=176, star_price=100),
-    "21days": TokenPackage(days=21, tokens=500000, price=260, star_price=150),
-    "30days_1m": TokenPackage(days=30, tokens=1000000, price=537, star_price=299),
-    "30days_5m": TokenPackage(days=30, tokens=5000000, price=2511, star_price=1399),
+    "7days": TokenPackage(days=7, tokens=150000, price=88, star_price=150),
+    "14days": TokenPackage(days=14, tokens=250000, price=176, star_price=300),
+    "21days": TokenPackage(days=21, tokens=500000, price=260, star_price=450),
+    "30days_1m": TokenPackage(days=30, tokens=1000000, price=537, star_price=897),
+    "30days_5m": TokenPackage(days=30, tokens=5000000, price=2511, star_price=4197),
 }
 
 

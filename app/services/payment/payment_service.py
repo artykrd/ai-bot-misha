@@ -6,7 +6,7 @@ from decimal import Decimal
 from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from app.database.models.payment import Payment
 from app.database.models.user import User
@@ -258,24 +258,6 @@ class PaymentService:
                         metadata=metadata
                     )
 
-                # Award referrer if exists
-                from app.services.referral import ReferralService
-
-                referral_service = ReferralService(self.session)
-                tokens_awarded, money_awarded = await referral_service.award_referrer_for_purchase(
-                    referred_user_id=payment.user_id,
-                    tokens_purchased=tokens,
-                    money_paid=payment.amount
-                )
-
-                if tokens_awarded or money_awarded:
-                    logger.info(
-                        "referral_reward_awarded",
-                        user_id=payment.user_id,
-                        tokens_awarded=tokens_awarded,
-                        money_awarded=money_awarded
-                    )
-
             elif payment_type == "subscription":
                 logger.info(
                     "processing_subscription",
@@ -341,24 +323,6 @@ class PaymentService:
                         metadata=metadata
                     )
 
-                # Award referrer if exists
-                from app.services.referral import ReferralService
-
-                referral_service = ReferralService(self.session)
-                tokens_awarded, money_awarded = await referral_service.award_referrer_for_purchase(
-                    referred_user_id=payment.user_id,
-                    tokens_purchased=tokens or 0,
-                    money_paid=payment.amount
-                )
-
-                if tokens_awarded or money_awarded:
-                    logger.info(
-                        "referral_reward_awarded_subscription",
-                        user_id=payment.user_id,
-                        tokens_awarded=tokens_awarded,
-                        money_awarded=money_awarded
-                    )
-
             # Update payment status
             logger.info(
                 "updating_payment_status_to_success",
@@ -402,6 +366,54 @@ class PaymentService:
             )
             await self.session.rollback()
             return False
+
+    async def check_and_award_tenth_purchase_bonus(
+        self,
+        user_id: int
+    ) -> Optional[int]:
+        """
+        Check if user's total successful purchases is a multiple of 10,
+        and if so award 5,000 bonus tokens.
+
+        Returns:
+            Total successful purchase count if bonus was awarded, else None
+        """
+        TENTH_PURCHASE_BONUS_TOKENS = 5000
+
+        try:
+            total_purchases = await self.session.scalar(
+                select(func.count(Payment.id)).where(
+                    Payment.user_id == user_id,
+                    Payment.status == "success"
+                )
+            ) or 0
+
+            if total_purchases > 0 and total_purchases % 10 == 0:
+                from app.services.subscription.subscription_service import SubscriptionService
+                sub_service = SubscriptionService(self.session)
+                await sub_service.add_eternal_tokens(
+                    user_id=user_id,
+                    tokens=TENTH_PURCHASE_BONUS_TOKENS,
+                    subscription_type="tenth_purchase_bonus"
+                )
+                logger.info(
+                    "tenth_purchase_bonus_awarded",
+                    user_id=user_id,
+                    total_purchases=total_purchases,
+                    tokens=TENTH_PURCHASE_BONUS_TOKENS
+                )
+                return total_purchases
+
+            return None
+
+        except Exception as e:
+            logger.error(
+                "tenth_purchase_bonus_check_failed",
+                error=str(e),
+                user_id=user_id,
+                exc_info=True
+            )
+            return None
 
     async def get_user_payments(
         self,
