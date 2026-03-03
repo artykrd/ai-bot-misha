@@ -198,6 +198,25 @@ IMAGE_MODELS: Dict[str, FixedModelBilling] = {
         description_suffix="Стоимость генерации: 19 300 токенов за изображение",
         model_type=ModelType.IMAGE
     ),
+    # Nano Banana 2 (via Kie.ai) - price depends on resolution
+    "nano-banana-2-1k": FixedModelBilling(
+        tokens_per_generation=18000,
+        display_name="Nano Banana 2 (1K)",
+        description_suffix="Стоимость генерации (1K): 18 000 токенов за изображение",
+        model_type=ModelType.IMAGE
+    ),
+    "nano-banana-2-2k": FixedModelBilling(
+        tokens_per_generation=27000,
+        display_name="Nano Banana 2 (2K)",
+        description_suffix="Стоимость генерации (2K): 27 000 токенов за изображение",
+        model_type=ModelType.IMAGE
+    ),
+    "nano-banana-2-4k": FixedModelBilling(
+        tokens_per_generation=40000,
+        display_name="Nano Banana 2 (4K)",
+        description_suffix="Стоимость генерации (4K): 40 000 токенов за изображение",
+        model_type=ModelType.IMAGE
+    ),
 }
 
 
@@ -762,6 +781,48 @@ def get_kling_o1_tokens_cost(mode: str, duration: int) -> int:
         display_name="Kling O1",
         description_suffix="",
         model_type=ModelType.VIDEO
+    )).tokens_per_generation
+
+
+# ==============================================
+# NANO BANANA 2 BILLING HELPERS
+# ==============================================
+
+def get_nano_banana_2_billing_key(resolution: str) -> str:
+    """
+    Get billing key for Nano Banana 2 based on resolution.
+
+    Args:
+        resolution: '1K', '2K', or '4K'
+
+    Returns:
+        Billing key for IMAGE_MODELS dict
+    """
+    res_lower = resolution.lower()
+    return f"nano-banana-2-{res_lower}"
+
+
+def get_nano_banana_2_tokens_cost(resolution: str) -> int:
+    """
+    Get token cost for Nano Banana 2 image generation.
+
+    Args:
+        resolution: '1K', '2K', or '4K'
+
+    Returns:
+        Token cost for this generation
+    """
+    billing_key = get_nano_banana_2_billing_key(resolution)
+    billing = IMAGE_MODELS.get(billing_key)
+    if billing:
+        return billing.tokens_per_generation
+
+    # Fallback to 2K
+    return IMAGE_MODELS.get("nano-banana-2-2k", FixedModelBilling(
+        tokens_per_generation=27000,
+        display_name="Nano Banana 2",
+        description_suffix="",
+        model_type=ModelType.IMAGE
     )).tokens_per_generation
 
 

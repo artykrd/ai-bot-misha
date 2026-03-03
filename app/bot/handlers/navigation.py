@@ -20,6 +20,8 @@ from app.bot.keyboards.inline import (
     audio_tools_keyboard,
     nano_banana_keyboard,
     nano_format_keyboard,
+    nano_banana_2_keyboard,
+    nano_banana_2_format_keyboard,
     dialog_keyboard,
     referral_keyboard,
     subscription_keyboard,
@@ -555,6 +557,117 @@ async def nano_multi_count_selected(callback: CallbackQuery, state: FSMContext):
 
     await safe_edit_or_send(callback, text, reply_markup=back_to_main_keyboard(), parse_mode="Markdown")
     await callback.answer()
+
+
+# ==============================================
+# Nano Banana 2
+# ==============================================
+
+@router.callback_query(F.data == "bot.nano_banana_2")
+async def show_nano_banana_2(callback: CallbackQuery, state: FSMContext, user: User):
+    """Show Nano Banana 2 interface."""
+    from app.bot.handlers.media_handler import MediaState
+    from app.bot.states.media import NanoBanana2Settings
+    from app.core.billing_config import get_nano_banana_2_tokens_cost, format_token_amount
+    from app.database.database import async_session_maker
+    from app.services.subscription.subscription_service import SubscriptionService
+
+    async def get_available_tokens(user_id: int) -> int:
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            return await sub_service.get_available_tokens(user_id)
+
+    # Get settings from state or defaults
+    data = await state.get_data()
+    nb2_settings = NanoBanana2Settings.from_dict(data)
+
+    tokens_cost = get_nano_banana_2_tokens_cost(nb2_settings.resolution)
+    total_tokens = await get_available_tokens(user.id)
+    requests_available = int(total_tokens / tokens_cost) if total_tokens > 0 else 0
+
+    text = (
+        "🍌 **Nano Banana 2 – генерация фото**\n\n"
+        "**Nano Banana 2: Революция в скорости без потери качества**\n\n"
+        "Представляем Nano Banana 2 — модель, которая объединяет студийное качество Pro "
+        "с молниеносной скоростью Flash. Вы больше не выбираете между качеством и временем.\n\n"
+        "✅ Анатомия и физика — больше никаких странных пальцев и нелепых теней\n"
+        "✅ Фотореализм — невероятная детализация кожи, текстур и освещения\n"
+        "✅ Лучше понимает промпт — аккуратнее следует описанию, меньше случайных артефактов\n"
+        "✅ Можно приложить до восьми фото — получится лучше закрепить лицо/образ и контролировать результат\n\n"
+        "**Возможности:**\n"
+        "📝 Генерация по тексту\n"
+        "🖼 Генерация по изображениям\n"
+        "✏️ Редактирование\n\n"
+        f"⚙️ **Разрешение:** {nb2_settings.resolution}\n"
+        f"📐 **Формат:** {nb2_settings.aspect_ratio}\n\n"
+        f"💰 **Стоимость:** {format_token_amount(tokens_cost)} токенов за изображение\n"
+        f"🔹 Токенов хватит на {requests_available} изображений\n\n"
+        "**Отправьте:**\n"
+        "• Текстовое описание — для генерации по тексту\n"
+        "• Фото + описание — для генерации по фото\n"
+        "• Фото + описание — для редактирования"
+    )
+
+    await state.set_state(MediaState.waiting_for_image_prompt)
+    await state.update_data(
+        service="nano_banana_2",
+        nb2_resolution=nb2_settings.resolution,
+        nb2_aspect_ratio=nb2_settings.aspect_ratio,
+        reference_image_path=None,
+        reference_image_paths=[],
+        photo_caption_prompt=None,
+    )
+
+    await callback.message.answer(
+        text,
+        reply_markup=nano_banana_2_keyboard(nb2_settings.resolution),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("nb2.set.resolution:"))
+async def nb2_set_resolution(callback: CallbackQuery, state: FSMContext, user: User):
+    """Handle Nano Banana 2 resolution change."""
+    resolution = callback.data.split(":")[1]  # "2K" or "4K"
+    await state.update_data(nb2_resolution=resolution)
+    await callback.answer(f"✅ Разрешение установлено: {resolution}")
+
+    # Refresh the main NB2 menu
+    await show_nano_banana_2(callback, state, user)
+
+
+@router.callback_query(F.data == "nb2.prms:ratio")
+async def nb2_format_select(callback: CallbackQuery, state: FSMContext):
+    """Show Nano Banana 2 format (aspect ratio) selection."""
+    data = await state.get_data()
+    current_ratio = data.get("nb2_aspect_ratio", "auto")
+
+    text = (
+        "📐 **Выберите формат создаваемого фото в Nano Banana 2**\n\n"
+        f"**Текущий формат:** {current_ratio}\n\n"
+        "**1:1:** квадратное фото, идеально для аватарок\n\n"
+        "**16:9:** горизонтальное, идеально для обложек YouTube\n\n"
+        "**9:16:** вертикальное, идеально для сторис и TikTok\n\n"
+        "**3:2:** классическое фото, горизонтальная ориентация\n\n"
+        "**21:9:** ультраширокое, кинематографическое\n\n"
+        "**Авто:** бот автоматически определит формат"
+    )
+
+    await safe_edit_or_send(callback, text, reply_markup=nano_banana_2_format_keyboard(current_ratio))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("nb2.prms.chs:ratio|"))
+async def nb2_format_selected(callback: CallbackQuery, state: FSMContext):
+    """Handle Nano Banana 2 format selection."""
+    format_value = callback.data.split("|")[1]
+    await state.update_data(nb2_aspect_ratio=format_value)
+
+    label = "Авто" if format_value == "auto" else format_value
+    await callback.answer(f"✅ Формат установлен: {label}")
+
+    # Refresh format selection with checkmark
+    await nb2_format_select(callback, state)
 
 
 # Photo tools
