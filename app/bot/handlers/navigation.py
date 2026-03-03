@@ -732,8 +732,8 @@ async def tariff_selected(callback: CallbackQuery, user: User):
     plan = get_subscription_plan(tariff_id)
     if tariff_id == "22":
         tariff = UNLIMITED_PLAN
-        tariff_name = "Безлимит на 1 день"
-        tariff_tokens = None
+        tariff_name = "2 500 000 токенов на 30 дней"
+        tariff_tokens = UNLIMITED_PLAN.tokens
     else:
         if not plan:
             # Callback already answered, just edit message
@@ -826,62 +826,15 @@ async def tariff_selected(callback: CallbackQuery, user: User):
 
     tokens_text = f"{tariff_tokens:,} токенов" if tariff_tokens else "Безлимит"
 
-    # Special detailed description for unlimited tariff
-    if tariff_id == "22":
-        from app.core.billing_config import (
-            get_text_model_billing,
-            get_image_model_billing,
-            get_video_model_billing,
-            format_token_amount,
-        )
-        gpt_billing = get_text_model_billing("gpt-4.1-mini")
-        nano_billing = get_image_model_billing("nano-banana-image")
-        dalle_billing = get_image_model_billing("dalle3")
-        sora_billing = get_video_model_billing("sora2")
-        veo_billing = get_video_model_billing("veo-3.1-fast")
-        hailuo_billing = get_video_model_billing("hailuo")
-        kling_billing = get_video_model_billing("kling-video")
-        kling3_billing = get_video_model_billing("kling3-std-5s")
-
-        price_line = f"💰 **Стоимость:** ~~{original_price}~~ **{final_price} руб.**{discount_text}" if discount_percent > 0 else f"💰 **Стоимость:** {final_price} руб."
-        text = f"""💳 **Оплата подписки**
-
-📦 **Тариф:** {tariff_name}
-{price_line}
-⏰ **Срок:** {tariff.days} день
-
-🎯 **Что вы получаете:**
-
-**💬 Чат с ChatGPT:**
-• Базовая стоимость: {format_token_amount(gpt_billing.base_tokens)} токенов
-• За каждый токен AI: {gpt_billing.per_gpt_token} внутренних токенов
-
-**🖼 Генерация изображений:**
-• Nano Banana: {format_token_amount(nano_billing.tokens_per_generation)} токенов за изображение
-• DALL-E 3: {format_token_amount(dalle_billing.tokens_per_generation)} токенов за изображение
-
-**🎬 Генерация видео:**
-• Sora 2: {format_token_amount(sora_billing.tokens_per_generation)} токенов за видео
-• Veo 3.1 Fast: {format_token_amount(veo_billing.tokens_per_generation)} токенов за видео
-• Hailuo: {format_token_amount(hailuo_billing.tokens_per_generation)} токенов за видео
-• Kling: {format_token_amount(kling_billing.tokens_per_generation)} токенов за видео
-• Kling 3.0 (720p, 5с): {format_token_amount(kling3_billing.tokens_per_generation)} токенов за видео
-
-**🎵 Генерация аудио:**
-• Suno: ~85 песен (по 2 мин)
-• Транскрибация: ~1250 минут аудио
-
-После оплаты подписка будет автоматически активирована.
-
-Нажмите кнопку "Оплатить" для перехода к оплате."""
-    else:
-        price_line = f"💰 **Стоимость:** ~~{original_price}~~ **{final_price} руб.**{discount_text}" if discount_percent > 0 else f"💰 **Стоимость:** {final_price} руб."
-        text = f"""💳 **Оплата подписки**
+    price_line = f"💰 **Стоимость:** ~~{original_price}~~ **{final_price} руб.**{discount_text}" if discount_percent > 0 else f"💰 **Стоимость:** {final_price} руб."
+    text = f"""💳 **Оплата подписки**
 
 📦 **Тариф:** {tariff_name}
 {price_line}
 ⏰ **Срок:** {tariff.days} дней
 🎁 **Токены:** {tokens_text}
+
+🎉 **Бонус:** каждая 10-я купленная подписка — 5 000 токенов в подарок!
 
 После оплаты подписка будет автоматически активирована.
 

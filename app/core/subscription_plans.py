@@ -100,12 +100,12 @@ SUBSCRIPTION_PLANS: Dict[str, SubscriptionPlan] = {
 
 UNLIMITED_PLAN = Tariff(
     subscription_type="unlimited_1day",
-    days=1,
-    tokens=None,
-    price=Decimal("649.00"),
+    days=30,
+    tokens=2_500_000,
+    price=Decimal("1459.00"),
 )
 
-UNLIMITED_PLAN_STAR_PRICE = 369
+UNLIMITED_PLAN_STAR_PRICE = 1107
 
 
 ETERNAL_PLANS: Dict[str, EternalTokenPlan] = {
@@ -114,28 +114,28 @@ ETERNAL_PLANS: Dict[str, EternalTokenPlan] = {
         tokens=150_000,
         price=Decimal("149.00"),
         display_name="150,000 токенов",
-        star_price=85,
+        star_price=255,
     ),
     "eternal_250k": EternalTokenPlan(
         subscription_type="eternal_250k",
         tokens=250_000,
         price=Decimal("279.00"),
         display_name="250,000 токенов",
-        star_price=155,
+        star_price=465,
     ),
     "eternal_500k": EternalTokenPlan(
         subscription_type="eternal_500k",
         tokens=500_000,
         price=Decimal("519.00"),
         display_name="500,000 токенов",
-        star_price=295,
+        star_price=885,
     ),
     "eternal_1m": EternalTokenPlan(
         subscription_type="eternal_1m",
         tokens=1_000_000,
         price=Decimal("999.00"),
         display_name="1,000,000 токенов",
-        star_price=565,
+        star_price=1695,
     ),
 }
 

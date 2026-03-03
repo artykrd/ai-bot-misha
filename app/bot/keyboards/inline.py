@@ -365,7 +365,7 @@ def subscription_keyboard() -> InlineKeyboardMarkup:
 
     builder.row(
         InlineKeyboardButton(
-            text="🔥 Безлимит на 1 день",
+            text="🔥 2 500 000 токенов — 1459 руб.",
             callback_data="shop_select_tariff_22"
         )
     )
