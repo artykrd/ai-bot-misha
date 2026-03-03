@@ -2469,7 +2469,16 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
         # Multi-image mode: add photo to list
         reference_image_paths = data.get("reference_image_paths", [])
         reference_image_paths.append(str(temp_path))
-        await state.update_data(reference_image_paths=reference_image_paths)
+        update_data = {"reference_image_paths": reference_image_paths}
+
+        # For NB2: also store Telegram file URL for Kie.ai API
+        if service_name == "nano_banana_2":
+            nb2_image_urls = data.get("nb2_image_urls", [])
+            telegram_file_url = f"https://api.telegram.org/file/bot{message.bot.token}/{file.file_path}"
+            nb2_image_urls.append(telegram_file_url)
+            update_data["nb2_image_urls"] = nb2_image_urls
+
+        await state.update_data(**update_data)
 
         photos_count = len(reference_image_paths)
         service_display = {
@@ -2516,9 +2525,18 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
             )
     elif service_name == "nano_banana_2":
         # Nano Banana 2: accumulate up to 8 photos
+        # Store both local path (for cleanup) and Telegram URL (for Kie.ai API)
         reference_image_paths = data.get("reference_image_paths", [])
         reference_image_paths.append(str(temp_path))
-        await state.update_data(reference_image_paths=reference_image_paths)
+
+        nb2_image_urls = data.get("nb2_image_urls", [])
+        telegram_file_url = f"https://api.telegram.org/file/bot{message.bot.token}/{file.file_path}"
+        nb2_image_urls.append(telegram_file_url)
+
+        await state.update_data(
+            reference_image_paths=reference_image_paths,
+            nb2_image_urls=nb2_image_urls,
+        )
 
         photos_count = len(reference_image_paths)
 
@@ -6303,17 +6321,18 @@ async def process_nano_banana_2_image(message: Message, user: User, state: FSMCo
     prompt = data.get("photo_caption_prompt") or message.text
     reference_image_path = data.get("reference_image_path", None)
     reference_image_paths = data.get("reference_image_paths", [])
+    nb2_image_urls = data.get("nb2_image_urls", [])
 
     # Get settings
     nb2_settings = NanoBanana2Settings.from_dict(data)
 
-    # Collect all image paths
+    # Collect all image paths (local, for cleanup)
     image_paths = list(reference_image_paths)
     if reference_image_path and reference_image_path not in image_paths:
         image_paths.append(reference_image_path)
 
     # Determine mode
-    if image_paths:
+    if image_paths or nb2_image_urls:
         mode = "image-to-image"
     else:
         mode = "text-to-image"
@@ -6348,7 +6367,7 @@ async def process_nano_banana_2_image(message: Message, user: User, state: FSMCo
             return
 
     # Progress message
-    mode_display = "по фото" if image_paths else "по тексту"
+    mode_display = "по фото" if (image_paths or nb2_image_urls) else "по тексту"
     progress_msg = await message.answer(
         f"🍌 Nano Banana 2: генерирую изображение {mode_display} "
         f"({nb2_settings.resolution}, {nb2_settings.aspect_ratio})...\n"
@@ -6368,6 +6387,7 @@ async def process_nano_banana_2_image(message: Message, user: User, state: FSMCo
         prompt=prompt,
         progress_callback=update_progress,
         image_paths=image_paths,
+        image_urls=nb2_image_urls,
         aspect_ratio=nb2_settings.aspect_ratio,
         resolution=nb2_settings.resolution,
         output_format="jpg",
