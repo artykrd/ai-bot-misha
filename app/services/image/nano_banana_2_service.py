@@ -180,6 +180,18 @@ class NanoBanana2Service(BaseImageProvider):
             if image_paths:
                 payload = await self._attach_images(payload, image_paths)
 
+            # Log payload (without image data to avoid huge logs)
+            log_payload = {
+                "model": payload.get("model"),
+                "input": {
+                    k: v for k, v in payload.get("input", {}).items()
+                    if k != "image_input"
+                },
+                "has_images": "image_input" in payload.get("input", {}),
+                "images_count": len(payload.get("input", {}).get("image_input", [])),
+            }
+            logger.info("nano_banana_2_create_task_payload", payload=log_payload)
+
             # Step 1: Create task
             task_id = await self._create_task(payload)
 
@@ -244,7 +256,11 @@ class NanoBanana2Service(BaseImageProvider):
             logger.error(
                 "nano_banana_2_generation_failed",
                 error=error_msg,
-                prompt=prompt[:100] if prompt else "None",
+                error_type=type(e).__name__,
+                prompt=prompt[:200] if prompt else "None",
+                resolution=kwargs.get("resolution", "2K"),
+                aspect_ratio=kwargs.get("aspect_ratio", "auto"),
+                images_count=len(kwargs.get("image_paths", [])),
             )
 
             if progress_callback:
@@ -313,11 +329,38 @@ class NanoBanana2Service(BaseImageProvider):
                 headers=self._get_auth_headers(),
                 json=payload,
             ) as response:
-                data = await response.json()
+                response_status = response.status
+                response_text = await response.text()
+
+                logger.info(
+                    "nano_banana_2_api_response",
+                    status=response_status,
+                    response_body=response_text[:1000],
+                    url=url,
+                )
+
+                if response_status != 200:
+                    raise Exception(
+                        f"Kie.ai API HTTP {response_status}: {response_text[:500]}"
+                    )
+
+                try:
+                    data = json.loads(response_text)
+                except json.JSONDecodeError as e:
+                    raise Exception(
+                        f"Kie.ai API вернул невалидный JSON: {response_text[:300]}. Error: {e}"
+                    )
 
                 if data.get("code") != 200:
                     error_msg = data.get("msg") or data.get("message") or "Unknown error"
                     error_code = data.get("code", "unknown")
+
+                    logger.error(
+                        "nano_banana_2_api_error",
+                        error_code=error_code,
+                        error_msg=error_msg,
+                        full_response=response_text[:500],
+                    )
 
                     if error_code == 401:
                         raise Exception("Ошибка аутентификации. Проверьте KIE_API_KEY.")
@@ -332,7 +375,7 @@ class NanoBanana2Service(BaseImageProvider):
 
                 task_id = data.get("data", {}).get("taskId")
                 if not task_id:
-                    raise Exception("No taskId in API response")
+                    raise Exception(f"No taskId in API response: {response_text[:300]}")
 
                 return task_id
 
