@@ -5817,6 +5817,256 @@ async def kling3_instruction(callback: CallbackQuery, state: FSMContext, user: U
     await callback.answer()
 
 
+
+# ======================
+# KLING O1 HANDLERS
+# ======================
+
+@router.callback_query(F.data == "bot.kling_o1")
+async def start_kling_o1(callback: CallbackQuery, state: FSMContext, user: User):
+    """Start Kling O1 video generation — main entry point."""
+    from app.bot.keyboards.inline import kling_o1_main_keyboard
+    from app.bot.states.media import KlingO1Settings
+    from app.core.billing_config import get_kling_o1_tokens_cost
+
+    data = await state.get_data()
+    o1_settings = KlingO1Settings.from_dict(data)
+
+    total_tokens = await get_available_tokens(user.id)
+    tokens_per_request = get_kling_o1_tokens_cost(o1_settings.mode, o1_settings.duration)
+    videos_available = int(total_tokens / tokens_per_request) if total_tokens > 0 else 0
+
+    images = data.get("kling_o1_images", [])
+    video_url = data.get("kling_o1_video_url", None)
+    has_media = bool(images or video_url)
+
+    text = (
+        "🧠 Kling O1 — генерация видео\n\n"
+        "Kling O1 — это нейросеть для редактирования готового видео с помощью текста.\n"
+        "Вы можете изменить персонажей, добавить новые объекты, заменить окружение или стиль — "
+        "при этом движения, ракурсы камеры и анимация исходного видео сохраняются.\n\n"
+        "👉 Вы даёте видео\n"
+        "👉 Пишете, что в нём изменить и даёте фото новых объектов если требуется\n"
+        "👉 Kling аккуратно «перерисовывает» сцену, не ломая движение\n\n"
+        "Возможности:\n"
+        "• Генерация по тексту\n"
+        "• Генерация по изображениям\n"
+        "• Редактирование видео\n\n"
+        f"⚙️ Текущие настройки:\n"
+        f"{o1_settings.get_display_settings()}\n\n"
+        f"💰 Стоимость: {format_token_amount(tokens_per_request)} токенов\n"
+        f"🔹 Токенов хватит на {videos_available} видео\n\n"
+        "Отправьте:\n"
+        "• Текстовое описание — для генерации по тексту\n"
+        "• Фото + описание — для генерации по фото\n"
+        "• Видео + описание — для редактирования видео"
+    )
+
+    await state.set_state(MediaState.kling_o1_waiting_for_input)
+    settings_dict = o1_settings.to_dict()
+    await state.update_data(
+        service="kling_o1",
+        kling_o1_images=[],
+        kling_o1_video_url=None,
+        kling_o1_video_is_base=True,
+        **settings_dict
+    )
+
+    try:
+        await callback.message.edit_text(text, reply_markup=kling_o1_main_keyboard(has_media=has_media))
+    except Exception:
+        await callback.message.answer(text, reply_markup=kling_o1_main_keyboard(has_media=has_media))
+    await callback.answer()
+
+
+@router.callback_query(F.data == "kling_o1.settings")
+async def kling_o1_settings_menu(callback: CallbackQuery, state: FSMContext, user: User):
+    """Show Kling O1 settings menu."""
+    from app.bot.keyboards.inline import kling_o1_settings_keyboard
+
+    text = "⚙️ Настройки генерации Kling O1\n\nВыберите параметр для изменения:"
+
+    try:
+        await callback.message.edit_text(text, reply_markup=kling_o1_settings_keyboard())
+    except Exception:
+        await callback.message.answer(text, reply_markup=kling_o1_settings_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "kling_o1.settings.mode")
+async def kling_o1_settings_mode(callback: CallbackQuery, state: FSMContext, user: User):
+    """Show resolution mode selection for Kling O1."""
+    from app.bot.keyboards.inline import kling_o1_mode_keyboard
+    from app.bot.states.media import KlingO1Settings
+
+    data = await state.get_data()
+    o1_settings = KlingO1Settings.from_dict(data)
+
+    text = (
+        "📺 Выберите разрешение видео Kling O1\n\n"
+        "1080p (std) — стандартное качество, быстрее\n"
+        "4K (pro) — максимальное качество, дороже"
+    )
+
+    try:
+        await callback.message.edit_text(text, reply_markup=kling_o1_mode_keyboard(o1_settings.mode))
+    except Exception:
+        await callback.message.answer(text, reply_markup=kling_o1_mode_keyboard(o1_settings.mode))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("kling_o1.set.mode:"))
+async def kling_o1_set_mode(callback: CallbackQuery, state: FSMContext, user: User):
+    """Set Kling O1 resolution mode."""
+    mode = callback.data.split(":")[1]
+    await state.update_data(kling_o1_mode=mode)
+    mode_display = "1080p" if mode == "std" else "4K"
+    await callback.answer(f"✅ Разрешение установлено: {mode_display}")
+    await start_kling_o1(callback, state, user)
+
+
+@router.callback_query(F.data == "kling_o1.settings.aspect_ratio")
+async def kling_o1_settings_aspect_ratio(callback: CallbackQuery, state: FSMContext, user: User):
+    """Show aspect ratio selection for Kling O1."""
+    from app.bot.keyboards.inline import kling_o1_aspect_ratio_keyboard
+    from app.bot.states.media import KlingO1Settings
+
+    data = await state.get_data()
+    o1_settings = KlingO1Settings.from_dict(data)
+
+    text = (
+        "📐 Выберите соотношение сторон видео Kling O1\n\n"
+        "1:1 — квадратный формат, для соцсетей\n"
+        "16:9 — горизонтальный, для YouTube\n"
+        "9:16 — вертикальный, для Stories и Reels"
+    )
+
+    try:
+        await callback.message.edit_text(
+            text, reply_markup=kling_o1_aspect_ratio_keyboard(o1_settings.aspect_ratio)
+        )
+    except Exception:
+        await callback.message.answer(
+            text, reply_markup=kling_o1_aspect_ratio_keyboard(o1_settings.aspect_ratio)
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("kling_o1.set.aspect_ratio:"))
+async def kling_o1_set_aspect_ratio(callback: CallbackQuery, state: FSMContext, user: User):
+    """Set Kling O1 aspect ratio."""
+    aspect_ratio = callback.data.split(":")[1]
+    await state.update_data(kling_o1_aspect_ratio=aspect_ratio)
+    await callback.answer(f"✅ Формат видео установлен: {aspect_ratio}")
+    await start_kling_o1(callback, state, user)
+
+
+@router.callback_query(F.data == "kling_o1.settings.duration")
+async def kling_o1_settings_duration(callback: CallbackQuery, state: FSMContext, user: User):
+    """Show duration selection for Kling O1."""
+    from app.bot.keyboards.inline import kling_o1_duration_keyboard
+    from app.bot.states.media import KlingO1Settings
+
+    data = await state.get_data()
+    o1_settings = KlingO1Settings.from_dict(data)
+
+    text = "🕓 Выберите длительность видео Kling O1\n\n5 сек — быстрее\n10 сек — длиннее"
+
+    try:
+        await callback.message.edit_text(
+            text, reply_markup=kling_o1_duration_keyboard(o1_settings.duration)
+        )
+    except Exception:
+        await callback.message.answer(
+            text, reply_markup=kling_o1_duration_keyboard(o1_settings.duration)
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("kling_o1.set.duration:"))
+async def kling_o1_set_duration(callback: CallbackQuery, state: FSMContext, user: User):
+    """Set Kling O1 duration."""
+    duration = int(callback.data.split(":")[1])
+    await state.update_data(kling_o1_duration=duration)
+    await callback.answer(f"✅ Длительность установлена: {duration} сек")
+    await start_kling_o1(callback, state, user)
+
+
+@router.callback_query(F.data == "kling_o1.settings.auto_translate")
+async def kling_o1_settings_auto_translate(callback: CallbackQuery, state: FSMContext, user: User):
+    """Show auto-translate selection for Kling O1."""
+    from app.bot.keyboards.inline import kling_o1_auto_translate_keyboard
+    from app.bot.states.media import KlingO1Settings
+
+    data = await state.get_data()
+    o1_settings = KlingO1Settings.from_dict(data)
+
+    text = "🔤 Переводить ваш запрос на английский с любого языка?"
+
+    try:
+        await callback.message.edit_text(
+            text, reply_markup=kling_o1_auto_translate_keyboard(o1_settings.auto_translate)
+        )
+    except Exception:
+        await callback.message.answer(
+            text, reply_markup=kling_o1_auto_translate_keyboard(o1_settings.auto_translate)
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("kling_o1.set.auto_translate:"))
+async def kling_o1_set_auto_translate(callback: CallbackQuery, state: FSMContext, user: User):
+    """Set Kling O1 auto-translate."""
+    value = callback.data.split(":")[1] == "yes"
+    await state.update_data(kling_o1_auto_translate=value)
+    status = "включён" if value else "выключен"
+    await callback.answer(f"✅ Автоперевод {status}")
+    await start_kling_o1(callback, state, user)
+
+
+@router.callback_query(F.data == "kling_o1.instruction")
+async def kling_o1_instruction(callback: CallbackQuery, state: FSMContext, user: User):
+    """Show Kling O1 detailed instruction."""
+    from app.bot.keyboards.inline import kling_o1_main_keyboard
+
+    text = (
+        "📖 Инструкция Kling O1\n\n"
+        "⚙️ Типы данных в Kling O1\n\n"
+        "В Kling O1 есть 3 типа данных:\n"
+        "1) 🎬 Видео (@Video1) — исходное видео для редактирования\n"
+        "2) 🖼 Элемент (@Image1, @Image2...) — живой/подвижный объект (человек, животное, авто)\n"
+        "   • Загружайте 2+ фото с разных ракурсов\n"
+        "3) 🖼 Картинка (@Image1, @Image2...) — статичный объект (фон, стиль, ландшафт)\n\n"
+        "📥 Шаг 1. Загрузите видео\n"
+        "Загрузите видео, которое хотите изменить.\n\n"
+        "🧩 Шаг 2. Добавьте объекты (необязательно)\n"
+        "Отправьте фото. Каждое фото получит номер (@Image1, @Image2...).\n"
+        "Для лучшего результата загружайте несколько ракурсов одного объекта.\n\n"
+        "▶️ Шаг 3. Нажмите ✅ Продолжить\n"
+        "Когда загрузили всё необходимое, нажмите Продолжить\n"
+        "и отправьте текстовый промт.\n\n"
+        "✍️ Правила написания промтов\n\n"
+        "Пример:\n"
+        "«Заменить человека в @Video1 на @Image1, сохранив движения. Сделать фон как на @Image2»\n\n"
+        "🎥 Требования к входящему видео:\n"
+        "• Длительность: 3–10 секунд\n"
+        "• Разрешение: от 720×720 до 2160×2160 px\n"
+        "• FPS: 24–60\n"
+        "• Размер: до 200 МБ\n"
+        "• Формат: .mp4 или .mov\n\n"
+        "🎁 Результат:\n"
+        "Вы получите 2 видеофайла:\n"
+        "1. 📱 Версия для Telegram (сжатая)\n"
+        "2. 💾 Полный файл без сжатия (кнопка скачать)"
+    )
+
+    try:
+        await callback.message.edit_text(text, reply_markup=kling_o1_main_keyboard())
+    except Exception:
+        await callback.message.answer(text, reply_markup=kling_o1_main_keyboard())
+    await callback.answer()
+
+
 # ======================
 # SEEDREAM HANDLERS
 # ======================

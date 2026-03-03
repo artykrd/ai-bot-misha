@@ -1187,6 +1187,8 @@ async def show_help_tokens(callback: CallbackQuery):
 • Kling Effects (видео) — {format_token_amount(get_video_model_billing("kling-effects").tokens_per_generation)} токенов
 • Kling 3.0 720p 5с (видео) — {format_token_amount(get_video_model_billing("kling3-std-5s").tokens_per_generation)} токенов
 • Kling 3.0 1080p 5с (видео) — {format_token_amount(get_video_model_billing("kling3-pro-5s").tokens_per_generation)} токенов
+• Kling O1 1080p 5с (видео) — {format_token_amount(get_video_model_billing("kling_o1-std-5s").tokens_per_generation)} токенов
+• Kling O1 4K 5с (видео) — {format_token_amount(get_video_model_billing("kling_o1-pro-5s").tokens_per_generation)} токенов
 • Suno (музыка) — 17,600 токенов
 • Whisper (расшифровка) — 1,200 токенов/мин
 

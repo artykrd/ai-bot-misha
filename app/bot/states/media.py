@@ -23,6 +23,8 @@ PERSISTENT_SETTINGS_KEYS = [
     "kling_mc_mode", "kling_mc_orientation", "kling_mc_sound",
     # Kling 3 settings
     "kling3_mode", "kling3_duration", "kling3_aspect_ratio", "kling3_auto_translate",
+    # Kling O1 settings
+    "kling_o1_mode", "kling_o1_duration", "kling_o1_aspect_ratio", "kling_o1_auto_translate",
 ]
 
 
@@ -213,6 +215,48 @@ class Kling3Settings:
         return "720p" if self.mode == "std" else "1080p"
 
 
+@dataclass
+class KlingO1Settings:
+    """Kling O1 video generation settings stored in FSM."""
+    mode: str = "std"          # "std" (1080p) or "pro" (4K)
+    duration: int = 5          # 5 or 10 seconds
+    aspect_ratio: str = "1:1"  # "1:1", "16:9", "9:16"
+    auto_translate: bool = True
+
+    def to_dict(self) -> dict:
+        """Convert to dict for FSM storage."""
+        return {
+            "kling_o1_mode": self.mode,
+            "kling_o1_duration": self.duration,
+            "kling_o1_aspect_ratio": self.aspect_ratio,
+            "kling_o1_auto_translate": self.auto_translate,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "KlingO1Settings":
+        """Create from FSM data dict."""
+        return cls(
+            mode=data.get("kling_o1_mode", "std"),
+            duration=data.get("kling_o1_duration", 5),
+            aspect_ratio=data.get("kling_o1_aspect_ratio", "1:1"),
+            auto_translate=data.get("kling_o1_auto_translate", True),
+        )
+
+    def get_display_settings(self) -> str:
+        """Get formatted settings string for display."""
+        parts = [
+            f"Разрешение: {self.mode_display}",
+            f"Длительность: {self.duration} сек",
+            f"Формат: {self.aspect_ratio}",
+            f"Автоперевод: {'включён' if self.auto_translate else 'выключен'}",
+        ]
+        return "\n".join(parts)
+
+    @property
+    def mode_display(self) -> str:
+        return "1080p" if self.mode == "std" else "4K"
+
+
 class MediaState(StatesGroup):
     """States for media generation."""
     waiting_for_video_prompt = State()
@@ -242,6 +286,9 @@ class MediaState(StatesGroup):
     kling_mc_waiting_for_prompt = State()  # Waiting for optional prompt
     # Kling 3.0 video generation states
     kling3_waiting_for_prompt = State()  # Waiting for text prompt or image
+    # Kling O1 video generation states
+    kling_o1_waiting_for_input = State()   # Collecting video/images/text
+    kling_o1_waiting_for_prompt = State()  # Media uploaded, waiting for text prompt
 
 
 class SunoState(StatesGroup):
