@@ -109,10 +109,11 @@ class NanoBanana2Service(BaseImageProvider):
                         f"File upload error: {result.get('msg', 'Unknown')}"
                     )
 
-                file_url = result.get("data", {}).get("fileUrl")
+                resp_data = result.get("data", {})
+                file_url = resp_data.get("downloadUrl") or resp_data.get("fileUrl")
                 if not file_url:
                     raise Exception(
-                        f"No fileUrl in upload response: {response_text[:300]}"
+                        f"No downloadUrl in upload response: {response_text[:300]}"
                     )
 
                 logger.info(
@@ -415,9 +416,10 @@ class NanoBanana2Service(BaseImageProvider):
                         f"URL upload error: {result.get('msg', 'Unknown')}"
                     )
 
-                hosted_url = result.get("data", {}).get("fileUrl")
+                resp_data = result.get("data", {})
+                hosted_url = resp_data.get("downloadUrl") or resp_data.get("fileUrl")
                 if not hosted_url:
-                    raise Exception(f"No fileUrl in URL upload response")
+                    raise Exception(f"No downloadUrl in URL upload response")
 
                 logger.info("nano_banana_2_url_uploaded", source=file_url[:80], hosted=hosted_url)
                 return hosted_url
