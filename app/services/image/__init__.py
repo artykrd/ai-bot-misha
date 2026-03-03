@@ -10,6 +10,7 @@ from app.services.image.kling_image_service import KlingImageService
 from app.services.image.recraft_service import RecraftService
 from app.services.image.seedream_service import SeedreamService
 from app.services.image.midjourney_service import MidjourneyService
+from app.services.image.nano_banana_2_service import NanoBanana2Service
 
 __all__ = [
     "RemoveBgService",
@@ -21,4 +22,5 @@ __all__ = [
     "RecraftService",
     "SeedreamService",
     "MidjourneyService",
+    "NanoBanana2Service",
 ]

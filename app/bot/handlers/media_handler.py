@@ -72,6 +72,7 @@ from app.core.temp_files import get_temp_file_path, cleanup_temp_file
 from app.services.video import VeoService, SoraService, LumaService, HailuoService, KlingService
 from app.services.video.kling_effects_service import KlingEffectsService
 from app.services.image import DalleService, GeminiImageService, StabilityService, RemoveBgService, NanoBananaService, KlingImageService, RecraftService, SeedreamService, MidjourneyService
+from app.services.image.nano_banana_2_service import NanoBanana2Service
 from app.services.audio import SunoService, OpenAIAudioService
 from app.services.ai.vision_service import VisionService
 from app.services.subscription.subscription_service import SubscriptionService
@@ -2477,7 +2478,8 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
             "seedream": "Seedream 4.5",
             "gemini_image": "Gemini",
             "recraft": "Recraft",
-            "kling_image": "Kling AI"
+            "kling_image": "Kling AI",
+            "nano_banana_2": "Nano Banana 2"
         }.get(service_name, service_name)
 
         # Check if photo has caption (description) - if yes, process immediately
@@ -2497,18 +2499,50 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
                 await process_gemini_image(message, user, state)
             elif service_name == "kling_image":
                 await process_kling_image(message, user, state)
+            elif service_name == "nano_banana_2":
+                await process_nano_banana_2_image(message, user, state)
         else:
             # No caption - show status and ask for more photos or prompt
+            max_photos = 8 if service_name == "nano_banana_2" else multi_images_count
             await message.answer(
                 f"✅ Фото {photos_count} сохранено!\n\n"
                 f"📸 Вы можете:\n"
-                f"• Загрузить ещё фото (всего: {photos_count}/{multi_images_count}+)\n"
+                f"• Загрузить ещё фото (всего: {photos_count}/{max_photos}+)\n"
                 f"• Отправить текстовый промпт для начала генерации\n\n"
                 f"**Примеры промптов для {service_display}:**\n"
                 "• \"Создай портрет каждого в стиле аниме\"\n"
                 "• \"Сделай разные варианты этой сцены\"\n"
                 "• \"Примени этот стиль к каждому фото\""
             )
+    elif service_name == "nano_banana_2":
+        # Nano Banana 2: accumulate up to 8 photos
+        reference_image_paths = data.get("reference_image_paths", [])
+        reference_image_paths.append(str(temp_path))
+        await state.update_data(reference_image_paths=reference_image_paths)
+
+        photos_count = len(reference_image_paths)
+
+        if message.caption and message.caption.strip():
+            # Has caption - process immediately with all accumulated photos
+            await state.update_data(photo_caption_prompt=message.caption.strip())
+            await process_nano_banana_2_image(message, user, state)
+        else:
+            if photos_count < 8:
+                await message.answer(
+                    f"✅ Фото {photos_count} сохранено!\n\n"
+                    f"📸 Вы можете:\n"
+                    f"• Загрузить ещё фото (сохранено: {photos_count}/8)\n"
+                    f"• Отправить текстовый промпт для начала генерации\n\n"
+                    f"**Примеры для Nano Banana 2:**\n"
+                    "• \"Сделай в стиле аниме\"\n"
+                    "• \"Редактируй фон на космический\"\n"
+                    "• \"Создай портрет на основе фото\""
+                )
+            else:
+                await message.answer(
+                    f"✅ Фото сохранено! (максимум 8)\n\n"
+                    f"📝 Теперь отправьте текстовый промпт для генерации."
+                )
     else:
         # Single-image mode (backward compatibility)
         # Clean up old reference image if exists
@@ -2594,6 +2628,8 @@ async def process_image_prompt(message: Message, state: FSMContext, user: User):
         await process_seedream_image(message, user, state)
     elif service_name == "midjourney":
         await process_midjourney_image(message, user, state)
+    elif service_name == "nano_banana_2":
+        await process_nano_banana_2_image(message, user, state)
     else:
         await message.answer(
             f"Функция генерации изображений находится в разработке.\n"
@@ -5027,6 +5063,7 @@ async def handle_photo_image_model_choice(callback: CallbackQuery, state: FSMCon
     service_map = {
         "nano": "nano_banana",
         "banana_pro": "nano_banana",  # Banana PRO uses nano_banana with is_pro flag
+        "nano_banana_2": "nano_banana_2",
         "dalle": "dalle",
         "midjourney": "midjourney",
         "recraft": "recraft",
@@ -6243,6 +6280,214 @@ async def seedream_set_batch_count(callback: CallbackQuery, state: FSMContext, u
     await callback.answer(f"Количество изображений: {new_count}")
 
     await _show_seedream_menu(callback, state, user)
+
+
+# ==============================================
+# NANO BANANA 2 IMAGE GENERATION
+# ==============================================
+
+async def process_nano_banana_2_image(message: Message, user: User, state: FSMContext):
+    """Process Nano Banana 2 image generation via Kie.ai API.
+
+    Supports:
+    - Text-to-image (prompt only)
+    - Image-to-image (up to 8 photos + prompt)
+    - Editing (photo + instruction)
+    """
+    from app.bot.states.media import NanoBanana2Settings
+    from app.core.billing_config import get_nano_banana_2_tokens_cost
+    from app.bot.keyboards.inline import nano_banana_2_keyboard
+
+    data = await state.get_data()
+
+    prompt = data.get("photo_caption_prompt") or message.text
+    reference_image_path = data.get("reference_image_path", None)
+    reference_image_paths = data.get("reference_image_paths", [])
+
+    # Get settings
+    nb2_settings = NanoBanana2Settings.from_dict(data)
+
+    # Collect all image paths
+    image_paths = list(reference_image_paths)
+    if reference_image_path and reference_image_path not in image_paths:
+        image_paths.append(reference_image_path)
+
+    # Determine mode
+    if image_paths:
+        mode = "image-to-image"
+    else:
+        mode = "text-to-image"
+
+    # Calculate cost based on resolution
+    estimated_tokens = get_nano_banana_2_tokens_cost(nb2_settings.resolution)
+
+    # Check and reserve tokens
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+        try:
+            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+        except InsufficientTokensError as e:
+            # Cleanup images
+            for img_path in image_paths:
+                cleanup_temp_file(img_path)
+
+            error_details = e.details
+            if error_details.get("unlimited_limit_reached"):
+                await message.answer(
+                    f"❌ {e.message}\n\n"
+                    "Лимит безлимитной подписки достигнут."
+                )
+            else:
+                await message.answer(
+                    f"❌ Недостаточно токенов для генерации изображения!\n\n"
+                    f"Требуется: {estimated_tokens:,} токенов\n"
+                    f"Доступно: {error_details['available']:,} токенов\n\n"
+                    f"Купите подписку: /start → 💎 Подписка"
+                )
+            await clear_state_preserve_settings(state)
+            return
+
+    # Progress message
+    mode_display = "по фото" if image_paths else "по тексту"
+    progress_msg = await message.answer(
+        f"🍌 Nano Banana 2: генерирую изображение {mode_display} "
+        f"({nb2_settings.resolution}, {nb2_settings.aspect_ratio})...\n"
+        f"⏳ Пожалуйста, подождите..."
+    )
+
+    async def update_progress(text: str):
+        try:
+            await progress_msg.edit_text(text, parse_mode=None)
+        except Exception:
+            pass
+
+    # Generate image
+    nb2_service = NanoBanana2Service()
+
+    result = await nb2_service.generate_image(
+        prompt=prompt,
+        progress_callback=update_progress,
+        image_paths=image_paths,
+        aspect_ratio=nb2_settings.aspect_ratio,
+        resolution=nb2_settings.resolution,
+        output_format="jpg",
+    )
+
+    # Cleanup input images
+    for img_path in image_paths:
+        cleanup_temp_file(img_path)
+
+    if result.success:
+        tokens_used = estimated_tokens
+
+        # Get remaining tokens
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            user_tokens = await sub_service.get_available_tokens(user.id)
+
+        # Log the operation
+        try:
+            from app.services.logging import ai_logger
+            await ai_logger.log_operation(
+                user_id=user.id,
+                model_id=f"nano-banana-2-{nb2_settings.resolution.lower()}",
+                operation_category="image_gen",
+                tokens_cost=tokens_used,
+                prompt=prompt[:500] if prompt else "",
+                status="success",
+                units=1.0,
+                request_type="image"
+            )
+        except Exception as log_err:
+            logger.warning("nano_banana_2_log_failed", error=str(log_err))
+
+        # Build caption
+        info_text = format_generation_message(
+            content_type=CONTENT_TYPES["image"],
+            model_name=f"Nano Banana 2 ({nb2_settings.resolution})",
+            tokens_used=tokens_used,
+            user_tokens=user_tokens,
+            prompt=prompt,
+            mode=mode
+        )
+
+        # Create action keyboard
+        builder = create_action_keyboard(
+            action_text="🍌 Создать новое фото",
+            action_callback="bot.nano_banana_2",
+            file_path=result.image_path,
+            file_type="image",
+            user_id=user.telegram_id
+        )
+
+        try:
+            image_file = FSInputFile(result.image_path)
+
+            # Check file size, optimize if > 2MB for Telegram
+            file_size = os.path.getsize(result.image_path)
+            if file_size > 2 * 1024 * 1024:
+                img = Image.open(result.image_path)
+                if img.mode in ("RGBA", "LA", "P"):
+                    background = Image.new("RGB", img.size, (255, 255, 255))
+                    if img.mode == "P":
+                        img = img.convert("RGBA")
+                    background.paste(
+                        img,
+                        mask=img.split()[-1] if img.mode == "RGBA" else None
+                    )
+                    img = background
+
+                buffer = io.BytesIO()
+                img.save(buffer, format="JPEG", quality=85, optimize=True)
+                buffer.seek(0)
+
+                await message.answer_photo(
+                    photo=BufferedInputFile(buffer.read(), filename="nano_banana_2.jpg"),
+                    caption=info_text,
+                    reply_markup=builder.as_markup()
+                )
+            else:
+                await message.answer_photo(
+                    photo=image_file,
+                    caption=info_text,
+                    reply_markup=builder.as_markup()
+                )
+        except Exception as send_error:
+            logger.error("nano_banana_2_send_failed", error=str(send_error))
+            # Try as document
+            try:
+                image_file = FSInputFile(result.image_path)
+                await message.answer_document(
+                    document=image_file,
+                    caption=info_text,
+                    reply_markup=builder.as_markup()
+                )
+            except Exception as doc_error:
+                logger.error("nano_banana_2_doc_send_failed", error=str(doc_error))
+                await message.answer(
+                    f"✅ Изображение создано, но не удалось отправить.\n"
+                    f"💰 Использовано: {tokens_used:,} токенов"
+                )
+
+        await progress_msg.delete()
+    else:
+        # Generation failed - refund tokens
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            subscription = await sub_service.get_active_subscription(user.id)
+            if subscription and not subscription.is_unlimited:
+                subscription.tokens_used = max(0, subscription.tokens_used - estimated_tokens)
+                await session.commit()
+
+        error_msg = result.error or "Неизвестная ошибка"
+        await progress_msg.edit_text(
+            f"❌ Не удалось создать изображение.\n\n"
+            f"Ошибка: {error_msg[:300]}\n\n"
+            f"💰 Токены возвращены на ваш счёт.",
+            parse_mode=None
+        )
+
+    await clear_state_preserve_settings(state)
 
 
 async def process_seedream_image(message: Message, user: User, state: FSMContext):

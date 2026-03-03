@@ -165,6 +165,10 @@ MODEL_ACTIONS = {
         "text": "🎨 Создать новое изображение",
         "callback": "bot.nano"
     },
+    "nano_banana_2": {
+        "text": "🍌 Создать новое фото",
+        "callback": "bot.nano_banana_2"
+    },
     "dalle": {
         "text": "🎨 Создать новое изображение",
         "callback": "bot.gpt_image"

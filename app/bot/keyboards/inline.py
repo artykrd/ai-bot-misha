@@ -12,6 +12,7 @@ MENU_BUTTONS = [
     ("Пригласи друга", "bot.refferal_program"),
     ("Выбрать модель", "bot.llm_models"),
     ("Nano Banana", "bot.nano"),
+    ("Nano Banana 2", "bot.nano_banana_2"),
     ("Midjourney", "bot.midjourney"),
     ("Veo 3.1", "bot.veo"),
     ("Kling", "bot.kling_main"),
@@ -254,6 +255,9 @@ def create_photo_keyboard() -> InlineKeyboardMarkup:
     builder.row(
         InlineKeyboardButton(text="🍌 Nano Banana", callback_data="bot.nano"),
         InlineKeyboardButton(text="🍌✨ Banana PRO", callback_data="bot.nano_pro")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🍌 Nano Banana 2", callback_data="bot.nano_banana_2")
     )
     builder.row(
         InlineKeyboardButton(text="✨ Seedream 4.5", callback_data="bot.seedream_4.5")
@@ -1731,6 +1735,62 @@ def kling_o1_auto_translate_keyboard(current_value: bool = True) -> InlineKeyboa
     )
     builder.row(
         InlineKeyboardButton(text="⬅️ Назад к Kling O1", callback_data="bot.kling_o1")
+    )
+
+    return builder.as_markup()
+
+
+# ==============================================
+# NANO BANANA 2 KEYBOARDS
+# ==============================================
+
+def nano_banana_2_keyboard(current_resolution: str = "2K") -> InlineKeyboardMarkup:
+    """Nano Banana 2 main keyboard with resolution and format buttons."""
+    builder = InlineKeyboardBuilder()
+
+    # Resolution buttons
+    res_2k_text = f"✅ Разрешение – 2К" if current_resolution == "2K" else "Разрешение – 2К"
+    res_4k_text = f"✅ Разрешение 4К" if current_resolution == "4K" else "Разрешение 4К"
+
+    builder.row(
+        InlineKeyboardButton(text=res_2k_text, callback_data="nb2.set.resolution:2K"),
+        InlineKeyboardButton(text=res_4k_text, callback_data="nb2.set.resolution:4K"),
+    )
+
+    # Format button
+    builder.row(
+        InlineKeyboardButton(text="📐 Изменить формат", callback_data="nb2.prms:ratio")
+    )
+
+    builder.row(
+        InlineKeyboardButton(text="⬅️ В главное меню", callback_data="bot.back")
+    )
+
+    return builder.as_markup()
+
+
+def nano_banana_2_format_keyboard(current_ratio: str = "auto") -> InlineKeyboardMarkup:
+    """Nano Banana 2 format (aspect ratio) selection keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    ratios = ["1:1", "16:9", "9:16", "3:2", "21:9", "auto"]
+
+    def format_button_text(ratio: str) -> str:
+        label = "Авто" if ratio == "auto" else ratio
+        return f"✅ {label}" if ratio == current_ratio else label
+
+    builder.row(
+        InlineKeyboardButton(text=format_button_text("1:1"), callback_data="nb2.prms.chs:ratio|1:1"),
+        InlineKeyboardButton(text=format_button_text("16:9"), callback_data="nb2.prms.chs:ratio|16:9"),
+        InlineKeyboardButton(text=format_button_text("9:16"), callback_data="nb2.prms.chs:ratio|9:16"),
+    )
+    builder.row(
+        InlineKeyboardButton(text=format_button_text("3:2"), callback_data="nb2.prms.chs:ratio|3:2"),
+        InlineKeyboardButton(text=format_button_text("21:9"), callback_data="nb2.prms.chs:ratio|21:9"),
+        InlineKeyboardButton(text=format_button_text("auto"), callback_data="nb2.prms.chs:ratio|auto"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Вернуться в меню", callback_data="bot.nano_banana_2")
     )
 
     return builder.as_markup()

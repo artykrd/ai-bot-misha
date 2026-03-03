@@ -11,6 +11,8 @@ from typing import List, Optional
 PERSISTENT_SETTINGS_KEYS = [
     # Nano Banana settings
     "nano_aspect_ratio",
+    # Nano Banana 2 settings
+    "nb2_resolution", "nb2_aspect_ratio",
     # Kling video settings
     "kling_version", "kling_duration", "kling_aspect_ratio", "kling_auto_translate",
     # Kling image settings
@@ -255,6 +257,36 @@ class KlingO1Settings:
     @property
     def mode_display(self) -> str:
         return "1080p" if self.mode == "std" else "4K"
+
+
+@dataclass
+class NanoBanana2Settings:
+    """Nano Banana 2 image generation settings stored in FSM."""
+    resolution: str = "2K"       # "2K" or "4K"
+    aspect_ratio: str = "auto"   # "1:1", "16:9", "9:16", "3:2", "21:9", "auto"
+
+    def to_dict(self) -> dict:
+        """Convert to dict for FSM storage."""
+        return {
+            "nb2_resolution": self.resolution,
+            "nb2_aspect_ratio": self.aspect_ratio,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "NanoBanana2Settings":
+        """Create from FSM data dict."""
+        return cls(
+            resolution=data.get("nb2_resolution", "2K"),
+            aspect_ratio=data.get("nb2_aspect_ratio", "auto"),
+        )
+
+    def get_display_settings(self) -> str:
+        """Get formatted settings string for display."""
+        parts = [
+            f"Разрешение: {self.resolution}",
+            f"Формат: {self.aspect_ratio}",
+        ]
+        return "\n".join(parts)
 
 
 class MediaState(StatesGroup):
