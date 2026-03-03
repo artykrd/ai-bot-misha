@@ -374,6 +374,44 @@ VIDEO_MODELS: Dict[str, FixedModelBilling] = {
         description_suffix="Стоимость генерации видео: 85 000 токенов",
         model_type=ModelType.VIDEO
     ),
+    # Kling O1 std (1080p)
+    "kling_o1-std-5s": FixedModelBilling(
+        tokens_per_generation=337000,
+        display_name="Kling O1 1080p",
+        description_suffix="Стоимость генерации видео (5 секунд, 1080p): 337 000 токенов",
+        model_type=ModelType.VIDEO
+    ),
+    "kling_o1-std-10s": FixedModelBilling(
+        tokens_per_generation=674000,
+        display_name="Kling O1 1080p",
+        description_suffix="Стоимость генерации видео (10 секунд, 1080p): 674 000 токенов",
+        model_type=ModelType.VIDEO
+    ),
+    "kling_o1-std-15s": FixedModelBilling(
+        tokens_per_generation=1011000,
+        display_name="Kling O1 1080p",
+        description_suffix="Стоимость генерации видео (15 секунд, 1080p): 1 011 000 токенов",
+        model_type=ModelType.VIDEO
+    ),
+    # Kling O1 pro (4K)
+    "kling_o1-pro-5s": FixedModelBilling(
+        tokens_per_generation=449000,
+        display_name="Kling O1 4K",
+        description_suffix="Стоимость генерации видео (5 секунд, 4K): 449 000 токенов",
+        model_type=ModelType.VIDEO
+    ),
+    "kling_o1-pro-10s": FixedModelBilling(
+        tokens_per_generation=898000,
+        display_name="Kling O1 4K",
+        description_suffix="Стоимость генерации видео (10 секунд, 4K): 898 000 токенов",
+        model_type=ModelType.VIDEO
+    ),
+    "kling_o1-pro-15s": FixedModelBilling(
+        tokens_per_generation=1347000,
+        display_name="Kling O1 4K",
+        description_suffix="Стоимость генерации видео (15 секунд, 4K): 1 347 000 токенов",
+        model_type=ModelType.VIDEO
+    ),
 }
 
 
@@ -682,6 +720,49 @@ def get_all_models() -> Dict[str, Any]:
         "image": IMAGE_MODELS,
         "video": VIDEO_MODELS,
     }
+
+
+# ==============================================
+# KLING O1 BILLING HELPERS
+# ==============================================
+
+def get_kling_o1_billing_key(mode: str, duration: int) -> str:
+    """
+    Get billing key for Kling O1 based on mode and duration.
+
+    Args:
+        mode: 'std' (1080p) or 'pro' (4K)
+        duration: 5, 10, or 15 seconds
+
+    Returns:
+        Billing key for VIDEO_MODELS dict
+    """
+    return f"kling_o1-{mode}-{duration}s"
+
+
+def get_kling_o1_tokens_cost(mode: str, duration: int) -> int:
+    """
+    Get token cost for Kling O1 video generation.
+
+    Args:
+        mode: 'std' (1080p) or 'pro' (4K)
+        duration: 5, 10, or 15 seconds
+
+    Returns:
+        Token cost for this generation
+    """
+    billing_key = get_kling_o1_billing_key(mode, duration)
+    billing = VIDEO_MODELS.get(billing_key)
+    if billing:
+        return billing.tokens_per_generation
+
+    # Fallback to std 5s
+    return VIDEO_MODELS.get("kling_o1-std-5s", FixedModelBilling(
+        tokens_per_generation=337000,
+        display_name="Kling O1",
+        description_suffix="",
+        model_type=ModelType.VIDEO
+    )).tokens_per_generation
 
 
 def tokens_to_rub(tokens: int) -> float:

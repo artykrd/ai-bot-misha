@@ -16,6 +16,7 @@ MENU_BUTTONS = [
     ("Veo 3.1", "bot.veo"),
     ("Kling", "bot.kling_main"),
     ("Kling 3", "bot.kling3"),
+    ("Kling O1", "bot.kling_o1"),
     ("Sora", "bot.sora"),
     ("Hailuo", "bot.hailuo"),
     ("Midjourney Video", "bot.mjvideo"),
@@ -292,6 +293,9 @@ def create_video_keyboard() -> InlineKeyboardMarkup:
     builder.row(
         InlineKeyboardButton(text="🌆 Midjourney", callback_data="bot.mjvideo"),
         InlineKeyboardButton(text="✨ Kling Эффекты", callback_data="bot.kling_effects")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🧠 Kling O1", callback_data="bot.kling_o1")
     )
     builder.row(
         InlineKeyboardButton(text="⬅️ В главное меню", callback_data="bot.back")
@@ -1595,6 +1599,138 @@ def midjourney_video_main_keyboard() -> InlineKeyboardMarkup:
 
     builder.row(
         InlineKeyboardButton(text="⬅️ В главное меню", callback_data="bot.back")
+    )
+
+    return builder.as_markup()
+
+
+# ======================
+# KLING O1 KEYBOARDS
+# ======================
+
+def kling_o1_main_keyboard(has_media: bool = False) -> InlineKeyboardMarkup:
+    """Main Kling O1 keyboard with optional Continue button when media is uploaded."""
+    builder = InlineKeyboardBuilder()
+
+    if has_media:
+        builder.row(
+            InlineKeyboardButton(text="✅ Продолжить", callback_data="kling_o1.continue")
+        )
+        builder.row(
+            InlineKeyboardButton(text="🗑 Очистить медиа", callback_data="kling_o1.clear_media")
+        )
+
+    builder.row(
+        InlineKeyboardButton(text="⚙️ Настройки", callback_data="kling_o1.settings")
+    )
+    builder.row(
+        InlineKeyboardButton(text="📖 Инструкция", callback_data="kling_o1.instruction")
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Создать видео", callback_data="bot.create_video")
+    )
+
+    return builder.as_markup()
+
+
+def kling_o1_settings_keyboard() -> InlineKeyboardMarkup:
+    """Kling O1 settings menu keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(text="📺 Разрешение", callback_data="kling_o1.settings.mode")
+    )
+    builder.row(
+        InlineKeyboardButton(text="📐 Формат видео", callback_data="kling_o1.settings.aspect_ratio")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🕓 Длительность", callback_data="kling_o1.settings.duration")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🔤 Автоперевод", callback_data="kling_o1.settings.auto_translate")
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад к Kling O1", callback_data="bot.kling_o1")
+    )
+
+    return builder.as_markup()
+
+
+def kling_o1_mode_keyboard(current_mode: str = "std") -> InlineKeyboardMarkup:
+    """Kling O1 resolution mode selection (std=1080p, pro=4K)."""
+    builder = InlineKeyboardBuilder()
+
+    modes = [
+        ("std", "1080p"),
+        ("pro", "4K"),
+    ]
+
+    for mode_val, mode_name in modes:
+        text = f"✅ {mode_name}" if mode_val == current_mode else mode_name
+        builder.row(
+            InlineKeyboardButton(text=text, callback_data=f"kling_o1.set.mode:{mode_val}")
+        )
+
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад к Kling O1", callback_data="bot.kling_o1")
+    )
+
+    return builder.as_markup()
+
+
+def kling_o1_aspect_ratio_keyboard(current_ratio: str = "1:1") -> InlineKeyboardMarkup:
+    """Kling O1 aspect ratio selection keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    ratios = ["1:1", "16:9", "9:16"]
+
+    for ratio in ratios:
+        text = f"✅ {ratio}" if ratio == current_ratio else ratio
+        builder.row(
+            InlineKeyboardButton(text=text, callback_data=f"kling_o1.set.aspect_ratio:{ratio}")
+        )
+
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад к Kling O1", callback_data="bot.kling_o1")
+    )
+
+    return builder.as_markup()
+
+
+def kling_o1_duration_keyboard(current_duration: int = 5) -> InlineKeyboardMarkup:
+    """Kling O1 duration selection keyboard (5 or 10 seconds)."""
+    builder = InlineKeyboardBuilder()
+
+    durations = [5, 10]
+
+    for duration in durations:
+        text = f"✅ {duration} сек" if duration == current_duration else f"{duration} сек"
+        builder.row(
+            InlineKeyboardButton(text=text, callback_data=f"kling_o1.set.duration:{duration}")
+        )
+
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад к Kling O1", callback_data="bot.kling_o1")
+    )
+
+    return builder.as_markup()
+
+
+def kling_o1_auto_translate_keyboard(current_value: bool = True) -> InlineKeyboardMarkup:
+    """Kling O1 auto-translate toggle keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    yes_text = "✅ Да" if current_value else "Да"
+    no_text = "✅ Нет" if not current_value else "Нет"
+
+    builder.row(
+        InlineKeyboardButton(text=yes_text, callback_data="kling_o1.set.auto_translate:yes")
+    )
+    builder.row(
+        InlineKeyboardButton(text=no_text, callback_data="kling_o1.set.auto_translate:no")
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад к Kling O1", callback_data="bot.kling_o1")
     )
 
     return builder.as_markup()
