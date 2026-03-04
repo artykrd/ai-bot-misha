@@ -1,6 +1,6 @@
 """
 Google Gemini image generation and processing service.
-Uses Imagen 3 for generation and Gemini Vision for analysis.
+Uses Imagen 3 (via Google AI API key) for generation and Gemini Vision for analysis.
 """
 import time
 from typing import Optional, Callable, Awaitable
@@ -16,41 +16,41 @@ from app.services.image.base import BaseImageProvider, ImageResponse
 logger = get_logger(__name__)
 
 # Lazy import - only import when actually used
-_vertexai = None
-_genai = None
+_genai_client_mod = None
+_genai_legacy = None
 _GEMINI_CHECKED = False
 
 
 def _get_gemini_libs():
     """Lazy import of google libraries."""
-    global _vertexai, _genai, _GEMINI_CHECKED
+    global _genai_client_mod, _genai_legacy, _GEMINI_CHECKED
 
     if _GEMINI_CHECKED:
-        return (_vertexai, _genai)
+        return (_genai_client_mod, _genai_legacy)
 
     _GEMINI_CHECKED = True
     try:
-        # Try Vertex AI first (for Imagen)
+        # Try new google.genai Client SDK (for Imagen via API key)
         try:
-            import vertexai
-            from vertexai.preview.vision_models import ImageGenerationModel
-            _vertexai = {
-                'vertexai': vertexai,
-                'ImageGenerationModel': ImageGenerationModel
+            from google import genai
+            from google.genai import types
+            _genai_client_mod = {
+                'genai': genai,
+                'types': types,
             }
         except Exception as e:
-            logger.warning("vertexai_import_failed", error=str(e))
-            _vertexai = None
+            logger.warning("google_genai_client_import_failed", error=str(e))
+            _genai_client_mod = None
 
-        # Try Google AI (for Gemini Vision)
+        # Try legacy google.generativeai (for Gemini Vision)
         try:
-            import google.generativeai as genai
-            _genai = genai
+            import google.generativeai as genai_legacy
+            _genai_legacy = genai_legacy
         except Exception as e:
             logger.warning("google_generativeai_import_failed", error=str(e))
-            _genai = None
+            _genai_legacy = None
 
-        return (_vertexai, _genai)
+        return (_genai_client_mod, _genai_legacy)
     except Exception as e:
         logger.warning("gemini_libs_import_failed", error=str(e))
         return (None, None)
@@ -60,7 +60,7 @@ class GeminiImageService(BaseImageProvider):
     """
     Google Gemini/Imagen integration for image generation and processing.
 
-    - Uses Imagen 3 (via Vertex AI) for image generation
+    - Uses Imagen 3 (via Google AI API key) for image generation
     - Uses Gemini Vision for image analysis and understanding
     """
 
@@ -74,33 +74,29 @@ class GeminiImageService(BaseImageProvider):
 
         self.project_id = project_id or os.getenv("GOOGLE_CLOUD_PROJECT")
         self.location = location
-        self.vertexai_client = None
+        self.imagen_client = None
         self.genai_client = None
 
         # Initialize libraries
-        self._vertexai, self._genai = _get_gemini_libs()
+        self._genai_client_mod, self._genai_legacy = _get_gemini_libs()
 
-        # Initialize Vertex AI (for Imagen)
-        if self._vertexai and self.project_id:
+        # Initialize Imagen via Google AI API key (no Vertex AI / service account needed)
+        if self._genai_client_mod and self.api_key:
             try:
-                self._vertexai['vertexai'].init(
-                    project=self.project_id,
-                    location=self.location
-                )
-                self.vertexai_client = True
+                genai = self._genai_client_mod['genai']
+                self.imagen_client = genai.Client(api_key=self.api_key)
                 logger.info(
-                    "imagen_initialized",
-                    project=self.project_id,
-                    location=self.location
+                    "imagen_initialized_with_api_key",
+                    has_project=bool(self.project_id),
                 )
             except Exception as e:
                 logger.error("imagen_init_failed", error=str(e))
-                self.vertexai_client = None
+                self.imagen_client = None
 
-        # Initialize Google AI (for Gemini Vision)
-        if self._genai and self.api_key:
+        # Initialize Google AI (for Gemini Vision) - legacy SDK
+        if self._genai_legacy and self.api_key:
             try:
-                self._genai.configure(api_key=self.api_key)
+                self._genai_legacy.configure(api_key=self.api_key)
                 self.genai_client = True
                 logger.info("gemini_vision_initialized")
             except Exception as e:
@@ -130,10 +126,10 @@ class GeminiImageService(BaseImageProvider):
         """
         start_time = time.time()
 
-        if not self.vertexai_client or not self.project_id:
+        if not self.imagen_client:
             return ImageResponse(
                 success=False,
-                error="Google Cloud project not configured or Vertex AI not initialized",
+                error="Google AI API key not configured or google-genai SDK not available",
                 processing_time=time.time() - start_time
             )
 
@@ -246,7 +242,7 @@ class GeminiImageService(BaseImageProvider):
                 img = PIL.Image.open(image_path)
 
                 # Create Gemini model
-                model = self._genai.GenerativeModel('gemini-2.0-flash-exp')
+                model = self._genai_legacy.GenerativeModel('gemini-2.0-flash-exp')
 
                 # Generate analysis
                 response = model.generate_content([prompt, img])
@@ -345,34 +341,42 @@ class GeminiImageService(BaseImageProvider):
         safety_filter: str,
         progress_callback: Optional[Callable[[str], Awaitable[None]]] = None
     ) -> str:
-        """Generate image using Imagen model."""
+        """Generate image using Imagen model via Google AI API key."""
 
         # Run in executor to avoid blocking
         loop = asyncio.get_event_loop()
 
         def _generate():
             try:
-                # Load the Imagen model
-                model = self._vertexai['ImageGenerationModel'].from_pretrained("imagen-3.0-generate-001")
+                types = self._genai_client_mod['types']
 
-                # Generate image
-                response = model.generate_images(
-                    prompt=prompt,
+                # Build config
+                config = types.GenerateImagesConfig(
                     number_of_images=number_of_images,
                     aspect_ratio=aspect_ratio,
                     negative_prompt=negative_prompt,
                     safety_filter_level=safety_filter,
                 )
 
-                # Get the first image from response
-                image = response.images[0]
+                # Generate image via API key-authenticated client
+                response = self.imagen_client.models.generate_images(
+                    model="imagen-3.0-generate-002",
+                    prompt=prompt,
+                    config=config,
+                )
+
+                if not response.generated_images:
+                    raise Exception("Imagen не вернул изображений. Возможно, промпт не прошёл модерацию.")
+
+                # Get the first image
+                generated_image = response.generated_images[0]
 
                 # Save image to storage
                 filename = self._generate_filename("png")
                 image_path = self.storage_path / filename
 
-                # Save image
-                image.save(location=str(image_path))
+                # Save using PIL Image from the response
+                generated_image.image.save(str(image_path))
 
                 logger.info(
                     "imagen_saved",
