@@ -201,8 +201,10 @@ class KlingService(BaseVideoProvider):
                 # Multi-image-to-video (start + end frame)
                 # image_tail is NOT supported with kling-v2-5-turbo, force kling-v2-1-master
                 multi_image_model = model
-                if "turbo" in model or "v2-5" in model:
-                    multi_image_model = "kling-v2-1-master"
+                # image_tail is NOT supported by: kling-v2-5-turbo, kling-v2-1-master, kling-v2-master
+                # image_tail IS supported by: kling-v2-1, kling-v2-5, kling-v2-6, kling-v1-6, kling-v1-5
+                if model not in ("kling-v2-1", "kling-v2-5", "kling-v2-6", "kling-v1-6", "kling-v1-5"):
+                    multi_image_model = "kling-v2-1"
                     logger.info(
                         "kling_model_override_for_image_tail",
                         original_model=model,
