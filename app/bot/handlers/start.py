@@ -93,10 +93,11 @@ async def cmd_start(message: Message, user: User, state: FSMContext):
                         await session.commit()
 
                         await message.answer(
-                            f"🎉 **Поздравляем!**\n\n"
-                            f"Вы получили **безлимитный доступ** на **{invite_link.duration_days} дней**!\n\n"
+                            f"🎉 Поздравляем!\n\n"
+                            f"Вы получили безлимитный доступ на {invite_link.duration_days} дней!\n\n"
                             f"✨ У вас неограниченные токены до {expires_at.strftime('%d.%m.%Y %H:%M')} UTC\n\n"
-                            f"Используйте бота без ограничений!"
+                            f"Используйте бота без ограничений!",
+                            parse_mode=None
                         )
                     else:
                         await message.answer(
@@ -141,13 +142,15 @@ async def cmd_start(message: Message, user: User, state: FSMContext):
                             if bonus_given:
                                 await message.answer(
                                     f"🎉 Вы были приглашены пользователем {referrer.full_name}!\n"
-                                    f"Вам начислено 5 000 приветственных токенов!"
+                                    f"Вам начислено 5 000 приветственных токенов!",
+                                    parse_mode=None
                                 )
                             else:
                                 # Referral created but bonus failed
                                 await message.answer(
                                     f"🎉 Вы были приглашены пользователем {referrer.full_name}!\n"
-                                    f"⚠️ Возникла проблема с начислением бонуса. Свяжитесь с поддержкой."
+                                    f"⚠️ Возникла проблема с начислением бонуса. Свяжитесь с поддержкой.",
+                                    parse_mode=None
                                 )
             except (ValueError, IndexError):
                 pass  # Invalid referral code format
@@ -222,7 +225,10 @@ async def show_main_menu(callback: CallbackQuery, user: User, state: FSMContext)
 – Whisper — расшифровка голосовых сообщений;
 – TTS — озвучка текста."""
 
-    await callback.message.delete()
+    try:
+        await callback.message.delete()
+    except TelegramBadRequest:
+        pass
     await callback.message.answer(
         welcome_text,
         reply_markup=main_menu_reply_keyboard()
@@ -239,7 +245,10 @@ async def show_full_menu(callback: CallbackQuery, user: User, state: FSMContext)
     await clear_active_dialog(user.telegram_id)
     text = "Меню"
     if callback.message.photo:
-        await callback.message.delete()
+        try:
+            await callback.message.delete()
+        except TelegramBadRequest:
+            pass
         await callback.message.answer(text, reply_markup=main_menu_keyboard())
         await callback.answer()
         return
