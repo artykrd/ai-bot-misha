@@ -425,65 +425,96 @@ class NanoBanana2Service(BaseImageProvider):
                 return hosted_url
 
     async def _create_task(self, payload: dict) -> str:
-        """Create a generation task via Kie.ai API."""
+        """Create a generation task via Kie.ai API with retry for transient errors."""
         url = f"{self.BASE_URL}/api/v1/jobs/createTask"
         timeout = aiohttp.ClientTimeout(total=60)
+        max_retries = 3
+        last_error = None
 
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(
-                url,
-                headers=self._get_auth_headers(),
-                json=payload,
-            ) as response:
-                response_status = response.status
-                response_text = await response.text()
+        for attempt in range(max_retries + 1):
+            try:
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.post(
+                        url,
+                        headers=self._get_auth_headers(),
+                        json=payload,
+                    ) as response:
+                        response_status = response.status
+                        response_text = await response.text()
 
-                logger.info(
-                    "nano_banana_2_api_response",
-                    status=response_status,
-                    response_body=response_text[:1000],
-                    url=url,
-                )
+                        logger.info(
+                            "nano_banana_2_api_response",
+                            status=response_status,
+                            response_body=response_text[:1000],
+                            url=url,
+                            attempt=attempt,
+                        )
 
-                if response_status != 200:
-                    raise Exception(
-                        f"Kie.ai API HTTP {response_status}: {response_text[:500]}"
+                        # Retry on 5xx server errors (including 525 SSL handshake)
+                        if response_status >= 500 and attempt < max_retries:
+                            backoff = 2 ** (attempt + 1)
+                            logger.warning(
+                                "nano_banana_2_server_error_retry",
+                                status=response_status,
+                                attempt=attempt + 1,
+                                backoff=backoff,
+                            )
+                            await asyncio.sleep(backoff)
+                            continue
+
+                        if response_status != 200:
+                            raise Exception(
+                                f"Kie.ai API HTTP {response_status}: {response_text[:500]}"
+                            )
+
+                        try:
+                            data = json.loads(response_text)
+                        except json.JSONDecodeError as e:
+                            raise Exception(
+                                f"Kie.ai API вернул невалидный JSON: {response_text[:300]}. Error: {e}"
+                            )
+
+                        if data.get("code") != 200:
+                            error_msg = data.get("msg") or data.get("message") or "Unknown error"
+                            error_code = data.get("code", "unknown")
+
+                            logger.error(
+                                "nano_banana_2_api_error",
+                                error_code=error_code,
+                                error_msg=error_msg,
+                                full_response=response_text[:500],
+                            )
+
+                            if error_code == 401:
+                                raise Exception("Ошибка аутентификации. Проверьте KIE_API_KEY.")
+                            elif error_code == 402:
+                                raise Exception("Недостаточно средств на аккаунте Kie.ai.")
+                            elif error_code == 429:
+                                raise Exception("Превышен лимит запросов. Попробуйте позже.")
+                            elif error_code == 422:
+                                raise Exception(f"Ошибка валидации параметров: {error_msg}")
+                            else:
+                                raise Exception(f"Kie.ai API error ({error_code}): {error_msg}")
+
+                        task_id = data.get("data", {}).get("taskId")
+                        if not task_id:
+                            raise Exception(f"No taskId in API response: {response_text[:300]}")
+
+                        return task_id
+
+            except aiohttp.ClientError as e:
+                last_error = e
+                if attempt < max_retries:
+                    backoff = 2 ** (attempt + 1)
+                    logger.warning(
+                        "nano_banana_2_network_error_retry",
+                        error=str(e),
+                        attempt=attempt + 1,
+                        backoff=backoff,
                     )
-
-                try:
-                    data = json.loads(response_text)
-                except json.JSONDecodeError as e:
-                    raise Exception(
-                        f"Kie.ai API вернул невалидный JSON: {response_text[:300]}. Error: {e}"
-                    )
-
-                if data.get("code") != 200:
-                    error_msg = data.get("msg") or data.get("message") or "Unknown error"
-                    error_code = data.get("code", "unknown")
-
-                    logger.error(
-                        "nano_banana_2_api_error",
-                        error_code=error_code,
-                        error_msg=error_msg,
-                        full_response=response_text[:500],
-                    )
-
-                    if error_code == 401:
-                        raise Exception("Ошибка аутентификации. Проверьте KIE_API_KEY.")
-                    elif error_code == 402:
-                        raise Exception("Недостаточно средств на аккаунте Kie.ai.")
-                    elif error_code == 429:
-                        raise Exception("Превышен лимит запросов. Попробуйте позже.")
-                    elif error_code == 422:
-                        raise Exception(f"Ошибка валидации параметров: {error_msg}")
-                    else:
-                        raise Exception(f"Kie.ai API error ({error_code}): {error_msg}")
-
-                task_id = data.get("data", {}).get("taskId")
-                if not task_id:
-                    raise Exception(f"No taskId in API response: {response_text[:300]}")
-
-                return task_id
+                    await asyncio.sleep(backoff)
+                    continue
+                raise Exception(f"Kie.ai API network error after {max_retries} retries: {e}")
 
     async def _poll_task_status(
         self,
