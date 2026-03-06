@@ -27,11 +27,14 @@ async def setup_bot() -> Dispatcher:
     redis_storage = RedisStorage(redis=redis_client.fsm_client)
     dp = Dispatcher(storage=redis_storage)
 
+    from app.bot.middlewares.throttling import ThrottlingMiddleware
     from app.bot.middlewares.auth import AuthMiddleware
     from app.bot.middlewares.logging import LoggingMiddleware
     from app.bot.middlewares.broadcast_tracking import BroadcastTrackingMiddleware
 
-    # Register middlewares
+    # Register middlewares (order matters: throttling first to drop spam early)
+    dp.message.middleware(ThrottlingMiddleware(rate_limit=0.5, max_burst=5))
+    dp.callback_query.middleware(ThrottlingMiddleware(rate_limit=0.3, max_burst=8))
     dp.message.middleware(AuthMiddleware())
     dp.callback_query.middleware(AuthMiddleware())
     dp.message.middleware(LoggingMiddleware())
