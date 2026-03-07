@@ -219,6 +219,7 @@ class Kling3Service(BaseVideoProvider):
                 "prompt": prompt,
                 "duration": str(duration),
                 "aspect_ratio": aspect_ratio,
+                "multi_shots": False,
             }
         }
 
