@@ -59,6 +59,9 @@ def _get_dalle_error_message(error: Exception) -> str:
     if "rate_limit" in error_str or "too many requests" in error_str:
         return "⏱️ Превышен лимит запросов. Попробуйте через минуту."
 
+    if "401" in error_str or "unauthorized" in error_str or "invalid api key" in error_str:
+        return "🔑 Ошибка авторизации OpenAI API. Обратитесь к администратору."
+
     if "invalid" in error_str and "size" in error_str:
         return "📐 Неверный размер изображения. Попробуйте другой размер."
 

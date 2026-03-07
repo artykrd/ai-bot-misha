@@ -23,11 +23,15 @@ class RedisClient:
     async def connect(self) -> None:
         """Establish connection to Redis."""
         try:
-            # Main Redis client for caching
+            # Main Redis client for caching (with connection pool limit)
             self._client = await redis.from_url(
                 settings.redis_url,
                 encoding="utf-8",
                 decode_responses=True,
+                max_connections=50,
+                socket_keepalive=True,
+                socket_connect_timeout=5,
+                retry_on_timeout=True,
             )
 
             # FSM client for aiogram states (separate database)
@@ -36,6 +40,10 @@ class RedisClient:
                 fsm_url,
                 encoding="utf-8",
                 decode_responses=True,
+                max_connections=20,
+                socket_keepalive=True,
+                socket_connect_timeout=5,
+                retry_on_timeout=True,
             )
 
             # Test connection
