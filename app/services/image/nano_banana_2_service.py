@@ -305,6 +305,13 @@ class NanoBanana2Service(BaseImageProvider):
                 images_count=len(kwargs.get("image_paths", [])),
             )
 
+            # User-friendly error messages
+            if "Prohibited Use policy" in error_msg or "filtered out" in error_msg:
+                error_msg = (
+                    "🛡️ Изображение заблокировано политикой безопасности Google.\n"
+                    "Попробуйте изменить промпт или использовать другое фото."
+                )
+
             if progress_callback:
                 await progress_callback("❌ Ошибка генерации")
 

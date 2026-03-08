@@ -4935,7 +4935,10 @@ async def handle_photo_action_choice(callback: CallbackQuery, state: FSMContext)
                 await callback.message.answer(caption_text, reply_markup=keyboard, parse_mode=None)
             except Exception:
                 pass
-        await callback.answer()
+        try:
+            await callback.answer()
+        except Exception:
+            pass
 
     elif action == "vision":
         # Move photo to vision state and start analysis
