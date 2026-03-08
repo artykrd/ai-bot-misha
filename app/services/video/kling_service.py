@@ -771,6 +771,8 @@ class KlingService(BaseVideoProvider):
             "No human detected": "Человек не обнаружен на изображении",
             "Image resolution is too low": "Разрешение изображения слишком низкое",
             "Video resolution is too low": "Разрешение видео слишком низкое",
+            "Video duration can not longer than 30s": "Видео не должно быть длиннее 30 секунд. Обрежьте видео и попробуйте снова",
+            "Video duration can not shorter than 3s": "Видео не должно быть короче 3 секунд",
             "Content moderation failed": "Контент не прошёл модерацию. Попробуйте другое изображение или видео",
             "Task timeout": "Время ожидания генерации истекло. Попробуйте ещё раз",
         }
