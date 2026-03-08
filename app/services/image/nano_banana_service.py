@@ -192,7 +192,7 @@ class NanoBananaService(BaseImageProvider):
 
             logger.info(
                 "nano_banana_image_generated",
-                prompt=prompt[:100],
+                prompt=prompt[:100] if prompt else "None",
                 aspect_ratio=aspect_ratio,
                 time=processing_time
             )
@@ -282,7 +282,7 @@ class NanoBananaService(BaseImageProvider):
                     return bool(re.search('[а-яА-ЯёЁ]', text))
 
                 translated_prompt = prompt or ""
-                if has_cyrillic(prompt):
+                if has_cyrillic(translated_prompt):
                     # Simple translation approach: prefix with instruction
                     # For better results, we rely on Gemini's multilingual understanding
                     # with explicit English instruction
