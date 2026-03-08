@@ -312,11 +312,28 @@ class VideoJobService:
                             logger.error("video_job_send_all_failed", error=str(e), job_id=job.id)
 
                 if not sent:
-                    await bot.send_message(
-                        chat_id=job.chat_id,
-                        text=f"{caption}\n\n⚠️ Не удалось отправить видео. Попробуйте скачать через кнопку ниже.",
-                        reply_markup=reply_markup,
-                    )
+                    # Last resort: send download link
+                    size_mb = file_size // (1024 * 1024)
+                    try:
+                        from app.api.file_download import create_download_token, get_download_url
+                        token = create_download_token(result.video_path)
+                        download_url = get_download_url(token)
+                        await bot.send_message(
+                            chat_id=job.chat_id,
+                            text=(
+                                f"{caption}\n\n"
+                                f"📥 Видео ({size_mb} МБ) превышает лимит Telegram.\n"
+                                f"Скачайте по ссылке (действует 1 час):\n{download_url}"
+                            ),
+                            reply_markup=reply_markup,
+                        )
+                    except Exception as link_e:
+                        logger.error("video_job_download_link_failed", error=str(link_e), job_id=job.id)
+                        await bot.send_message(
+                            chat_id=job.chat_id,
+                            text=f"{caption}\n\n⚠️ Не удалось отправить видео ({size_mb} МБ). Файл превышает лимит Telegram.",
+                            reply_markup=reply_markup,
+                        )
 
                 # Delete progress message
                 if job.progress_message_id:
