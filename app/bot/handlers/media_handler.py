@@ -136,7 +136,7 @@ async def send_video_safe(
             file_size = os.path.getsize(actual_video_path)
             logger.info("video_compressed_for_send", original=os.path.getsize(video_path), compressed=file_size)
         else:
-            # Compression failed or unavailable — try document, then text
+            # Compression failed or unavailable — try document, then download link
             try:
                 video_file = FSInputFile(video_path)
                 await message.answer_document(
@@ -147,13 +147,26 @@ async def send_video_safe(
                 return True
             except Exception as e:
                 logger.error("video_send_as_document_failed", error=str(e), size=os.path.getsize(video_path))
+                # Send download link instead
                 size_mb = os.path.getsize(video_path) // (1024 * 1024)
-                await message.answer(
-                    f"{caption}\n\n{result}" if result else
-                    f"{caption}\n\n⚠️ Видео слишком большое для отправки через Telegram ({size_mb} МБ).",
-                    reply_markup=reply_markup,
-                )
-                return False
+                try:
+                    from app.api.file_download import create_download_token, get_download_url
+                    token = create_download_token(video_path)
+                    download_url = get_download_url(token)
+                    await message.answer(
+                        f"{caption}\n\n"
+                        f"📥 Видео ({size_mb} МБ) превышает лимит Telegram.\n"
+                        f"Скачайте по ссылке (действует 1 час):\n{download_url}",
+                        reply_markup=reply_markup,
+                    )
+                    return True
+                except Exception as link_e:
+                    logger.error("video_download_link_failed", error=str(link_e))
+                    await message.answer(
+                        f"{caption}\n\n⚠️ Видео слишком большое для отправки через Telegram ({size_mb} МБ).",
+                        reply_markup=reply_markup,
+                    )
+                    return False
 
     # Try sending as video with retries
     try:

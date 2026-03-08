@@ -51,7 +51,9 @@ app.add_middleware(
 
 # Register API callback routers
 from app.api.sora_callback import router as sora_callback_router
+from app.api.file_download import router as file_download_router
 app.include_router(sora_callback_router)
+app.include_router(file_download_router)
 
 
 @app.get("/")
