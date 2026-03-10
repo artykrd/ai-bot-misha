@@ -212,6 +212,12 @@ class Kling3Service(BaseVideoProvider):
             logger.warning("kling3_invalid_duration", duration=duration)
             duration = 5
 
+        # Validate aspect_ratio
+        valid_ratios = ("16:9", "9:16", "1:1")
+        if aspect_ratio not in valid_ratios:
+            logger.warning("kling3_invalid_aspect_ratio", aspect_ratio=aspect_ratio)
+            aspect_ratio = "1:1"
+
         payload = {
             "model": "kling-3.0/video",
             "input": {
