@@ -1,23 +1,4 @@
 
-"""
-Centralized Gemini execution layer.
-
-Controls concurrency and retries for all Gemini API calls.
-
-ARCHITECTURE NOTE:
-  Uses a per-event-loop semaphore instead of a background worker + asyncio.Queue.
-  asyncio.Queue binds to the event loop on first use; if the bot restarts and a new
-  loop is created the old Queue raises "bound to a different event loop", crashing
-  every worker task and flooding the system with errors.
-
-  A Semaphore recreated whenever the running loop changes avoids that entirely.
-"""
-
-import asyncio
-import uuid
-from typing import Any, Callable
-
-"""Centralized Gemini request execution with queue, rate limiting, and retries."""
 from __future__ import annotations
 
 import asyncio
