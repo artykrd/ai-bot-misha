@@ -12,6 +12,7 @@ from app.core.config import settings
 from app.core.logger import get_logger
 from app.core.billing_config import get_image_model_billing
 from app.services.image.base import BaseImageProvider, ImageResponse
+from app.services.gemini import gemini_execution_layer
 
 logger = get_logger(__name__)
 
@@ -233,22 +234,20 @@ class GeminiImageService(BaseImageProvider):
             if progress_callback:
                 await progress_callback("🔍 Анализирую изображение...")
 
-            # Run in executor to avoid blocking
-            loop = asyncio.get_event_loop()
+            import PIL.Image
+            img = await asyncio.to_thread(PIL.Image.open, image_path)
+            model_name = 'gemini-2.0-flash-exp'
+            model = self._genai_legacy.GenerativeModel(model_name)
 
-            def _analyze():
-                # Load image
-                import PIL.Image
-                img = PIL.Image.open(image_path)
+            async def _request():
+                return await asyncio.to_thread(model.generate_content, [prompt, img])
 
-                # Create Gemini model
-                model = self._genai_legacy.GenerativeModel('gemini-2.0-flash-exp')
-
-                # Generate analysis
-                response = model.generate_content([prompt, img])
-                return response.text
-
-            analysis = await loop.run_in_executor(None, _analyze)
+            response = await gemini_execution_layer.execute(
+                operation="vision_analyze",
+                model=model_name,
+                request_fn=_request,
+            )
+            analysis = response.text
 
             processing_time = time.time() - start_time
 
@@ -343,62 +342,52 @@ class GeminiImageService(BaseImageProvider):
     ) -> str:
         """Generate image using Imagen model via Google AI API key."""
 
-        # Run in executor to avoid blocking
-        loop = asyncio.get_event_loop()
+        try:
+            types = self._genai_client_mod['types']
 
-        def _generate():
-            try:
-                types = self._genai_client_mod['types']
+            # Build config
+            config = types.GenerateImagesConfig(
+                number_of_images=number_of_images,
+                aspect_ratio=aspect_ratio,
+                negative_prompt=negative_prompt,
+                safety_filter_level=safety_filter,
+            )
 
-                # Build config
-                config = types.GenerateImagesConfig(
-                    number_of_images=number_of_images,
-                    aspect_ratio=aspect_ratio,
-                    negative_prompt=negative_prompt,
-                    safety_filter_level=safety_filter,
-                )
-
-                # Generate image via API key-authenticated client
-                response = self.imagen_client.models.generate_images(
+            async def _request():
+                return await asyncio.to_thread(
+                    self.imagen_client.models.generate_images,
                     model="imagen-3.0-generate-002",
                     prompt=prompt,
                     config=config,
                 )
 
-                if not response.generated_images:
-                    raise Exception("Imagen не вернул изображений. Возможно, промпт не прошёл модерацию.")
+            response = await gemini_execution_layer.execute(
+                operation="image_generate",
+                model="imagen-3.0-generate-002",
+                request_fn=_request,
+            )
 
-                # Get the first image
-                generated_image = response.generated_images[0]
+            if not response.generated_images:
+                raise Exception("Imagen не вернул изображений. Возможно, промпт не прошёл модерацию.")
 
-                # Save image to storage
-                filename = self._generate_filename("png")
-                image_path = self.storage_path / filename
+            # Get the first image
+            generated_image = response.generated_images[0]
 
-                # Save using PIL Image from the response
-                generated_image.image.save(str(image_path))
+            # Save image to storage
+            filename = self._generate_filename("png")
+            image_path = self.storage_path / filename
 
-                logger.info(
-                    "imagen_saved",
-                    path=str(image_path),
-                    size=image_path.stat().st_size
-                )
+            # Save using PIL Image from the response
+            await asyncio.to_thread(generated_image.image.save, str(image_path))
 
-                return str(image_path)
+            logger.info(
+                "imagen_saved",
+                path=str(image_path),
+                size=image_path.stat().st_size
+            )
 
-            except Exception as e:
-                logger.error("imagen_generation_error", error=str(e))
-                raise
-
-        try:
-            if progress_callback:
-                await progress_callback("⏳ Обработка запроса...")
-
-            # Generate image in executor
-            image_path = await loop.run_in_executor(None, _generate)
-
-            return image_path
+            return str(image_path)
 
         except Exception as e:
-            logger.error("imagen_executor_error", error=str(e))
+            logger.error("imagen_generation_error", error=str(e))
             raise

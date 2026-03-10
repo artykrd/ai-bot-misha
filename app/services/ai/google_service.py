@@ -8,6 +8,7 @@ from typing import Optional, List, Dict, TYPE_CHECKING
 from app.core.config import settings
 from app.core.logger import get_logger
 from app.services.ai.base import BaseAIProvider, AIResponse
+from app.services.gemini import gemini_execution_layer
 
 logger = get_logger(__name__)
 
@@ -100,12 +101,18 @@ class GoogleService(BaseAIProvider):
             if system_prompt:
                 full_prompt = f"{system_prompt}\n\n{prompt}"
 
-            # Generate content with timeout (use thread pool to avoid blocking event loop)
-            # google.generativeai uses sync API, so we run it in thread pool
-            try:
-                response = await asyncio.wait_for(
+            async def _run_request():
+                # google.generativeai uses sync API, so run it in thread pool
+                return await asyncio.wait_for(
                     asyncio.to_thread(model_instance.generate_content, full_prompt),
-                    timeout=GOOGLE_REQUEST_TIMEOUT
+                    timeout=GOOGLE_REQUEST_TIMEOUT,
+                )
+
+            try:
+                response = await gemini_execution_layer.execute(
+                    operation="text_generate",
+                    model=model,
+                    request_fn=_run_request,
                 )
             except asyncio.TimeoutError:
                 return AIResponse(

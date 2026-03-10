@@ -12,6 +12,7 @@ from app.core.config import settings
 from app.core.logger import get_logger
 from app.core.billing_config import get_video_model_billing
 from app.services.video.base import BaseVideoProvider, VideoResponse
+from app.services.gemini import gemini_execution_layer
 
 logger = get_logger(__name__)
 
@@ -387,19 +388,39 @@ class VeoService(BaseVideoProvider):
 
                 if video_obj:
                     # Video extension mode
-                    operation = self.client.models.generate_videos(
-                        model="veo-3.1-generate-preview",
-                        prompt=prompt,
-                        video=video_obj,
-                        config=config_params if config_params else None,
+                    async def _request_video_ext():
+                        return await asyncio.to_thread(
+                            self.client.models.generate_videos,
+                            model="veo-3.1-generate-preview",
+                            prompt=prompt,
+                            video=video_obj,
+                            config=config_params if config_params else None,
+                        )
+
+                    operation = asyncio.run(
+                        gemini_execution_layer.execute(
+                            operation="video_generate",
+                            model="veo-3.1-generate-preview",
+                            request_fn=_request_video_ext,
+                        )
                     )
                 else:
                     # All other modes (text, image, interpolation, reference)
-                    operation = self.client.models.generate_videos(
-                        model="veo-3.1-generate-preview",
-                        prompt=prompt,
-                        image=image_obj if image_obj else None,
-                        config=config_params if config_params else None,
+                    async def _request_video_generate():
+                        return await asyncio.to_thread(
+                            self.client.models.generate_videos,
+                            model="veo-3.1-generate-preview",
+                            prompt=prompt,
+                            image=image_obj if image_obj else None,
+                            config=config_params if config_params else None,
+                        )
+
+                    operation = asyncio.run(
+                        gemini_execution_layer.execute(
+                            operation="video_generate",
+                            model="veo-3.1-generate-preview",
+                            request_fn=_request_video_generate,
+                        )
                     )
 
                 # Wait for the video to be generated (polling)
