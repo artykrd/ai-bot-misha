@@ -428,7 +428,7 @@ async def sora_aspect_ratio_setting(callback: CallbackQuery, state: FSMContext, 
 
 @router.callback_query(F.data.startswith("sora.set.aspect_ratio:"))
 async def sora_set_aspect_ratio(callback: CallbackQuery, state: FSMContext, user: User):
-    aspect_ratio = callback.data.split(":")[1]
+    aspect_ratio = callback.data.split(":", 1)[1]
     await state.update_data(sora_aspect_ratio=aspect_ratio)
     await start_sora(callback, state, user)
 
@@ -836,7 +836,7 @@ async def kling_settings_aspect_ratio(callback: CallbackQuery, state: FSMContext
 @router.callback_query(F.data.startswith("kling.set.aspect_ratio:"))
 async def kling_set_aspect_ratio(callback: CallbackQuery, state: FSMContext, user: User):
     """Set Kling aspect ratio."""
-    aspect_ratio = callback.data.split(":")[1]
+    aspect_ratio = callback.data.split(":", 1)[1]
 
     await state.update_data(kling_aspect_ratio=aspect_ratio)
 
@@ -995,7 +995,7 @@ async def kling_image_settings_aspect_ratio(callback: CallbackQuery, state: FSMC
 @router.callback_query(F.data.startswith("kling_image.set.aspect_ratio:"))
 async def kling_image_set_aspect_ratio(callback: CallbackQuery, state: FSMContext, user: User):
     """Set Kling image aspect ratio."""
-    ratio = callback.data.split(":")[1]
+    ratio = callback.data.split(":", 1)[1]
 
     await state.update_data(kling_image_aspect_ratio=ratio)
 
@@ -5819,7 +5819,7 @@ async def kling3_settings_aspect_ratio(callback: CallbackQuery, state: FSMContex
 @router.callback_query(F.data.startswith("kling3.set.aspect_ratio:"))
 async def kling3_set_aspect_ratio(callback: CallbackQuery, state: FSMContext, user: User):
     """Set Kling 3.0 aspect ratio."""
-    aspect_ratio = callback.data.split(":")[1]
+    aspect_ratio = callback.data.split(":", 1)[1]
     await state.update_data(kling3_aspect_ratio=aspect_ratio)
     await callback.answer(f"✅ Формат видео установлен: {aspect_ratio}")
     await start_kling3_video(callback, state, user)
@@ -6064,7 +6064,7 @@ async def kling_o1_settings_aspect_ratio(callback: CallbackQuery, state: FSMCont
 @router.callback_query(F.data.startswith("kling_o1.set.aspect_ratio:"))
 async def kling_o1_set_aspect_ratio(callback: CallbackQuery, state: FSMContext, user: User):
     """Set Kling O1 aspect ratio."""
-    aspect_ratio = callback.data.split(":")[1]
+    aspect_ratio = callback.data.split(":", 1)[1]
     await state.update_data(kling_o1_aspect_ratio=aspect_ratio)
     await callback.answer(f"✅ Формат видео установлен: {aspect_ratio}")
     await start_kling_o1(callback, state, user)
