@@ -246,404 +246,307 @@ class NanoBananaService(BaseImageProvider):
     ) -> str:
         """Generate image using Nano Banana model (Gemini 2.5 Flash Image or Gemini 3 Pro Image)."""
 
-        loop = asyncio.get_event_loop()
+        try:
+            # Import types for proper config structure
+            from google.genai import types
+            from PIL import Image
 
-        def _generate():
-            try:
-                # Import types for proper config structure
-                from google.genai import types
-                from PIL import Image
+            # Build config according to Gemini documentation
+            # Note: response_modalities must be uppercase 'IMAGE' per API spec
+            config_params = {
+                "response_modalities": ['IMAGE']
+            }
 
-                # Build config according to Gemini documentation
-                # Note: response_modalities must be uppercase 'IMAGE' per API spec
-                config_params = {
-                    "response_modalities": ['IMAGE']
-                }
-
-                # Add image config with aspect ratio if specified
-                if aspect_ratio and aspect_ratio != "auto":
-                    config_params["image_config"] = types.ImageConfig(
-                        aspect_ratio=aspect_ratio
-                    )
-
-                # Generate image with proper types
-                config = types.GenerateContentConfig(**config_params)
-
-                # CRITICAL FIX: Translate Russian prompts to English
-                # Gemini 2.5 Flash Image works better with English prompts
-                def has_cyrillic(text):
-                    """Check if text contains Cyrillic characters."""
-                    if not text:
-                        return False
-                    return bool(re.search('[а-яА-ЯёЁ]', text))
-
-                translated_prompt = prompt or ""
-                if has_cyrillic(translated_prompt):
-                    # Simple translation approach: prefix with instruction
-                    # For better results, we rely on Gemini's multilingual understanding
-                    # with explicit English instruction
-                    translated_prompt = f"Create an image: {prompt}. Interpret the description and generate accordingly."
-                    logger.info("nano_banana_russian_prompt_detected", original=prompt[:50] if prompt else "None")
-
-                # Prepare contents - can be text only or text + image
-                if reference_image_path:
-                    # Load reference image
-                    ref_image = Image.open(reference_image_path)
-
-                    # DETAILED LOGGING - Step 1: Original image info
-                    logger.info(
-                        "nano_banana_ref_image_loaded",
-                        path=reference_image_path,
-                        format=ref_image.format,
-                        mode=ref_image.mode,
-                        size=ref_image.size,
-                        width=ref_image.width,
-                        height=ref_image.height,
-                        file_size=os.path.getsize(reference_image_path) if os.path.exists(reference_image_path) else 0
-                    )
-
-                    # Convert to RGB if needed
-                    original_mode = ref_image.mode
-                    if ref_image.mode != 'RGB':
-                        ref_image = ref_image.convert('RGB')
-                        logger.info(
-                            "nano_banana_ref_image_converted",
-                            from_mode=original_mode,
-                            to_mode='RGB',
-                            size_after=ref_image.size
-                        )
-
-                    # Enhance prompt for image-to-image to get better transformations
-                    enhanced_prompt = (
-                        f"Generate a NEW image based on this reference image with the following transformation: {translated_prompt}. "
-                        f"Create a completely transformed version, not just minor adjustments. "
-                        f"Make significant creative changes while following the instruction."
-                    )
-                    # Create multimodal content: image + enhanced text prompt
-                    contents = [ref_image, enhanced_prompt]
-                    logger.info("nano_banana_using_reference_image", path=reference_image_path, enhanced=True)
-                else:
-                    # Text-only generation
-                    contents = translated_prompt
-
-                # Use the specified model (gemini-2.5-flash-image or gemini-3-pro-image-preview)
-                async def _request():
-                    return await asyncio.to_thread(
-                        self.client.models.generate_content,
-                        model=model,
-                        contents=contents,
-                        config=config,
-                    )
-
-                response = asyncio.run(
-                    gemini_execution_layer.execute(
-                        operation="image_generate",
-                        model=model,
-                        request_fn=_request,
-                    )
+            # Add image config with aspect ratio if specified
+            if aspect_ratio and aspect_ratio != "auto":
+                config_params["image_config"] = types.ImageConfig(
+                    aspect_ratio=aspect_ratio
                 )
 
-                logger.info("nano_banana_api_call", model=model, mode="image-to-image" if reference_image_path else "text-to-image")
+            # Generate image with proper types
+            config = types.GenerateContentConfig(**config_params)
 
-                # DETAILED LOGGING - Step 2: Response structure
+            # CRITICAL FIX: Translate Russian prompts to English
+            # Gemini 2.5 Flash Image works better with English prompts
+            translated_prompt = prompt or ""
+            if re.search('[а-яА-ЯёЁ]', translated_prompt or ""):
+                translated_prompt = f"Create an image: {prompt}. Interpret the description and generate accordingly."
+                logger.info("nano_banana_russian_prompt_detected", original=prompt[:50] if prompt else "None")
+
+            # Prepare contents - can be text only or text + image
+            if reference_image_path:
+                # Load reference image (sync PIL, fast)
+                ref_image = Image.open(reference_image_path)
+
                 logger.info(
-                    "nano_banana_api_response_received",
-                    has_parts=hasattr(response, 'parts') and response.parts is not None,
-                    parts_count=len(response.parts) if hasattr(response, 'parts') and response.parts else 0,
-                    has_candidates=hasattr(response, 'candidates') and response.candidates is not None,
-                    candidates_count=len(response.candidates) if hasattr(response, 'candidates') and response.candidates else 0,
-                    has_text=hasattr(response, 'text'),
-                    response_type=type(response).__name__
+                    "nano_banana_ref_image_loaded",
+                    path=reference_image_path,
+                    format=ref_image.format,
+                    mode=ref_image.mode,
+                    size=ref_image.size,
+                    width=ref_image.width,
+                    height=ref_image.height,
+                    file_size=os.path.getsize(reference_image_path) if os.path.exists(reference_image_path) else 0
                 )
 
-                # DETAILED LOGGING - Step 3: Candidates details (if available)
-                if hasattr(response, 'candidates') and response.candidates:
-                    for idx, candidate in enumerate(response.candidates):
-                        # Basic candidate info
+                # Convert to RGB if needed
+                original_mode = ref_image.mode
+                if ref_image.mode != 'RGB':
+                    ref_image = ref_image.convert('RGB')
+                    logger.info(
+                        "nano_banana_ref_image_converted",
+                        from_mode=original_mode,
+                        to_mode='RGB',
+                        size_after=ref_image.size
+                    )
+
+                # Enhance prompt for image-to-image to get better transformations
+                enhanced_prompt = (
+                    f"Generate a NEW image based on this reference image with the following transformation: {translated_prompt}. "
+                    f"Create a completely transformed version, not just minor adjustments. "
+                    f"Make significant creative changes while following the instruction."
+                )
+                # Create multimodal content: image + enhanced text prompt
+                contents = [ref_image, enhanced_prompt]
+                logger.info("nano_banana_using_reference_image", path=reference_image_path, enhanced=True)
+            else:
+                # Text-only generation
+                contents = translated_prompt
+
+            # Call Gemini API through the centralized execution layer
+            async def _request():
+                return await asyncio.to_thread(
+                    self.client.models.generate_content,
+                    model=model,
+                    contents=contents,
+                    config=config,
+                )
+
+            response = await gemini_execution_layer.execute(
+                operation="image_generate",
+                model=model,
+                request_fn=_request,
+            )
+
+            logger.info("nano_banana_api_call", model=model, mode="image-to-image" if reference_image_path else "text-to-image")
+
+            # Log response structure
+            logger.info(
+                "nano_banana_api_response_received",
+                has_parts=hasattr(response, 'parts') and response.parts is not None,
+                parts_count=len(response.parts) if hasattr(response, 'parts') and response.parts else 0,
+                has_candidates=hasattr(response, 'candidates') and response.candidates is not None,
+                candidates_count=len(response.candidates) if hasattr(response, 'candidates') and response.candidates else 0,
+                has_text=hasattr(response, 'text'),
+                response_type=type(response).__name__
+            )
+
+            # Log candidates details (if available)
+            if hasattr(response, 'candidates') and response.candidates:
+                for idx, candidate in enumerate(response.candidates):
+                    logger.info(
+                        "nano_banana_candidate_basic",
+                        index=idx,
+                        finish_reason=str(candidate.finish_reason) if hasattr(candidate, 'finish_reason') else "NONE",
+                        has_content=hasattr(candidate, 'content'),
+                        has_safety_ratings=hasattr(candidate, 'safety_ratings')
+                    )
+
+                    if hasattr(candidate, 'safety_ratings') and candidate.safety_ratings:
+                        for rating in candidate.safety_ratings:
+                            logger.info(
+                                "nano_banana_safety_rating",
+                                candidate_index=idx,
+                                category=str(rating.category) if hasattr(rating, 'category') else "UNKNOWN",
+                                probability=str(rating.probability) if hasattr(rating, 'probability') else "UNKNOWN",
+                                blocked=rating.blocked if hasattr(rating, 'blocked') else False
+                            )
+
+                    if hasattr(candidate, 'content') and candidate.content:
+                        content = candidate.content
+                        parts_count = len(content.parts) if hasattr(content, 'parts') and content.parts else 0
                         logger.info(
-                            "nano_banana_candidate_basic",
-                            index=idx,
-                            finish_reason=str(candidate.finish_reason) if hasattr(candidate, 'finish_reason') else "NONE",
-                            has_content=hasattr(candidate, 'content'),
-                            has_safety_ratings=hasattr(candidate, 'safety_ratings')
+                            "nano_banana_content_structure",
+                            candidate_index=idx,
+                            parts_count=parts_count,
+                            has_parts_attr=hasattr(content, 'parts')
                         )
 
-                        # Log safety ratings SEPARATELY for better visibility
-                        if hasattr(candidate, 'safety_ratings'):
-                            if candidate.safety_ratings:
-                                for rating in candidate.safety_ratings:
-                                    logger.info(
-                                        "nano_banana_safety_rating",
-                                        candidate_index=idx,
-                                        category=str(rating.category) if hasattr(rating, 'category') else "UNKNOWN",
-                                        probability=str(rating.probability) if hasattr(rating, 'probability') else "UNKNOWN",
-                                        blocked=rating.blocked if hasattr(rating, 'blocked') else False
-                                    )
-                            else:
-                                # safety_ratings exists but is falsy - this is normal for some responses
-                                logger.debug(
-                                    "nano_banana_safety_ratings_empty",
-                                    candidate_index=idx,
-                                    safety_ratings_type=type(candidate.safety_ratings).__name__,
-                                    safety_ratings_len=len(candidate.safety_ratings) if hasattr(candidate.safety_ratings, '__len__') else "NO_LEN",
-                                    safety_ratings_is_none=candidate.safety_ratings is None
-                                )
-                        else:
-                            logger.warning("nano_banana_no_safety_ratings_attribute", candidate_index=idx)
+            # Get the first generated image
+            if not response.parts or len(response.parts) == 0:
+                finish_reason = None
+                if hasattr(response, 'finish_reason') and response.finish_reason:
+                    finish_reason = response.finish_reason
+                elif hasattr(response, 'candidates') and response.candidates:
+                    if len(response.candidates) > 0 and hasattr(response.candidates[0], 'finish_reason'):
+                        finish_reason = response.candidates[0].finish_reason
 
-                        # Log content structure
-                        if hasattr(candidate, 'content') and candidate.content:
-                            content = candidate.content
-                            parts_count = len(content.parts) if hasattr(content, 'parts') and content.parts else 0
-                            logger.info(
-                                "nano_banana_content_structure",
-                                candidate_index=idx,
-                                parts_count=parts_count,
-                                has_parts_attr=hasattr(content, 'parts')
-                            )
+                logger.warning(
+                    "nano_banana_empty_response",
+                    finish_reason=str(finish_reason),
+                    has_parts=bool(response.parts),
+                    parts_count=len(response.parts) if response.parts else 0,
+                    has_candidates=hasattr(response, 'candidates'),
+                    candidates_count=len(response.candidates) if hasattr(response, 'candidates') and response.candidates else 0
+                )
 
-                            # Log each part separately
-                            if hasattr(content, 'parts') and content.parts:
-                                for part_idx, part in enumerate(content.parts[:3]):
-                                    logger.info(
-                                        "nano_banana_content_part",
-                                        candidate_index=idx,
-                                        part_index=part_idx,
-                                        has_text=hasattr(part, 'text') and part.text is not None,
-                                        text_length=len(part.text) if hasattr(part, 'text') and part.text else 0,
-                                        has_inline_data=hasattr(part, 'inline_data') and part.inline_data is not None,
-                                        has_as_image=hasattr(part, 'as_image')
-                                    )
-                        else:
-                            # Content is missing or falsy - log details
-                            content_val = candidate.content if hasattr(candidate, 'content') else "NO_ATTR"
-                            logger.warning(
-                                "nano_banana_no_content",
-                                candidate_index=idx,
-                                has_content_attr=hasattr(candidate, 'content'),
-                                content_is_none=content_val is None if hasattr(candidate, 'content') else False,
-                                content_type=type(content_val).__name__ if hasattr(candidate, 'content') and content_val is not None else "None",
-                                content_bool=bool(content_val) if hasattr(candidate, 'content') else False
-                            )
+                if finish_reason:
+                    error_msg = _get_finish_reason_message(finish_reason)
+                else:
+                    error_msg = "API не сгенерировал изображение. Попробуйте изменить промпт."
+                raise ValueError(error_msg)
 
-                # Note: reference image cleanup is handled by the caller
-                # to avoid race conditions in parallel multi-image generation
+            # Find the first image part - can be text or inline_data
+            image_part = None
+            for part in response.parts:
+                if part.text is not None:
+                    continue
+                if part.inline_data is not None or hasattr(part, 'as_image'):
+                    image_part = part
+                    break
 
-                # Get the first generated image
-                # Response contains parts with images
-                if not response.parts or len(response.parts) == 0:
-                    # Check if response was blocked by safety filters
-                    # Try to get finish_reason from different locations
-                    finish_reason = None
+            if not image_part:
+                finish_reason = None
+                if hasattr(response, 'finish_reason') and response.finish_reason:
+                    finish_reason = response.finish_reason
+                elif hasattr(response, 'candidates') and response.candidates:
+                    if len(response.candidates) > 0 and hasattr(response.candidates[0], 'finish_reason'):
+                        finish_reason = response.candidates[0].finish_reason
 
-                    # Check direct attribute
-                    if hasattr(response, 'finish_reason') and response.finish_reason:
-                        finish_reason = response.finish_reason
-                    # Check candidates
-                    elif hasattr(response, 'candidates') and response.candidates:
-                        if len(response.candidates) > 0 and hasattr(response.candidates[0], 'finish_reason'):
-                            finish_reason = response.candidates[0].finish_reason
+                logger.warning(
+                    "nano_banana_no_image_part",
+                    finish_reason=str(finish_reason),
+                    parts_count=len(response.parts),
+                    parts_types=[type(p).__name__ for p in response.parts[:3]]
+                )
 
-                    # Log response details for debugging
-                    logger.warning(
-                        "nano_banana_empty_response",
-                        finish_reason=str(finish_reason),
-                        has_parts=bool(response.parts),
-                        parts_count=len(response.parts) if response.parts else 0,
-                        has_candidates=hasattr(response, 'candidates'),
-                        candidates_count=len(response.candidates) if hasattr(response, 'candidates') and response.candidates else 0
-                    )
+                if finish_reason:
+                    error_msg = _get_finish_reason_message(finish_reason)
+                else:
+                    error_msg = "API не вернул изображение. Попробуйте изменить промпт."
+                raise ValueError(error_msg)
 
-                    if finish_reason:
-                        error_msg = _get_finish_reason_message(finish_reason)
-                    else:
-                        error_msg = "API не сгенерировал изображение. Попробуйте изменить промпт."
-                    raise ValueError(error_msg)
+            # Save image to storage
+            filename = self._generate_filename("png")
+            image_path = self.storage_path / filename
 
-                # Find the first image part - can be text or inline_data
-                image_part = None
-                for part in response.parts:
-                    # Skip text parts
-                    if part.text is not None:
-                        continue
-                    # Check for inline data (image)
-                    if part.inline_data is not None or hasattr(part, 'as_image'):
-                        image_part = part
-                        break
+            import io
+            import base64
 
-                if not image_part:
-                    # Check finish reason for more details
-                    # Try to get finish_reason from different locations
-                    finish_reason = None
+            saved = False
 
-                    # Check direct attribute
-                    if hasattr(response, 'finish_reason') and response.finish_reason:
-                        finish_reason = response.finish_reason
-                    # Check candidates
-                    elif hasattr(response, 'candidates') and response.candidates:
-                        if len(response.candidates) > 0 and hasattr(response.candidates[0], 'finish_reason'):
-                            finish_reason = response.candidates[0].finish_reason
+            # Method 1: Try as_image() method first
+            try:
+                pil_image = image_part.as_image()
+                logger.info("nano_banana_using_as_image", image_type=type(pil_image).__name__)
 
-                    # Log for debugging
-                    logger.warning(
-                        "nano_banana_no_image_part",
-                        finish_reason=str(finish_reason),
-                        parts_count=len(response.parts),
-                        parts_types=[type(p).__name__ for p in response.parts[:3]]
-                    )
+                if isinstance(pil_image, Image.Image):
+                    pil_image.save(str(image_path), format='PNG')
+                    saved = True
+                    logger.info("nano_banana_saved_as_pil_image")
+                else:
+                    # Custom image object - try different save approaches
+                    buffer = io.BytesIO()
 
-                    if finish_reason:
-                        error_msg = _get_finish_reason_message(finish_reason)
-                    else:
-                        error_msg = "API не вернул изображение. Попробуйте изменить промпт."
-                    raise ValueError(error_msg)
-
-                # Save image to storage
-                filename = self._generate_filename("png")
-                image_path = self.storage_path / filename
-
-                # Try to save image using multiple methods
-                from PIL import Image
-                import io
-                import base64
-
-                saved = False
-
-                # Method 1: Try as_image() method first
-                try:
-                    pil_image = image_part.as_image()
-                    logger.info("nano_banana_using_as_image", image_type=type(pil_image).__name__)
-
-                    # Check if it's a real PIL Image or a custom object
-                    if isinstance(pil_image, Image.Image):
-                        # Standard PIL Image - save directly
-                        pil_image.save(str(image_path), format='PNG')
+                    try:
+                        pil_image.save(buffer, 'PNG')
+                        buffer.seek(0)
+                        real_pil_image = Image.open(buffer)
+                        real_pil_image.save(str(image_path), format='PNG')
                         saved = True
-                        logger.info("nano_banana_saved_as_pil_image")
-                    else:
-                        # Custom image object - try different save approaches
-                        buffer = io.BytesIO()
+                        logger.info("nano_banana_saved_via_custom_save")
+                    except (TypeError, AttributeError) as e:
+                        logger.debug("nano_banana_save_method1_failed", error=str(e))
 
-                        # Try 1a: with positional argument (Gemini's custom Image)
+                    if not saved:
+                        buffer = io.BytesIO()
                         try:
-                            pil_image.save(buffer, 'PNG')
+                            pil_image.save(buffer)
                             buffer.seek(0)
                             real_pil_image = Image.open(buffer)
                             real_pil_image.save(str(image_path), format='PNG')
                             saved = True
-                            logger.info("nano_banana_saved_via_custom_save")
-                        except (TypeError, AttributeError) as e:
-                            logger.debug("nano_banana_save_method1_failed", error=str(e))
+                            logger.info("nano_banana_saved_via_custom_save_no_format")
+                        except Exception as e:
+                            logger.debug("nano_banana_save_method2_failed", error=str(e))
 
-                        # Try 1b: without format argument
-                        if not saved:
-                            buffer = io.BytesIO()
-                            try:
-                                pil_image.save(buffer)
-                                buffer.seek(0)
-                                real_pil_image = Image.open(buffer)
-                                real_pil_image.save(str(image_path), format='PNG')
-                                saved = True
-                                logger.info("nano_banana_saved_via_custom_save_no_format")
-                            except Exception as e:
-                                logger.debug("nano_banana_save_method2_failed", error=str(e))
-
-                        # Try 1c: get _pil_image attribute (if it's a wrapper)
-                        if not saved and hasattr(pil_image, '_pil_image'):
-                            try:
-                                pil_image._pil_image.save(str(image_path), format='PNG')
-                                saved = True
-                                logger.info("nano_banana_saved_via_pil_image_attr")
-                            except Exception as e:
-                                logger.debug("nano_banana_save_method3_failed", error=str(e))
-
-                        # Try 1d: get image data attribute directly
-                        if not saved and hasattr(pil_image, 'data'):
-                            try:
-                                data = pil_image.data
-                                if isinstance(data, bytes):
-                                    with open(image_path, 'wb') as f:
-                                        f.write(data)
-                                    saved = True
-                                    logger.info("nano_banana_saved_via_data_attr")
-                            except Exception as e:
-                                logger.debug("nano_banana_save_method4_failed", error=str(e))
-
-                except Exception as as_image_error:
-                    logger.debug("nano_banana_as_image_failed", error=str(as_image_error))
-
-                # Method 2: Try inline_data if as_image() didn't work
-                if not saved and image_part.inline_data:
-                    try:
-                        data = image_part.inline_data.data
-                        logger.info("nano_banana_using_inline_data",
-                                  data_type=type(data).__name__,
-                                  data_size=len(data) if data else 0)
-
-                        if isinstance(data, str):
-                            # It's a base64 string
-                            decoded_data = base64.b64decode(data)
-                        elif isinstance(data, bytes):
-                            # Check if it looks like valid image data (PNG/JPEG magic bytes)
-                            if data[:8] == b'\x89PNG\r\n\x1a\n' or data[:2] == b'\xff\xd8':
-                                # Already decoded image data
-                                decoded_data = data
-                                logger.info("nano_banana_using_raw_image_bytes", size=len(decoded_data))
-                            else:
-                                # Try to decode as base64
-                                try:
-                                    decoded_data = base64.b64decode(data)
-                                    logger.info("nano_banana_decoded_base64", size=len(decoded_data))
-                                except Exception:
-                                    # Not base64, use as is
-                                    decoded_data = data
-                                    logger.info("nano_banana_using_raw_bytes", size=len(decoded_data))
-                        else:
-                            decoded_data = data
-
-                        # Write decoded data
-                        with open(image_path, 'wb') as f:
-                            f.write(decoded_data)
-                        saved = True
-                        logger.info("nano_banana_saved_via_inline_data")
-
-                    except Exception as inline_error:
-                        logger.debug("nano_banana_inline_data_failed", error=str(inline_error))
-
-                # Method 3: Try to get raw bytes from part directly
-                if not saved and hasattr(image_part, 'data'):
-                    try:
-                        data = image_part.data
-                        if isinstance(data, bytes):
-                            with open(image_path, 'wb') as f:
-                                f.write(data)
+                    if not saved and hasattr(pil_image, '_pil_image'):
+                        try:
+                            pil_image._pil_image.save(str(image_path), format='PNG')
                             saved = True
-                            logger.info("nano_banana_saved_via_part_data")
-                    except Exception as e:
-                        logger.debug("nano_banana_part_data_failed", error=str(e))
+                            logger.info("nano_banana_saved_via_pil_image_attr")
+                        except Exception as e:
+                            logger.debug("nano_banana_save_method3_failed", error=str(e))
 
-                if not saved:
-                    raise ValueError("No valid image data found in response - all save methods failed")
+                    if not saved and hasattr(pil_image, 'data'):
+                        try:
+                            data = pil_image.data
+                            if isinstance(data, bytes):
+                                with open(image_path, 'wb') as f:
+                                    f.write(data)
+                                saved = True
+                                logger.info("nano_banana_saved_via_data_attr")
+                        except Exception as e:
+                            logger.debug("nano_banana_save_method4_failed", error=str(e))
 
-                logger.info(
-                    "nano_banana_image_saved",
-                    path=str(image_path),
-                    size=image_path.stat().st_size
-                )
+            except Exception as as_image_error:
+                logger.debug("nano_banana_as_image_failed", error=str(as_image_error))
 
-                return str(image_path)
+            # Method 2: Try inline_data if as_image() didn't work
+            if not saved and image_part.inline_data:
+                try:
+                    data = image_part.inline_data.data
+                    logger.info("nano_banana_using_inline_data",
+                              data_type=type(data).__name__,
+                              data_size=len(data) if data else 0)
 
-            except Exception as e:
-                logger.error("nano_banana_generation_error", error=str(e))
-                raise
+                    if isinstance(data, str):
+                        decoded_data = base64.b64decode(data)
+                    elif isinstance(data, bytes):
+                        if data[:8] == b'\x89PNG\r\n\x1a\n' or data[:2] == b'\xff\xd8':
+                            decoded_data = data
+                            logger.info("nano_banana_using_raw_image_bytes", size=len(decoded_data))
+                        else:
+                            try:
+                                decoded_data = base64.b64decode(data)
+                                logger.info("nano_banana_decoded_base64", size=len(decoded_data))
+                            except Exception:
+                                decoded_data = data
+                                logger.info("nano_banana_using_raw_bytes", size=len(decoded_data))
+                    else:
+                        decoded_data = data
 
-        try:
+                    with open(image_path, 'wb') as f:
+                        f.write(decoded_data)
+                    saved = True
+                    logger.info("nano_banana_saved_via_inline_data")
 
-            # Generate image in executor
-            image_path = await loop.run_in_executor(None, _generate)
+                except Exception as inline_error:
+                    logger.debug("nano_banana_inline_data_failed", error=str(inline_error))
 
-            return image_path
+            # Method 3: Try to get raw bytes from part directly
+            if not saved and hasattr(image_part, 'data'):
+                try:
+                    data = image_part.data
+                    if isinstance(data, bytes):
+                        with open(image_path, 'wb') as f:
+                            f.write(data)
+                        saved = True
+                        logger.info("nano_banana_saved_via_part_data")
+                except Exception as e:
+                    logger.debug("nano_banana_part_data_failed", error=str(e))
+
+            if not saved:
+                raise ValueError("No valid image data found in response - all save methods failed")
+
+            logger.info(
+                "nano_banana_image_saved",
+                path=str(image_path),
+                size=image_path.stat().st_size
+            )
+
+            return str(image_path)
 
         except Exception as e:
-            logger.error("nano_banana_executor_error", error=str(e))
+            logger.error("nano_banana_generation_error", error=str(e))
             raise
