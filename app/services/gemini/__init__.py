@@ -1,10 +1,7 @@
 from app.services.gemini.executor import GeminiExecutionLayer, gemini_executor
 
-__all__ = ["GeminiExecutionLayer", "gemini_executor"]
-=======
-"""Gemini execution utilities."""
+# Alias for services that import the old name
+gemini_execution_layer = gemini_executor
 
-from app.services.gemini.executor import gemini_execution_layer
-
-__all__ = ["gemini_execution_layer"]
+__all__ = ["GeminiExecutionLayer", "gemini_executor", "gemini_execution_layer"]
 
