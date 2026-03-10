@@ -9,26 +9,11 @@ from typing import Optional, Callable, Awaitable
 from pathlib import Path
 import asyncio
 
-# Semaphore to limit concurrent Gemini image requests and avoid quota exhaustion
-_GEMINI_MAX_CONCURRENT = 2
-_gemini_image_semaphore: Optional[asyncio.Semaphore] = None
-
-# Retry settings for 429 / RESOURCE_EXHAUSTED errors
-_QUOTA_MAX_RETRIES = 4
-_QUOTA_BASE_DELAY = 15  # seconds; doubled on each attempt: 15, 30, 60, 120
-
-
-def _get_gemini_semaphore() -> asyncio.Semaphore:
-    """Return (or lazily create) the Gemini image concurrency semaphore."""
-    global _gemini_image_semaphore
-    if _gemini_image_semaphore is None:
-        _gemini_image_semaphore = asyncio.Semaphore(_GEMINI_MAX_CONCURRENT)
-    return _gemini_image_semaphore
-
 from app.core.config import settings
 from app.core.logger import get_logger
 from app.core.billing_config import get_image_model_billing
 from app.services.image.base import BaseImageProvider, ImageResponse
+from app.services.gemini import gemini_execution_layer
 
 logger = get_logger(__name__)
 
@@ -173,106 +158,61 @@ class NanoBananaService(BaseImageProvider):
                 processing_time=time.time() - start_time
             )
 
-        # Get parameters
         model = kwargs.get("model", "gemini-2.5-flash-image")
         aspect_ratio = kwargs.get("aspect_ratio", "1:1")
         number_of_images = kwargs.get("number_of_images", 1)
         reference_image_path = kwargs.get("reference_image_path", None)
 
-        mode = "text-to-image"
-        if reference_image_path:
-            mode = "image-to-image"
-
+        mode = "image-to-image" if reference_image_path else "text-to-image"
         model_display = "Gemini 3 Pro" if "3-pro" in model else "Gemini 2.5 Flash"
 
-        # Acquire concurrency slot (limits simultaneous Gemini calls to avoid quota burst)
-        semaphore = _get_gemini_semaphore()
-        async with semaphore:
-            last_error_msg: str = ""
+        try:
+            if progress_callback:
+                await progress_callback(
+                    f"🎨 Генерирую изображение ({model_display}, {mode}, {aspect_ratio})..."
+                )
 
-            for attempt in range(_QUOTA_MAX_RETRIES + 1):
-                try:
-                    if attempt == 0:
-                        if progress_callback:
-                            await progress_callback(
-                                f"🎨 Генерирую изображение ({model_display}, {mode}, {aspect_ratio})..."
-                            )
-                    else:
-                        # Already sleeping; just update message before retry
-                        if progress_callback:
-                            await progress_callback(
-                                f"🔄 Повторная попытка {attempt}/{_QUOTA_MAX_RETRIES} "
-                                f"({model_display})..."
-                            )
+            image_path = await self._generate_nano_image(
+                prompt=prompt,
+                model=model,
+                aspect_ratio=aspect_ratio,
+                number_of_images=number_of_images,
+                reference_image_path=reference_image_path,
+                progress_callback=progress_callback
+            )
 
-                    image_path = await self._generate_nano_image(
-                        prompt=prompt,
-                        model=model,
-                        aspect_ratio=aspect_ratio,
-                        number_of_images=number_of_images,
-                        reference_image_path=reference_image_path,
-                        progress_callback=progress_callback
-                    )
+            processing_time = time.time() - start_time
 
-                    # Success
-                    processing_time = time.time() - start_time
+            if progress_callback:
+                await progress_callback("✅ Изображение готово!")
 
-                    if progress_callback:
-                        await progress_callback("✅ Изображение готово!")
+            logger.info(
+                "nano_banana_image_generated",
+                prompt=prompt[:100] if prompt else "None",
+                aspect_ratio=aspect_ratio,
+                time=processing_time,
+            )
 
-                    logger.info(
-                        "nano_banana_image_generated",
-                        prompt=prompt[:100] if prompt else "None",
-                        aspect_ratio=aspect_ratio,
-                        time=processing_time,
-                        attempt=attempt,
-                    )
+            billing_id = "banana-pro" if "3-pro" in model else "nano-banana-image"
+            nano_billing = get_image_model_billing(billing_id)
+            tokens_used = nano_billing.tokens_per_generation * number_of_images
 
-                    billing_id = "banana-pro" if "3-pro" in model else "nano-banana-image"
-                    nano_billing = get_image_model_billing(billing_id)
-                    tokens_used = nano_billing.tokens_per_generation * number_of_images
+            return ImageResponse(
+                success=True,
+                image_path=image_path,
+                processing_time=processing_time,
+                metadata={
+                    "provider": "nano_banana",
+                    "model": model,
+                    "aspect_ratio": aspect_ratio,
+                    "mode": mode,
+                    "prompt": prompt,
+                    "tokens_used": tokens_used,
+                },
+            )
 
-                    return ImageResponse(
-                        success=True,
-                        image_path=image_path,
-                        processing_time=processing_time,
-                        metadata={
-                            "provider": "nano_banana",
-                            "model": model,
-                            "aspect_ratio": aspect_ratio,
-                            "mode": mode,
-                            "prompt": prompt,
-                            "tokens_used": tokens_used,
-                        },
-                    )
-
-                except Exception as e:
-                    error_msg = str(e)
-                    is_quota_error = "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg
-
-                    if is_quota_error and attempt < _QUOTA_MAX_RETRIES:
-                        delay = _QUOTA_BASE_DELAY * (2 ** attempt)  # 15, 30, 60, 120
-                        logger.warning(
-                            "nano_banana_quota_retry",
-                            attempt=attempt + 1,
-                            max_retries=_QUOTA_MAX_RETRIES,
-                            delay=delay,
-                            prompt=prompt[:100] if prompt else "None",
-                        )
-                        if progress_callback:
-                            await progress_callback(
-                                f"⏳ Очередь запросов заполнена — жду {delay} сек. "
-                                f"(попытка {attempt + 1}/{_QUOTA_MAX_RETRIES})...\n"
-                                f"Пожалуйста, подождите — генерация будет выполнена автоматически."
-                            )
-                        await asyncio.sleep(delay)
-                        continue  # retry
-
-                    # Non-quota error or retries exhausted
-                    last_error_msg = error_msg
-                    break
-
-            # All attempts failed
+        except Exception as e:
+            last_error_msg = str(e)
             if "429" in last_error_msg or "RESOURCE_EXHAUSTED" in last_error_msg:
                 last_error_msg = (
                     "❌ Сервис временно перегружен (превышена квота API).\n\n"
@@ -387,10 +327,20 @@ class NanoBananaService(BaseImageProvider):
                     contents = translated_prompt
 
                 # Use the specified model (gemini-2.5-flash-image or gemini-3-pro-image-preview)
-                response = self.client.models.generate_content(
-                    model=model,
-                    contents=contents,
-                    config=config
+                async def _request():
+                    return await asyncio.to_thread(
+                        self.client.models.generate_content,
+                        model=model,
+                        contents=contents,
+                        config=config,
+                    )
+
+                response = asyncio.run(
+                    gemini_execution_layer.execute(
+                        operation="image_generate",
+                        model=model,
+                        request_fn=_request,
+                    )
                 )
 
                 logger.info("nano_banana_api_call", model=model, mode="image-to-image" if reference_image_path else "text-to-image")
