@@ -94,17 +94,17 @@ class SystemMonitor:
                     }
                 )
 
-            # Check Swap
-            swap_used = metrics.get("swap", {}).get("used_mb", 0)
-            if swap_used > self.SWAP_WARNING_THRESHOLD_MB:
+            # Check Swap (only alert at 99%+)
+            swap_percent = metrics.get("swap", {}).get("percent", 0)
+            if swap_percent >= 99:
+                swap_used = metrics.get("swap", {}).get("used_mb", 0)
                 await monitoring_notifier.send_alert(
                     alert_type="Swap Memory",
-                    severity="warning",
-                    message=f"Swap usage is high: {swap_used:.0f} MB",
+                    severity="critical",
+                    message=f"Swap usage is critical: {swap_used:.0f} MB ({swap_percent:.1f}%)",
                     details={
                         "used_mb": swap_used,
-                        "threshold_mb": self.SWAP_WARNING_THRESHOLD_MB,
-                        "percent": metrics.get("swap", {}).get("percent", 0)
+                        "percent": swap_percent
                     }
                 )
 
