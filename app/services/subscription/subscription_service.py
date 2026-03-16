@@ -150,8 +150,12 @@ class SubscriptionService:
                 }
             )
 
+        # Sort: time-limited first (by expiry date), eternal last
+        # Use datetime.max as sentinel for None to avoid TypeError when comparing None values
+        from datetime import datetime as _dt, timezone as _tz
+        _max_dt = _dt.max.replace(tzinfo=_tz.utc)
         subscriptions.sort(
-            key=lambda sub: (sub.expires_at is None, sub.expires_at)
+            key=lambda sub: (sub.expires_at is None, sub.expires_at or _max_dt)
         )
 
         remaining = tokens_required

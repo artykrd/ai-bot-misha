@@ -82,8 +82,13 @@ class Subscription(Base, BaseModel, TimestampMixin):
 
     @property
     def is_eternal(self) -> bool:
-        """Check if subscription is eternal."""
-        return self.subscription_type == "eternal"
+        """Check if subscription is eternal (any type with no expiry date)."""
+        return self.expires_at is None and self.subscription_type in (
+            "eternal", "eternal_purchase", "eternal_150k", "eternal_250k",
+            "eternal_500k", "eternal_1m", "eternal_test", "refund",
+            "referral_money_exchange", "tenth_purchase_bonus", "channel_bonus",
+            "admin_gift",
+        )
 
     def can_use_tokens(self, amount: int) -> bool:
         """Check if subscription has enough tokens."""
