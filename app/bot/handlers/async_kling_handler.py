@@ -167,13 +167,10 @@ async def create_kling_video_job(
     except Exception as e:
         logger.error("kling_job_creation_failed", error=str(e), user_id=user.id)
 
-        # Refund tokens
+        # Refund tokens via rollback (creates refund subscription to avoid wrong-sub bug)
         async with async_session_maker() as session:
             sub_service = SubscriptionService(session)
-            subscription = await sub_service.get_active_subscription(user.id)
-            if subscription and not subscription.is_unlimited:
-                subscription.tokens_used = max(0, subscription.tokens_used - estimated_tokens)
-                await session.commit()
+            await sub_service.rollback_tokens(user.id, estimated_tokens)
 
         await progress_msg.edit_text(
             f"❌ Ошибка создания задачи: {str(e)[:200]}\n\n"

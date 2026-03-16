@@ -254,6 +254,8 @@ async def process_dialog_message(
     # Get billing config for text models
     text_billing = get_text_model_billing(model_billing_id)
 
+    fixed_cost_precharged = False
+
     if text_billing and message_type == "text":
         # Dynamic billing for text models - estimate cost for pre-check
         estimated_tokens = text_billing.calculate_cost(500, 1000)  # Estimate avg usage
@@ -283,6 +285,7 @@ async def process_dialog_message(
     else:
         # Fixed billing for non-text or non-configured models
         tokens_cost = dialog.get("cost_per_request", 1000)
+        fixed_cost_precharged = True
 
         # Pre-charge for fixed cost models
         async with async_session_maker() as session:
@@ -418,6 +421,18 @@ async def process_dialog_message(
                 # Fixed cost already charged before API call
                 actual_cost = tokens_cost
 
+                # Log AIRequest for fixed-cost models (was missing - tokens deducted without tracking)
+                from app.services.logging import log_ai_operation_background
+                log_ai_operation_background(
+                    user_id=user.id,
+                    model_id=model_billing_id,
+                    operation_category="text_gen",
+                    tokens_cost=tokens_cost,
+                    prompt=content[:500] if isinstance(content, str) else None,
+                    status="completed",
+                    request_type="text",
+                )
+
             # Escape HTML special characters to prevent parse errors
             response_text = escape_html_text(response["content"])
 
@@ -460,6 +475,13 @@ async def process_dialog_message(
             )
             await processing_msg.edit_text(f"❌ {user_message}")
 
+            # Refund pre-charged tokens for fixed-cost models on failure
+            if fixed_cost_precharged:
+                async with async_session_maker() as session:
+                    sub_service = SubscriptionService(session)
+                    await sub_service.rollback_tokens(user.id, tokens_cost)
+                    logger.info("fixed_cost_tokens_refunded", user_id=user.id, amount=tokens_cost)
+
             logger.error(
                 "dialog_message_failed",
                 user_id=user.id,
@@ -476,6 +498,17 @@ async def process_dialog_message(
             user_id=user.id
         )
         await processing_msg.edit_text(f"❌ {user_message}")
+
+        # Refund pre-charged tokens for fixed-cost models on exception
+        if fixed_cost_precharged:
+            try:
+                async with async_session_maker() as session:
+                    sub_service = SubscriptionService(session)
+                    await sub_service.rollback_tokens(user.id, tokens_cost)
+                    logger.info("fixed_cost_tokens_refunded_on_exception", user_id=user.id, amount=tokens_cost)
+            except Exception as refund_err:
+                logger.error("fixed_cost_refund_failed", error=str(refund_err), user_id=user.id)
+
         logger.error("dialog_message_exception", user_id=user.id, error=str(e), exc_info=True)
     finally:
         # Always release AI slot

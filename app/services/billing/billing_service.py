@@ -239,22 +239,19 @@ class BillingService:
         ai_request.status = "failed"
         ai_request.error_message = error_message
 
-        # Refund tokens if requested
+        # Refund tokens if requested - use rollback_tokens to create a refund subscription
+        # instead of modifying a potentially wrong subscription (the "first active" may
+        # differ from the one that was actually debited)
         if refund_tokens and ai_request.tokens_cost > 0:
-            # Get active subscription and refund tokens
-            subscription = await self.subscription_service.get_active_subscription(
-                ai_request.user_id
+            await self.subscription_service.rollback_tokens(
+                ai_request.user_id, ai_request.tokens_cost
             )
-            if subscription:
-                subscription.tokens_used = max(
-                    0, subscription.tokens_used - ai_request.tokens_cost
-                )
-                logger.info(
-                    "tokens_refunded",
-                    user_id=ai_request.user_id,
-                    ai_request_id=ai_request_id,
-                    tokens_refunded=ai_request.tokens_cost,
-                )
+            logger.info(
+                "tokens_refunded",
+                user_id=ai_request.user_id,
+                ai_request_id=ai_request_id,
+                tokens_refunded=ai_request.tokens_cost,
+            )
 
         await self.session.commit()
 

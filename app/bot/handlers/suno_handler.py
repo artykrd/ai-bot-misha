@@ -956,14 +956,11 @@ async def generate_suno_song(callback: CallbackQuery, state: FSMContext, user: U
                 f"Токены возвращены на ваш счет."
             )
 
-            # Refund tokens by reducing tokens_used
+            # Refund tokens via rollback (creates refund subscription to avoid wrong-sub bug)
             async with async_session_maker() as session:
                 sub_service = SubscriptionService(session)
-                subscription = await sub_service.get_active_subscription(user.id)
-                if subscription:
-                    subscription.tokens_used = max(0, subscription.tokens_used - tokens_cost)
-                    await session.commit()
-                    logger.info("tokens_refunded", user_id=user.id, amount=tokens_cost)
+                await sub_service.rollback_tokens(user.id, tokens_cost)
+                logger.info("tokens_refunded", user_id=user.id, amount=tokens_cost)
 
             logger.error(
                 "suno_generation_failed",
@@ -999,14 +996,11 @@ async def generate_suno_song(callback: CallbackQuery, state: FSMContext, user: U
             parse_mode=None
         )
 
-        # Refund tokens by reducing tokens_used
+        # Refund tokens via rollback (creates refund subscription to avoid wrong-sub bug)
         async with async_session_maker() as session:
             sub_service = SubscriptionService(session)
-            subscription = await sub_service.get_active_subscription(user.id)
-            if subscription:
-                subscription.tokens_used = max(0, subscription.tokens_used - tokens_cost)
-                await session.commit()
-                logger.info("tokens_refunded", user_id=user.id, amount=tokens_cost)
+            await sub_service.rollback_tokens(user.id, tokens_cost)
+            logger.info("tokens_refunded", user_id=user.id, amount=tokens_cost)
 
         # Log failed AI operation for tracking
         elapsed_time = int(time.time() - generation_start_time)
