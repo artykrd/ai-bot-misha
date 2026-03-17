@@ -94,7 +94,7 @@ class BillingService:
 
         # Charge user
         try:
-            await self.subscription_service.check_and_use_tokens(user_id, tokens_cost)
+            subscription = await self.subscription_service.check_and_use_tokens(user_id, tokens_cost)
         except (InsufficientTokensError, SubscriptionExpiredError) as e:
             # Update AI request as failed
             ai_request.status = "failed"
@@ -102,12 +102,18 @@ class BillingService:
             await self.session.commit()
             raise
 
+        # Link AI request to the subscription that was charged
+        ai_request.subscription_id = subscription.id
+        ai_request.is_unlimited_subscription = subscription.is_unlimited
+        await self.session.commit()
+
         logger.info(
             "text_billing_charged",
             user_id=user_id,
             model=model_id,
             tokens_cost=tokens_cost,
             ai_request_id=ai_request.id,
+            subscription_id=subscription.id,
         )
 
         return tokens_cost, ai_request
@@ -164,7 +170,7 @@ class BillingService:
 
         # Charge user
         try:
-            await self.subscription_service.check_and_use_tokens(user_id, tokens_cost)
+            subscription = await self.subscription_service.check_and_use_tokens(user_id, tokens_cost)
         except (InsufficientTokensError, SubscriptionExpiredError) as e:
             # Update AI request as failed
             ai_request.status = "failed"
@@ -172,12 +178,18 @@ class BillingService:
             await self.session.commit()
             raise
 
+        # Link AI request to the subscription that was charged
+        ai_request.subscription_id = subscription.id
+        ai_request.is_unlimited_subscription = subscription.is_unlimited
+        await self.session.commit()
+
         logger.info(
             f"{model_type}_billing_charged",
             user_id=user_id,
             model=model_id,
             tokens_cost=tokens_cost,
             ai_request_id=ai_request.id,
+            subscription_id=subscription.id,
         )
 
         return tokens_cost, ai_request
@@ -239,12 +251,12 @@ class BillingService:
         ai_request.status = "failed"
         ai_request.error_message = error_message
 
-        # Refund tokens if requested - use rollback_tokens to create a refund subscription
-        # instead of modifying a potentially wrong subscription (the "first active" may
-        # differ from the one that was actually debited)
+        # Refund tokens - try to return to the original subscription first
         if refund_tokens and ai_request.tokens_cost > 0:
             await self.subscription_service.rollback_tokens(
-                ai_request.user_id, ai_request.tokens_cost
+                ai_request.user_id,
+                ai_request.tokens_cost,
+                subscription_id=ai_request.subscription_id,
             )
             logger.info(
                 "tokens_refunded",

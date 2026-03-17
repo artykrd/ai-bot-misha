@@ -97,6 +97,17 @@ class SubscriptionRepository(BaseRepository[Subscription]):
         await self.session.commit()
         return True
 
+    async def get_expired_active_subscriptions(self) -> List[Subscription]:
+        """Get all active subscriptions that have expired."""
+        result = await self.session.execute(
+            select(Subscription).where(
+                Subscription.is_active.is_(True),
+                Subscription.expires_at.isnot(None),
+                Subscription.expires_at < datetime.now(timezone.utc)
+            )
+        )
+        return list(result.scalars().all())
+
     async def deactivate_expired_subscriptions(self) -> int:
         """Deactivate all expired subscriptions."""
         from sqlalchemy import update
