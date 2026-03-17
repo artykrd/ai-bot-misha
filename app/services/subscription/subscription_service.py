@@ -202,7 +202,33 @@ class SubscriptionService:
         return await self.get_available_tokens(user_id)
 
     async def deactivate_expired_subscriptions(self) -> int:
-        """Deactivate all expired subscriptions (background task)."""
+        """
+        Deactivate all expired subscriptions (background task).
+
+        Before deactivating, transfers remaining tokens from expired
+        subscriptions to new eternal subscriptions so users don't lose
+        already-paid tokens.
+        """
+        # Step 1: Find expired subscriptions that still have remaining tokens
+        expired_subs = await self.repository.get_expired_active_subscriptions()
+
+        # Group remaining tokens by user_id
+        user_remaining: dict[int, int] = {}
+        for sub in expired_subs:
+            remaining = sub.tokens_remaining
+            if remaining > 0:
+                user_remaining[sub.user_id] = user_remaining.get(sub.user_id, 0) + remaining
+
+        # Step 2: Transfer remaining tokens to eternal subscriptions
+        for uid, tokens in user_remaining.items():
+            await self.add_eternal_tokens(uid, tokens, "expired_carryover")
+            logger.info(
+                "expired_tokens_carried_over",
+                user_id=uid,
+                tokens=tokens,
+            )
+
+        # Step 3: Deactivate expired subscriptions
         count = await self.repository.deactivate_expired_subscriptions()
 
         if count > 0:
@@ -293,18 +319,42 @@ class SubscriptionService:
         """
         logger.info("tokens_committed", user_id=user_id, amount=tokens)
 
-    async def rollback_tokens(self, user_id: int, tokens: int) -> "Subscription":
+    async def rollback_tokens(
+        self,
+        user_id: int,
+        tokens: int,
+        subscription_id: Optional[int] = None,
+    ) -> "Subscription":
         """
         Rollback previously reserved tokens (refund on failure).
+
+        Tries to return tokens to the original subscription first.
+        Falls back to creating a new eternal refund subscription.
 
         Args:
             user_id: User ID
             tokens: Number of tokens to return
+            subscription_id: Optional ID of the subscription to return tokens to
 
         Returns:
-            Created refund Subscription
+            Subscription that received the refund
         """
-        logger.info("tokens_rollback", user_id=user_id, amount=tokens)
+        logger.info("tokens_rollback", user_id=user_id, amount=tokens, subscription_id=subscription_id)
+
+        # Try to return tokens to the original subscription
+        if subscription_id:
+            sub = await self.repository.get(subscription_id)
+            if sub and sub.user_id == user_id and sub.is_active:
+                sub.tokens_used = max(0, sub.tokens_used - tokens)
+                await self.session.commit()
+                logger.info(
+                    "tokens_returned_to_subscription",
+                    user_id=user_id,
+                    subscription_id=subscription_id,
+                    tokens=tokens,
+                )
+                return sub
+
         return await self.add_eternal_tokens(user_id, tokens, "refund")
 
     async def add_subscription_tokens(

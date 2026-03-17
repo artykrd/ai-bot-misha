@@ -206,38 +206,64 @@ async def show_user_subscriptions(callback: CallbackQuery, user: User):
         await callback.answer()
         return
 
-    # Show first active subscription
-    subscription = subscriptions[0]
-
     subscription_type_names = {
         "eternal": "Вечные токены",
+        "eternal_purchase": "Вечные токены",
+        "eternal_150k": "Вечные токены 150K",
+        "eternal_250k": "Вечные токены 250K",
+        "eternal_500k": "Вечные токены 500K",
+        "eternal_1m": "Вечные токены 1M",
+        "eternal_test": "Вечные токены (тест)",
+        "expired_carryover": "Перенесённые токены",
+        "refund": "Возврат токенов",
+        "referral_money_exchange": "Реферальные токены",
+        "tenth_purchase_bonus": "Бонус за покупки",
+        "channel_bonus": "Бонус за подписку",
+        "admin_gift": "Подарок от админа",
+        "premium_subscription": "Премиум подписка",
         "7days": "7 дней",
         "14days": "14 дней",
         "21days": "21 день",
         "30days": "30 дней",
-        "unlimited_1day": "Безлимит 1 день"
+        "unlimited_1day": "Безлимит 1 день",
     }
 
-    type_name = subscription_type_names.get(subscription.subscription_type, subscription.subscription_type)
+    # Calculate totals across all subscriptions
+    total_remaining = sum(s.tokens_remaining for s in subscriptions)
+    total_used = sum(s.tokens_used for s in subscriptions)
 
-    if subscription.is_unlimited:
-        tokens_info = "Безлимитные токены"
-    else:
-        tokens_info = f"{subscription.tokens_remaining:,} / {subscription.tokens_amount:,} токенов"
+    # Build per-subscription details
+    sub_lines = []
+    # Find the most recent subscription with a price for the manage button
+    manageable_subscription = None
+    for sub in subscriptions:
+        type_name = subscription_type_names.get(sub.subscription_type, sub.subscription_type)
 
-    expires_text = ""
-    if subscription.expires_at:
-        from datetime import timezone
-        expires_text = f"\n⏰ <b>Истекает:</b> {subscription.expires_at.strftime('%d.%m.%Y %H:%M')}"
-    else:
-        expires_text = "\n♾️ <b>Срок:</b> Бессрочно"
+        if sub.is_unlimited:
+            tokens_info = "Безлимитные"
+        else:
+            tokens_info = f"{sub.tokens_remaining:,} / {sub.tokens_amount:,}"
+
+        if sub.expires_at:
+            expires_info = f"до {sub.expires_at.strftime('%d.%m.%Y')}"
+        else:
+            expires_info = "бессрочно"
+
+        sub_lines.append(f"  • {type_name}: {tokens_info} ({expires_info})")
+
+        if sub.price and float(sub.price) > 0 and manageable_subscription is None:
+            manageable_subscription = sub
+
+    subs_detail = "\n".join(sub_lines)
 
     text = f"""📦 <b>Мои подписки</b>
 
-📋 <b>Тип:</b> {type_name}
-💎 <b>Токены:</b> {tokens_info}{expires_text}
-💰 <b>Стоимость:</b> {subscription.price} руб.
-📊 <b>Использовано:</b> {subscription.tokens_used:,} токенов
+💎 <b>Общий баланс:</b> {total_remaining:,} токенов
+📊 <b>Всего использовано:</b> {total_used:,} токенов
+📋 <b>Активных подписок:</b> {len(subscriptions)}
+
+<b>Детализация:</b>
+{subs_detail}
 
 ℹ️ <b>Отмена подписки</b>
 При отмене подписки вам будет возвращена сумма пропорционально неиспользованным токенам (минус уже использованные токены).
@@ -247,9 +273,11 @@ async def show_user_subscriptions(callback: CallbackQuery, user: User):
 
 ⚠️ <b>Важно:</b> Минимальная сумма возврата — 10 рублей. Если рассчитанная сумма меньше, возврат не производится."""
 
+    # Use the first manageable subscription or the first subscription for the manage button
+    manage_sub = manageable_subscription or subscriptions[0]
     await callback.message.edit_text(
         text,
-        reply_markup=subscription_manage_keyboard(subscription.id),
+        reply_markup=subscription_manage_keyboard(manage_sub.id),
         parse_mode=ParseMode.HTML
     )
     await callback.answer()
