@@ -22,6 +22,7 @@ from app.database.models.video_job import VideoGenerationJob
 from app.database.models.broadcast import BroadcastMessage, BroadcastClick
 from app.database.models.expiry_notification import ExpiryNotificationSettings, ExpiryNotificationLog
 from app.database.models.channel_bonus import ChannelSubscriptionBonus, ChannelBonusClaim
+from app.database.models.welcome_bonus import WelcomeBonus, WelcomeBonusUse
 
 __all__ = [
     "User",
@@ -55,4 +56,7 @@ __all__ = [
     # Channel bonus
     "ChannelSubscriptionBonus",
     "ChannelBonusClaim",
+    # Welcome bonus
+    "WelcomeBonus",
+    "WelcomeBonusUse",
 ]

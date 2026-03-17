@@ -35,8 +35,37 @@ async def cmd_start(message: Message, user: User, state: FSMContext):
     if message.text and len(message.text.split()) > 1:
         args = message.text.split()[1]  # Get argument after /start
 
+        # Check if it's a welcome bonus link (advertising campaign)
+        if args.startswith("wb_"):
+            async with async_session_maker() as session:
+                from app.services.welcome_bonus.welcome_bonus_service import WelcomeBonusService
+
+                wb_service = WelcomeBonusService(session)
+                bonus = await wb_service.get_bonus_by_code(args)
+
+                if bonus and bonus.is_valid:
+                    use = await wb_service.activate_bonus(
+                        user_id=user.id,
+                        bonus=bonus,
+                    )
+                    if use:
+                        await message.answer(
+                            f"🎉 Добро пожаловать!\n\n"
+                            f"🎁 Вам начислено {bonus.bonus_tokens:,} приветственных токенов!\n\n"
+                            f"Используйте их для запросов к нейросетям.",
+                            parse_mode=None
+                        )
+                    else:
+                        await message.answer(
+                            "ℹ️ Вы уже использовали эту приветственную ссылку ранее."
+                        )
+                elif bonus and not bonus.is_valid:
+                    await message.answer(
+                        "⚠️ Срок действия этой приветственной ссылки истёк."
+                    )
+
         # Check if it's an unlimited invite link
-        if args.startswith("unlimited_"):
+        elif args.startswith("unlimited_"):
             async with async_session_maker() as session:
                 # Find the invite link
                 result = await session.execute(

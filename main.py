@@ -317,6 +317,17 @@ async def yookassa_webhook(request: Request):
                         except Exception as ref_err:
                             logger.error("referral_notification_failed", error=str(ref_err))
 
+                        # Track welcome bonus conversion
+                        try:
+                            from app.services.welcome_bonus.welcome_bonus_service import WelcomeBonusService
+                            wb_service = WelcomeBonusService(session)
+                            await wb_service.mark_purchase(
+                                user_id=payment.user_id,
+                                purchase_amount=float(payment.amount),
+                            )
+                        except Exception as wb_err:
+                            logger.error("welcome_bonus_conversion_tracking_failed", error=str(wb_err))
+
                         # Send admin notification about purchase
                         try:
                             from aiogram import Bot as AdminBot

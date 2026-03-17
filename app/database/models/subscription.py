@@ -87,7 +87,7 @@ class Subscription(Base, BaseModel, TimestampMixin):
             "eternal", "eternal_purchase", "eternal_150k", "eternal_250k",
             "eternal_500k", "eternal_1m", "eternal_test", "refund",
             "referral_money_exchange", "tenth_purchase_bonus", "channel_bonus",
-            "admin_gift",
+            "admin_gift", "welcome_bonus",
         )
 
     def can_use_tokens(self, amount: int) -> bool:

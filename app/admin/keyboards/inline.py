@@ -26,6 +26,9 @@ def main_admin_menu() -> InlineKeyboardMarkup:
     # Unlimited links
     builder.button(text="🔗 Безлимитные ссылки", callback_data="admin:unlimited_menu")
 
+    # Welcome bonus
+    builder.button(text="🎯 Welcome бонусы", callback_data="admin:welcome_bonus_menu")
+
     # System
     builder.button(text="📝 Логи", callback_data="admin:logs")
     builder.button(text="📢 Рассылка", callback_data="admin:broadcast")
@@ -390,6 +393,35 @@ def skip_image_cb_keyboard() -> InlineKeyboardMarkup:
 
     builder.button(text="⏭ Пропустить", callback_data="admin:cb_skip_image")
     builder.button(text="❌ Отмена", callback_data="admin:cancel")
+
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+# ==================== Welcome Bonus Keyboards ====================
+
+
+def welcome_bonus_menu() -> InlineKeyboardMarkup:
+    """Welcome bonus management menu."""
+    builder = InlineKeyboardBuilder()
+
+    builder.button(text="➕ Создать ссылку", callback_data="admin:create_welcome_bonus")
+    builder.button(text="📋 Список ссылок", callback_data="admin:list_welcome_bonuses")
+    builder.button(text="📊 Общая статистика", callback_data="admin:welcome_bonus_overall_stats")
+    builder.button(text="🔙 Назад", callback_data="admin:back")
+
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def welcome_bonus_detail_keyboard(bonus_id: int, is_active: bool) -> InlineKeyboardMarkup:
+    """Detail actions for a welcome bonus."""
+    builder = InlineKeyboardBuilder()
+
+    toggle_text = "⏸ Деактивировать" if is_active else "▶️ Активировать"
+    builder.button(text=toggle_text, callback_data=f"admin:wb_toggle:{bonus_id}")
+    builder.button(text="📊 Статистика", callback_data=f"admin:wb_stats:{bonus_id}")
+    builder.button(text="🔙 Назад к списку", callback_data="admin:list_welcome_bonuses")
 
     builder.adjust(1)
     return builder.as_markup()

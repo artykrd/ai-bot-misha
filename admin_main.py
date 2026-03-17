@@ -42,6 +42,7 @@ from app.admin.states import (
     ChannelBonusSetup,
     BroadcastWithChannelBonus,
     BroadcastTargeted,
+    CreateWelcomeBonus,
 )
 
 logger = get_logger(__name__)
@@ -113,7 +114,7 @@ def admin_reply_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(text="📢 Рассылка"), KeyboardButton(text="💰 Выдать токены")],
             [KeyboardButton(text="🔨 Бан/Разбан"), KeyboardButton(text="💵 Финансы")],
             [KeyboardButton(text="🎁 Промокоды"), KeyboardButton(text="🔗 Безлимит ссылки")],
-            [KeyboardButton(text="📢 Бонус за подписку")],
+            [KeyboardButton(text="🎯 Welcome бонусы"), KeyboardButton(text="📢 Бонус за подписку")],
         ],
         resize_keyboard=True,
         is_persistent=True,
@@ -161,6 +162,7 @@ REPLY_KEYBOARD_MAP = {
     "💰 Выдать токены": "admin:give_tokens",
     "🎁 Промокоды": "admin:promo_menu",
     "🔗 Безлимит ссылки": "admin:unlimited_menu",
+    "🎯 Welcome бонусы": "admin:welcome_bonus_menu",
     "💵 Финансы": "admin:finance",
     "📢 Бонус за подписку": "admin:channel_bonus_menu",
 }
@@ -205,6 +207,12 @@ async def handle_reply_keyboard(message: Message, state: FSMContext):
         await message.answer(
             "🔗 Безлимитные ссылки\n\nВыберите действие:",
             reply_markup=unlimited_links_menu()
+        )
+    elif callback_data == "admin:welcome_bonus_menu":
+        from app.admin.keyboards.inline import welcome_bonus_menu
+        await message.answer(
+            "🎯 Welcome бонусы для рекламных кампаний\n\nВыберите действие:",
+            reply_markup=welcome_bonus_menu()
         )
     elif callback_data == "admin:finance":
         text = await _build_finance_text("all")
@@ -1054,6 +1062,364 @@ async def assign_tariff_callback(callback: CallbackQuery):
     except Exception as e:
         logger.error("admin_assign_tariff_error", error=str(e))
         await callback.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
+
+
+# ==================== WELCOME BONUS ====================
+
+@admin_router.callback_query(F.data == "admin:welcome_bonus_menu")
+async def welcome_bonus_menu_callback(callback: CallbackQuery):
+    """Show welcome bonus menu."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    from app.admin.keyboards.inline import welcome_bonus_menu
+    text = "🎯 Welcome бонусы для рекламных кампаний\n\nВыберите действие:"
+    await callback.message.edit_text(text, reply_markup=welcome_bonus_menu())
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data == "admin:create_welcome_bonus")
+async def start_create_welcome_bonus(callback: CallbackQuery, state: FSMContext):
+    """Start creating welcome bonus link."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    from app.admin.states import CreateWelcomeBonus
+
+    await state.set_state(CreateWelcomeBonus.waiting_for_name)
+    await callback.message.edit_text(
+        "➕ Создание welcome бонус-ссылки\n\n"
+        "Введите название кампании (например: 'VK Реклама Март' или 'Telegram Ads'):",
+        reply_markup=cancel_keyboard()
+    )
+    await callback.answer()
+
+
+@admin_router.message(StateFilter("CreateWelcomeBonus:waiting_for_name"))
+async def process_wb_name(message: Message, state: FSMContext):
+    """Process campaign name input."""
+    if not is_admin(message.from_user.id):
+        return
+
+    name = message.text.strip()
+    if name == "-":
+        name = None
+
+    await state.update_data(name=name)
+
+    from app.admin.states import CreateWelcomeBonus
+    await state.set_state(CreateWelcomeBonus.waiting_for_tokens)
+
+    await message.answer(
+        f"✅ Название: {name or 'Без названия'}\n\n"
+        "Введите количество бонусных токенов для начисления\n"
+        "(например: 5000, 10000, 50000):",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@admin_router.message(StateFilter("CreateWelcomeBonus:waiting_for_tokens"))
+async def process_wb_tokens(message: Message, state: FSMContext):
+    """Process bonus tokens input."""
+    if not is_admin(message.from_user.id):
+        return
+
+    try:
+        tokens = int(message.text.strip())
+        if tokens <= 0:
+            await message.answer("❌ Количество токенов должно быть больше 0")
+            return
+
+        await state.update_data(bonus_tokens=tokens)
+
+        from app.admin.states import CreateWelcomeBonus
+        await state.set_state(CreateWelcomeBonus.waiting_for_max_uses)
+
+        await message.answer(
+            f"✅ Токенов: {tokens:,}\n\n"
+            "Введите максимальное количество использований\n"
+            "(или отправьте 0 для неограниченного количества):",
+            reply_markup=cancel_keyboard()
+        )
+
+    except ValueError:
+        await message.answer("❌ Неверный формат. Введите число.")
+
+
+@admin_router.message(StateFilter("CreateWelcomeBonus:waiting_for_max_uses"))
+async def process_wb_max_uses(message: Message, state: FSMContext):
+    """Process max uses input."""
+    if not is_admin(message.from_user.id):
+        return
+
+    try:
+        max_uses = int(message.text.strip())
+        if max_uses < 0:
+            await message.answer("❌ Количество должно быть 0 или больше")
+            return
+
+        max_uses = None if max_uses == 0 else max_uses
+        await state.update_data(max_uses=max_uses)
+
+        from app.admin.states import CreateWelcomeBonus
+        await state.set_state(CreateWelcomeBonus.waiting_for_expires_days)
+
+        await message.answer(
+            f"✅ Макс. использований: {max_uses if max_uses else '∞'}\n\n"
+            "Введите срок действия ссылки в днях\n"
+            "(или отправьте 0 для бессрочной ссылки):",
+            reply_markup=cancel_keyboard()
+        )
+
+    except ValueError:
+        await message.answer("❌ Неверный формат. Введите число.")
+
+
+@admin_router.message(StateFilter("CreateWelcomeBonus:waiting_for_expires_days"))
+async def process_wb_expires_days(message: Message, state: FSMContext):
+    """Process expiration days and create welcome bonus link."""
+    if not is_admin(message.from_user.id):
+        return
+
+    from app.database.database import async_session_maker
+    from app.services.welcome_bonus.welcome_bonus_service import WelcomeBonusService
+    from datetime import datetime, timedelta, timezone
+
+    try:
+        days = int(message.text.strip())
+        if days < 0:
+            await message.answer("❌ Количество дней должно быть 0 или больше")
+            return
+
+        expires_at = None
+        if days > 0:
+            expires_at = datetime.now(timezone.utc) + timedelta(days=days)
+
+        data = await state.get_data()
+        name = data.get('name')
+        bonus_tokens = data['bonus_tokens']
+        max_uses = data.get('max_uses')
+
+        async with async_session_maker() as session:
+            wb_service = WelcomeBonusService(session)
+            bonus = await wb_service.create_bonus(
+                bonus_tokens=bonus_tokens,
+                name=name,
+                max_uses=max_uses,
+                expires_at=expires_at,
+            )
+
+            # Get bot username for the link
+            from app.core.config import settings
+            from aiogram import Bot
+
+            main_bot = Bot(token=settings.telegram_bot_token)
+            bot_info = await main_bot.get_me()
+            bot_username = bot_info.username
+            await main_bot.session.close()
+
+            invite_url = f"https://t.me/{bot_username}?start={bonus.invite_code}"
+
+            expires_text = f"{expires_at.strftime('%d.%m.%Y %H:%M')} UTC" if expires_at else "Бессрочно"
+
+            text = f"""✅ Welcome бонус-ссылка создана!
+
+🎯 Название: {name if name else 'Без названия'}
+🎁 Токенов: {bonus_tokens:,}
+👥 Макс. использований: {max_uses if max_uses else '∞'}
+⏰ Действует до: {expires_text}
+
+🔗 Ссылка для рекламы:
+{invite_url}
+
+Пользователи, перешедшие по этой ссылке, получат {bonus_tokens:,} бонусных токенов!"""
+
+            await message.answer(text, reply_markup=back_keyboard())
+
+            logger.info(
+                "welcome_bonus_created",
+                admin_id=message.from_user.id,
+                invite_code=bonus.invite_code,
+                bonus_tokens=bonus_tokens,
+                max_uses=max_uses,
+            )
+
+    except ValueError:
+        await message.answer("❌ Неверный формат. Введите число.")
+        return
+    except Exception as e:
+        logger.error("create_welcome_bonus_error", error=str(e))
+        await message.answer(f"❌ Ошибка при создании ссылки: {str(e)}", reply_markup=back_keyboard())
+
+    await state.clear()
+
+
+@admin_router.callback_query(F.data == "admin:list_welcome_bonuses")
+async def list_welcome_bonuses_callback(callback: CallbackQuery):
+    """List all welcome bonus links."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    from app.database.database import async_session_maker
+    from app.services.welcome_bonus.welcome_bonus_service import WelcomeBonusService
+    from app.admin.keyboards.inline import welcome_bonus_detail_keyboard
+
+    async with async_session_maker() as session:
+        wb_service = WelcomeBonusService(session)
+        bonuses = await wb_service.get_all_bonuses()
+
+    if not bonuses:
+        await callback.message.edit_text(
+            "📋 Welcome бонус-ссылок пока нет.",
+            reply_markup=back_keyboard()
+        )
+        await callback.answer()
+        return
+
+    # Get bot username for links
+    from app.core.config import settings
+    from aiogram import Bot
+
+    main_bot = Bot(token=settings.telegram_bot_token)
+    bot_info = await main_bot.get_me()
+    bot_username = bot_info.username
+    await main_bot.session.close()
+
+    text = "🎯 Welcome бонус-ссылки:\n\n"
+
+    for bonus in bonuses:
+        status = "✅ Активна" if bonus.is_active else "❌ Неактивна"
+        if bonus.is_active and not bonus.is_valid:
+            status = "⚠️ Истекла/Лимит"
+
+        invite_url = f"https://t.me/{bot_username}?start={bonus.invite_code}"
+
+        text += f"{'━' * 30}\n"
+        text += f"🎯 {bonus.name or 'Без названия'}\n"
+        text += f"🎁 Токенов: {bonus.bonus_tokens:,}\n"
+        text += f"👥 Использований: {bonus.current_uses}"
+        if bonus.max_uses:
+            text += f"/{bonus.max_uses}"
+        text += f"\n📊 Статус: {status}\n"
+
+        if bonus.expires_at:
+            text += f"⏰ До: {bonus.expires_at.strftime('%d.%m.%Y %H:%M')}\n"
+
+        text += f"🔗 {invite_url}\n"
+        text += f"🕐 Создана: {bonus.created_at.strftime('%d.%m.%Y %H:%M')}\n\n"
+
+    # If text is too long, truncate
+    if len(text) > 4000:
+        text = text[:3950] + "\n\n... (показаны не все ссылки)"
+
+    from app.admin.keyboards.inline import welcome_bonus_menu
+    await callback.message.edit_text(text, reply_markup=welcome_bonus_menu())
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data.startswith("admin:wb_toggle:"))
+async def toggle_welcome_bonus(callback: CallbackQuery):
+    """Toggle welcome bonus active/inactive."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    bonus_id = int(callback.data.split(":")[-1])
+
+    from app.database.database import async_session_maker
+    from app.services.welcome_bonus.welcome_bonus_service import WelcomeBonusService
+
+    async with async_session_maker() as session:
+        wb_service = WelcomeBonusService(session)
+        new_state = await wb_service.toggle_bonus(bonus_id)
+
+    if new_state is None:
+        await callback.answer("❌ Ссылка не найдена", show_alert=True)
+        return
+
+    status = "активирована ✅" if new_state else "деактивирована ❌"
+    await callback.answer(f"Ссылка {status}", show_alert=True)
+
+    # Refresh the list
+    await list_welcome_bonuses_callback(callback)
+
+
+@admin_router.callback_query(F.data.startswith("admin:wb_stats:"))
+async def show_welcome_bonus_stats(callback: CallbackQuery):
+    """Show statistics for a specific welcome bonus."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    bonus_id = int(callback.data.split(":")[-1])
+
+    from app.database.database import async_session_maker
+    from app.services.welcome_bonus.welcome_bonus_service import WelcomeBonusService
+    from app.admin.keyboards.inline import welcome_bonus_detail_keyboard
+
+    async with async_session_maker() as session:
+        wb_service = WelcomeBonusService(session)
+        stats = await wb_service.get_bonus_stats(bonus_id)
+
+    if not stats:
+        await callback.answer("❌ Ссылка не найдена", show_alert=True)
+        return
+
+    bonus = stats["bonus"]
+
+    text = f"""📊 Статистика: {bonus.name or 'Без названия'}
+
+🎁 Токенов за активацию: {bonus.bonus_tokens:,}
+👥 Всего активаций: {stats['total_activated']}
+💰 Купили подписку: {stats['total_purchased']}
+📈 Конверсия: {stats['conversion_rate']}%
+🎯 Токенов выдано: {stats['total_tokens_given']:,}
+💵 Выручка от конвертированных: {stats['total_revenue']:.0f} RUB"""
+
+    if bonus.max_uses:
+        text += f"\n👥 Лимит: {bonus.current_uses}/{bonus.max_uses}"
+
+    if bonus.expires_at:
+        text += f"\n⏰ Действует до: {bonus.expires_at.strftime('%d.%m.%Y %H:%M')}"
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=welcome_bonus_detail_keyboard(bonus_id, bonus.is_active)
+    )
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data == "admin:welcome_bonus_overall_stats")
+async def show_welcome_bonus_overall_stats(callback: CallbackQuery):
+    """Show aggregated statistics across all welcome bonus campaigns."""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа")
+        return
+
+    from app.database.database import async_session_maker
+    from app.services.welcome_bonus.welcome_bonus_service import WelcomeBonusService
+
+    async with async_session_maker() as session:
+        wb_service = WelcomeBonusService(session)
+        stats = await wb_service.get_overall_stats()
+
+    text = f"""📊 Общая статистика Welcome бонусов
+
+📋 Всего кампаний: {stats['total_campaigns']}
+✅ Активных: {stats['active_campaigns']}
+
+👥 Всего активаций: {stats['total_activated']}
+💰 Купили подписку: {stats['total_purchased']}
+📈 Общая конверсия: {stats['conversion_rate']}%
+🎯 Токенов выдано: {stats['total_tokens_given']:,}
+💵 Выручка: {stats['total_revenue']:.0f} RUB"""
+
+    from app.admin.keyboards.inline import welcome_bonus_menu
+    await callback.message.edit_text(text, reply_markup=welcome_bonus_menu())
+    await callback.answer()
 
 
 # ==================== UNLIMITED LINKS ====================
