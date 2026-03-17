@@ -99,3 +99,11 @@ class BroadcastWithChannelBonus(StatesGroup):
 class BroadcastTargeted(StatesGroup):
     """States for targeted broadcast to specific users."""
     waiting_for_users = State()
+
+
+class CreateWelcomeBonus(StatesGroup):
+    """States for creating welcome bonus link."""
+    waiting_for_name = State()
+    waiting_for_tokens = State()
+    waiting_for_max_uses = State()
+    waiting_for_expires_days = State()
