@@ -198,6 +198,12 @@ IMAGE_MODELS: Dict[str, FixedModelBilling] = {
         description_suffix="Стоимость генерации: 19 300 токенов за изображение",
         model_type=ModelType.IMAGE
     ),
+    "seedream-5.0": FixedModelBilling(
+        tokens_per_generation=25000,
+        display_name="Seedream 5.0 Lite",
+        description_suffix="Стоимость генерации: 25 000 токенов за изображение",
+        model_type=ModelType.IMAGE
+    ),
     # Nano Banana 2 (via Kie.ai) - price depends on resolution
     "nano-banana-2-1k": FixedModelBilling(
         tokens_per_generation=18000,

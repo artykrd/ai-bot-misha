@@ -67,7 +67,8 @@ class Settings(BaseSettings):
     aimlapi_key: Optional[str] = Field(None, description="AI/ML API unified key (fallback for multiple services)")
     removebg_api_key: Optional[str] = Field(None, description="Remove.bg API key")
     ark_api_key: Optional[str] = Field(None, description="BytePlus ARK API key for Seedream")
-    seedream_endpoint_id: Optional[str] = Field(None, description="BytePlus Seedream customized inference endpoint ID")
+    seedream_endpoint_id: Optional[str] = Field(None, description="BytePlus Seedream 4.5 customized inference endpoint ID")
+    seedream_5_endpoint_id: Optional[str] = Field(None, description="BytePlus Seedream 5.0 Lite customized inference endpoint ID")
 
     # =====================================
     # GOOGLE CLOUD / VERTEX AI

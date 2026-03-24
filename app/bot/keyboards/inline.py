@@ -260,7 +260,8 @@ def create_photo_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🍌 Nano Banana 2", callback_data="bot.nano_banana_2")
     )
     builder.row(
-        InlineKeyboardButton(text="✨ Seedream 4.5", callback_data="bot.seedream_4.5")
+        InlineKeyboardButton(text="✨ Seedream 4.5", callback_data="bot.seedream_4.5"),
+        InlineKeyboardButton(text="✨ Seedream 5.0", callback_data="bot.seedream_5.0")
     )
     builder.row(
         InlineKeyboardButton(text="🌆 Midjourney", callback_data="bot.midjourney")
@@ -1478,6 +1479,215 @@ def seedream_back_keyboard() -> InlineKeyboardMarkup:
             callback_data="bot.seedream_4.5"
         )
     )
+    return builder.as_markup()
+
+
+# =============================================
+# SEEDREAM 5.0 KEYBOARDS
+# =============================================
+
+def seedream5_keyboard(
+    current_resolution: str = "2K",
+    current_aspect_ratio: str = "1:1",
+    current_output_format: str = "jpeg",
+    batch_mode: bool = False,
+    optimize_prompt: bool = False
+) -> InlineKeyboardMarkup:
+    """Seedream 5.0 Lite main keyboard with settings."""
+    builder = InlineKeyboardBuilder()
+
+    # Resolution selection
+    builder.row(
+        InlineKeyboardButton(
+            text=f"📐 Разрешение: {current_resolution}",
+            callback_data="seedream5.settings.resolution"
+        )
+    )
+
+    # Aspect ratio selection
+    builder.row(
+        InlineKeyboardButton(
+            text=f"🖼 Формат: {current_aspect_ratio}",
+            callback_data="seedream5.settings.aspect_ratio"
+        )
+    )
+
+    # Output format selection
+    format_display = "JPEG" if current_output_format == "jpeg" else "PNG"
+    builder.row(
+        InlineKeyboardButton(
+            text=f"📄 Формат файла: {format_display}",
+            callback_data="seedream5.settings.output_format"
+        )
+    )
+
+    # Prompt optimization toggle
+    if optimize_prompt:
+        builder.row(
+            InlineKeyboardButton(
+                text="🧠 Оптимизация промпта: ВКЛ",
+                callback_data="seedream5.toggle.optimize|off"
+            )
+        )
+    else:
+        builder.row(
+            InlineKeyboardButton(
+                text="🧠 Оптимизация промпта: ВЫКЛ",
+                callback_data="seedream5.toggle.optimize|on"
+            )
+        )
+
+    # Batch mode toggle
+    if batch_mode:
+        builder.row(
+            InlineKeyboardButton(
+                text="📦 Пакетная генерация: ВКЛ",
+                callback_data="seedream5.toggle.batch|off"
+            )
+        )
+        builder.row(
+            InlineKeyboardButton(
+                text="🔢 Количество изображений",
+                callback_data="seedream5.settings.batch_count"
+            )
+        )
+    else:
+        builder.row(
+            InlineKeyboardButton(
+                text="📦 Пакетная генерация: ВЫКЛ",
+                callback_data="seedream5.toggle.batch|on"
+            )
+        )
+
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад", callback_data="bot.create_photo")
+    )
+
+    return builder.as_markup()
+
+
+def seedream5_resolution_keyboard(current_resolution: str = "2K") -> InlineKeyboardMarkup:
+    """Seedream 5.0 resolution selection keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    resolutions = ["2K", "3K"]
+
+    for res in resolutions:
+        text = f"✅ {res}" if res == current_resolution else res
+        builder.row(
+            InlineKeyboardButton(
+                text=text,
+                callback_data=f"seedream5.set.resolution|{res}"
+            )
+        )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="⬅️ Назад",
+            callback_data="bot.seedream_5.0"
+        )
+    )
+
+    return builder.as_markup()
+
+
+def seedream5_aspect_ratio_keyboard(current_ratio: str = "1:1") -> InlineKeyboardMarkup:
+    """Seedream 5.0 aspect ratio selection keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    ratios = [
+        ("1:1", "1:1"),
+        ("16:9", "16:9"),
+        ("9:16", "9:16"),
+        ("4:3", "4:3"),
+        ("3:4", "3:4"),
+    ]
+
+    def format_button_text(ratio: str) -> str:
+        return f"✅ {ratio}" if ratio == current_ratio else ratio
+
+    # Build in rows of 3
+    for i in range(0, len(ratios), 3):
+        row_buttons = []
+        for j in range(3):
+            if i + j < len(ratios):
+                ratio_name, ratio_value = ratios[i + j]
+                row_buttons.append(
+                    InlineKeyboardButton(
+                        text=format_button_text(ratio_name),
+                        callback_data=f"seedream5.set.aspect_ratio|{ratio_value}"
+                    )
+                )
+        builder.row(*row_buttons)
+
+    builder.row(
+        InlineKeyboardButton(
+            text="⬅️ Назад",
+            callback_data="bot.seedream_5.0"
+        )
+    )
+
+    return builder.as_markup()
+
+
+def seedream5_output_format_keyboard(current_format: str = "jpeg") -> InlineKeyboardMarkup:
+    """Seedream 5.0 output format selection keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    formats = [
+        ("JPEG", "jpeg"),
+        ("PNG", "png"),
+    ]
+
+    for fmt_name, fmt_value in formats:
+        text = f"✅ {fmt_name}" if fmt_value == current_format else fmt_name
+        builder.row(
+            InlineKeyboardButton(
+                text=text,
+                callback_data=f"seedream5.set.output_format|{fmt_value}"
+            )
+        )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="⬅️ Назад",
+            callback_data="bot.seedream_5.0"
+        )
+    )
+
+    return builder.as_markup()
+
+
+def seedream5_batch_count_keyboard(current_count: int = 3) -> InlineKeyboardMarkup:
+    """Seedream 5.0 batch image count selection keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    counts = [2, 3, 4, 5, 6, 8, 10, 15]
+
+    def format_button_text(count: int) -> str:
+        text = f"{count} шт."
+        return f"✅ {text}" if count == current_count else text
+
+    for i in range(0, len(counts), 4):
+        row_buttons = []
+        for j in range(4):
+            if i + j < len(counts):
+                count = counts[i + j]
+                row_buttons.append(
+                    InlineKeyboardButton(
+                        text=format_button_text(count),
+                        callback_data=f"seedream5.set.batch_count|{count}"
+                    )
+                )
+        builder.row(*row_buttons)
+
+    builder.row(
+        InlineKeyboardButton(
+            text="⬅️ Назад",
+            callback_data="bot.seedream_5.0"
+        )
+    )
+
     return builder.as_markup()
 
 

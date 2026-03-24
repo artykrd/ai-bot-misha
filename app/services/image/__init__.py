@@ -9,6 +9,7 @@ from app.services.image.nano_banana_service import NanoBananaService
 from app.services.image.kling_image_service import KlingImageService
 from app.services.image.recraft_service import RecraftService
 from app.services.image.seedream_service import SeedreamService
+from app.services.image.seedream5_service import Seedream5Service
 from app.services.image.midjourney_service import MidjourneyService
 from app.services.image.nano_banana_2_service import NanoBanana2Service
 
@@ -21,6 +22,7 @@ __all__ = [
     "KlingImageService",
     "RecraftService",
     "SeedreamService",
+    "Seedream5Service",
     "MidjourneyService",
     "NanoBanana2Service",
 ]
