@@ -42,6 +42,11 @@ from app.bot.keyboards.inline import (
     seedream_size_keyboard,
     seedream_batch_count_keyboard,
     seedream_back_keyboard,
+    seedream5_keyboard,
+    seedream5_resolution_keyboard,
+    seedream5_aspect_ratio_keyboard,
+    seedream5_output_format_keyboard,
+    seedream5_batch_count_keyboard,
     kling_motion_control_keyboard,
     kling_mc_settings_keyboard,
     kling_mc_mode_keyboard,
@@ -72,6 +77,7 @@ from app.core.temp_files import get_temp_file_path, cleanup_temp_file
 from app.services.video import VeoService, SoraService, LumaService, HailuoService, KlingService
 from app.services.video.kling_effects_service import KlingEffectsService
 from app.services.image import DalleService, GeminiImageService, StabilityService, RemoveBgService, NanoBananaService, KlingImageService, RecraftService, SeedreamService, MidjourneyService
+from app.services.image.seedream5_service import Seedream5Service
 from app.services.image.nano_banana_2_service import NanoBanana2Service
 from app.services.audio import SunoService, OpenAIAudioService
 from app.services.ai.vision_service import VisionService
@@ -2520,6 +2526,7 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
             "nano_banana": "Nano Banana",
             "dalle": "DALL-E",
             "seedream": "Seedream 4.5",
+            "seedream5": "Seedream 5.0 Lite",
             "gemini_image": "Gemini",
             "recraft": "Recraft",
             "kling_image": "Kling AI",
@@ -2537,6 +2544,8 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
                 await process_dalle_image(message, user, state)
             elif service_name == "seedream":
                 await process_seedream_image(message, user, state)
+            elif service_name == "seedream5":
+                await process_seedream5_image(message, user, state)
             elif service_name == "recraft":
                 await process_recraft_image(message, user, state)
             elif service_name == "gemini_image":
@@ -2610,6 +2619,7 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
             "nano_banana": "Nano Banana",
             "dalle": "DALL-E",
             "seedream": "Seedream 4.5",
+            "seedream5": "Seedream 5.0 Lite",
             "gemini_image": "Gemini",
             "recraft": "Recraft",
             "kling_image": "Kling AI"
@@ -2630,6 +2640,8 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
                 await process_nano_image(message, user, state)
             elif service_name == "seedream":
                 await process_seedream_image(message, user, state)
+            elif service_name == "seedream5":
+                await process_seedream5_image(message, user, state)
             elif service_name == "recraft":
                 await process_recraft_image(message, user, state)
             elif service_name == "kling_image":
@@ -2679,6 +2691,8 @@ async def process_image_prompt(message: Message, state: FSMContext, user: User):
         await process_recraft_image(message, user, state)
     elif service_name == "seedream":
         await process_seedream_image(message, user, state)
+    elif service_name == "seedream5":
+        await process_seedream5_image(message, user, state)
     elif service_name == "midjourney":
         await process_midjourney_image(message, user, state)
     elif service_name == "nano_banana_2":
@@ -5125,6 +5139,7 @@ async def handle_photo_image_model_choice(callback: CallbackQuery, state: FSMCon
         "recraft": "recraft",
         "gemini": "gemini_image",
         "seedream": "seedream",
+        "seedream5": "seedream5",
         "kling_image": "kling_image",
     }
 
@@ -5159,6 +5174,7 @@ async def handle_photo_image_model_choice(callback: CallbackQuery, state: FSMCon
         "recraft": "Recraft",
         "gemini": "Gemini Image",
         "seedream": "Seedream 4.5",
+        "seedream5": "Seedream 5.0 Lite",
         "kling_image": "Kling Image",
     }
 
@@ -5170,6 +5186,7 @@ async def handle_photo_image_model_choice(callback: CallbackQuery, state: FSMCon
         "recraft": "Преврати в иллюстрацию\nСделай в стиле логотипа",
         "gemini": "Измени стиль изображения\nДобавь художественный эффект",
         "seedream": "Улучши качество фото\nПреврати в художественное фото",
+        "seedream5": "Создай постер для мероприятия\nСделай креатив для интернет-магазина",
         "kling_image": "Преобразуй в новый стиль\nСделай в стиле комикса",
     }
 
@@ -6352,6 +6369,463 @@ async def seedream_set_batch_count(callback: CallbackQuery, state: FSMContext, u
     await callback.answer(f"Количество изображений: {new_count}")
 
     await _show_seedream_menu(callback, state, user)
+
+
+# ==============================================
+# SEEDREAM 5.0 HANDLERS
+# ==============================================
+
+@router.callback_query(F.data == "bot.seedream_5.0")
+async def start_seedream_50(callback: CallbackQuery, state: FSMContext, user: User):
+    """Seedream 5.0 Lite image generation."""
+    try:
+        await cleanup_temp_images(state)
+        await _show_seedream5_menu(callback, state, user)
+    except Exception as e:
+        logger.error("seedream5_start_error", error=str(e))
+        try:
+            await callback.message.answer(
+                "❌ Ошибка при открытии Seedream 5.0. Попробуйте еще раз через меню."
+            )
+        except Exception:
+            pass
+        await callback.answer()
+
+
+async def _show_seedream5_menu(callback: CallbackQuery, state: FSMContext, user: User):
+    """Show Seedream 5.0 Lite menu with current settings."""
+    data = await state.get_data()
+    current_resolution = data.get("seedream5_size", "2K")
+    current_aspect_ratio = data.get("seedream5_aspect_ratio", "1:1")
+    batch_mode = data.get("seedream5_batch_mode", False)
+    batch_count = data.get("seedream5_batch_count", 3)
+    output_format = data.get("seedream5_output_format", "jpeg")
+    optimize_prompt = data.get("seedream5_optimize_prompt", False)
+
+    # Get billing info
+    seedream5_billing = get_image_model_billing("seedream-5.0")
+    total_tokens = await get_available_tokens(user.id)
+    tokens_per_image = seedream5_billing.tokens_per_generation
+    requests_available = int(total_tokens / tokens_per_image) if total_tokens > 0 else 0
+
+    format_display = "JPEG" if output_format == "jpeg" else "PNG"
+
+    text = (
+        f"✨ **Seedream 5.0 Lite** ✨\n"
+        f"• Умная модель — лучше понимает замысел по короткому описанию 🧠💡\n"
+        f"• Знает актуальные тренды и события 📈🔥\n"
+        f"• Для постеров, инфографики, креативов 🎨📊🖼\n"
+        f"• Основной режим — описываешь сцену, стиль, освещение → получаешь картинку\n"
+        f"• Вариации — берешь результат и меняешь детали/стиль/фон/настроение\n"
+        f"• Стилизация — задаешь конкретный стиль (минимализм, комикс, продукт-фото и т.д.)\n"
+        f"• E-commerce креатив — загружаешь товар → получаешь полную карточку с упаковкой и рекламой\n"
+        f"• UI-дизайн — генерирует готовые экраны мобильных приложений с интерфейсом\n\n"
+        f"🎯 **Возможности:**\n"
+        f"• Генерация по тексту\n"
+        f"• Генерация по фото + текст\n"
+        f"• Редактирование фото + текст\n"
+        f"• Разрешение 2K и 3K\n\n"
+        f"⚙️ **Текущие настройки:**\n"
+        f"• Разрешение: {current_resolution}\n"
+        f"• Формат изображения: {current_aspect_ratio}\n"
+        f"• Формат файла: {format_display}\n"
+        f"• Оптимизация промпта: {'ВКЛ' if optimize_prompt else 'ВЫКЛ'}\n"
+        f"• Пакетная генерация: {'ВКЛ (' + str(batch_count) + ' шт.)' if batch_mode else 'ВЫКЛ'}\n\n"
+        f"💰 **Стоимость:** {format_token_amount(tokens_per_image)} токенов за изображение\n"
+        f"🔹 Токенов хватит на **{requests_available}** изображений\n\n"
+        f"📸 **Отправьте:**\n"
+        f"• Текстовое описание — для генерации по тексту\n"
+        f"• Фото + описание — для генерации по фото"
+    )
+
+    await state.set_state(MediaState.waiting_for_image_prompt)
+    await state.update_data(
+        service="seedream5",
+        seedream5_size=current_resolution,
+        seedream5_aspect_ratio=current_aspect_ratio,
+        seedream5_batch_mode=batch_mode,
+        seedream5_batch_count=batch_count,
+        seedream5_output_format=output_format,
+        seedream5_optimize_prompt=optimize_prompt,
+        reference_image_path=None,
+        photo_caption_prompt=None
+    )
+
+    try:
+        if callback.message.photo:
+            await callback.message.answer(
+                text,
+                reply_markup=seedream5_keyboard(current_resolution, current_aspect_ratio, output_format, batch_mode, optimize_prompt),
+                parse_mode="Markdown"
+            )
+        else:
+            await callback.message.edit_text(
+                text,
+                reply_markup=seedream5_keyboard(current_resolution, current_aspect_ratio, output_format, batch_mode, optimize_prompt),
+                parse_mode="Markdown"
+            )
+    except Exception:
+        await callback.message.answer(
+            text,
+            reply_markup=seedream5_keyboard(current_resolution, current_aspect_ratio, output_format, batch_mode, optimize_prompt),
+            parse_mode="Markdown"
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "seedream5.settings.resolution")
+async def seedream5_resolution_settings(callback: CallbackQuery, state: FSMContext):
+    """Show Seedream 5.0 resolution selection."""
+    data = await state.get_data()
+    current_resolution = data.get("seedream5_size", "2K")
+
+    text = (
+        f"📐 **Выберите разрешение изображения**\n\n"
+        f"• **2K** — стандартное качество (2048×2048)\n"
+        f"• **3K** — повышенное качество (3072×3072)\n\n"
+        f"Текущий выбор: **{current_resolution}**"
+    )
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=seedream5_resolution_keyboard(current_resolution),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("seedream5.set.resolution|"))
+async def seedream5_set_resolution(callback: CallbackQuery, state: FSMContext, user: User):
+    """Set Seedream 5.0 resolution."""
+    parts = callback.data.split("|")
+    new_resolution = parts[1]
+
+    await state.update_data(seedream5_size=new_resolution)
+    await callback.answer(f"Разрешение установлено: {new_resolution}")
+    await _show_seedream5_menu(callback, state, user)
+
+
+@router.callback_query(F.data == "seedream5.settings.aspect_ratio")
+async def seedream5_aspect_ratio_settings(callback: CallbackQuery, state: FSMContext):
+    """Show Seedream 5.0 aspect ratio selection."""
+    data = await state.get_data()
+    current_ratio = data.get("seedream5_aspect_ratio", "1:1")
+
+    text = (
+        f"🖼 **Выберите формат изображения**\n\n"
+        f"• **1:1** — квадрат\n"
+        f"• **16:9** — горизонтальный (широкий)\n"
+        f"• **9:16** — вертикальный (Stories/Reels)\n"
+        f"• **4:3** — стандартный горизонтальный\n"
+        f"• **3:4** — стандартный вертикальный\n\n"
+        f"Текущий выбор: **{current_ratio}**"
+    )
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=seedream5_aspect_ratio_keyboard(current_ratio),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("seedream5.set.aspect_ratio|"))
+async def seedream5_set_aspect_ratio(callback: CallbackQuery, state: FSMContext, user: User):
+    """Set Seedream 5.0 aspect ratio."""
+    parts = callback.data.split("|")
+    new_ratio = parts[1]
+
+    await state.update_data(seedream5_aspect_ratio=new_ratio)
+    await callback.answer(f"Формат изображения: {new_ratio}")
+    await _show_seedream5_menu(callback, state, user)
+
+
+@router.callback_query(F.data == "seedream5.settings.output_format")
+async def seedream5_output_format_settings(callback: CallbackQuery, state: FSMContext):
+    """Show Seedream 5.0 output format selection."""
+    data = await state.get_data()
+    current_format = data.get("seedream5_output_format", "jpeg")
+
+    text = (
+        f"📄 **Выберите формат файла**\n\n"
+        f"• **JPEG** — меньший размер, быстрее загрузка\n"
+        f"• **PNG** — лучшее качество, поддержка прозрачности\n\n"
+        f"Текущий выбор: **{'JPEG' if current_format == 'jpeg' else 'PNG'}**"
+    )
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=seedream5_output_format_keyboard(current_format),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("seedream5.set.output_format|"))
+async def seedream5_set_output_format(callback: CallbackQuery, state: FSMContext, user: User):
+    """Set Seedream 5.0 output format."""
+    parts = callback.data.split("|")
+    new_format = parts[1]
+
+    await state.update_data(seedream5_output_format=new_format)
+    await callback.answer(f"Формат файла: {'JPEG' if new_format == 'jpeg' else 'PNG'}")
+    await _show_seedream5_menu(callback, state, user)
+
+
+@router.callback_query(F.data.startswith("seedream5.toggle.optimize|"))
+async def seedream5_toggle_optimize(callback: CallbackQuery, state: FSMContext, user: User):
+    """Toggle Seedream 5.0 prompt optimization."""
+    parts = callback.data.split("|")
+    action = parts[1]
+
+    new_optimize = (action == "on")
+    await state.update_data(seedream5_optimize_prompt=new_optimize)
+
+    if new_optimize:
+        await callback.answer("Оптимизация промпта включена")
+    else:
+        await callback.answer("Оптимизация промпта выключена")
+
+    await _show_seedream5_menu(callback, state, user)
+
+
+@router.callback_query(F.data.startswith("seedream5.toggle.batch|"))
+async def seedream5_toggle_batch(callback: CallbackQuery, state: FSMContext, user: User):
+    """Toggle Seedream 5.0 batch mode."""
+    parts = callback.data.split("|")
+    action = parts[1]
+
+    new_batch_mode = (action == "on")
+    await state.update_data(seedream5_batch_mode=new_batch_mode)
+
+    if new_batch_mode:
+        await callback.answer("Пакетная генерация включена")
+    else:
+        await callback.answer("Пакетная генерация выключена")
+
+    await _show_seedream5_menu(callback, state, user)
+
+
+@router.callback_query(F.data == "seedream5.settings.batch_count")
+async def seedream5_batch_count_settings(callback: CallbackQuery, state: FSMContext):
+    """Show Seedream 5.0 batch count selection."""
+    data = await state.get_data()
+    current_count = data.get("seedream5_batch_count", 3)
+
+    text = (
+        f"🔢 **Количество изображений в пакете**\n\n"
+        f"При пакетной генерации модель создаст серию связанных изображений на основе вашего запроса.\n\n"
+        f"⚠️ Стоимость = количество × цена за 1 изображение\n\n"
+        f"Текущий выбор: **{current_count} шт.**"
+    )
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=seedream5_batch_count_keyboard(current_count),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("seedream5.set.batch_count|"))
+async def seedream5_set_batch_count(callback: CallbackQuery, state: FSMContext, user: User):
+    """Set Seedream 5.0 batch count."""
+    parts = callback.data.split("|")
+    new_count = int(parts[1])
+
+    await state.update_data(seedream5_batch_count=new_count)
+    await callback.answer(f"Количество изображений: {new_count}")
+
+    await _show_seedream5_menu(callback, state, user)
+
+
+async def process_seedream5_image(message: Message, user: User, state: FSMContext):
+    """Process Seedream 5.0 Lite image generation."""
+    data = await state.get_data()
+    prompt = data.get("photo_caption_prompt") or message.text
+    resolution = data.get("seedream5_size", "2K")
+    aspect_ratio = data.get("seedream5_aspect_ratio", "1:1")
+    batch_mode = data.get("seedream5_batch_mode", False)
+    batch_count = data.get("seedream5_batch_count", 3)
+    output_format = data.get("seedream5_output_format", "jpeg")
+    optimize_prompt = data.get("seedream5_optimize_prompt", False)
+    reference_image_path = data.get("reference_image_path")
+
+    # Build size key: "2K|1:1" format
+    size_key = f"{resolution}|{aspect_ratio}"
+
+    # Get billing info
+    seedream5_billing = get_image_model_billing("seedream-5.0")
+
+    # Calculate estimated tokens
+    images_count = batch_count if batch_mode else 1
+    estimated_tokens = seedream5_billing.tokens_per_generation * images_count
+
+    # Check and reserve tokens
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+        try:
+            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+        except InsufficientTokensError as e:
+            if reference_image_path:
+                cleanup_temp_file(reference_image_path)
+
+            await message.answer(
+                f"❌ Недостаточно токенов для генерации!\n\n"
+                f"Требуется: {format_token_amount(estimated_tokens)} токенов\n"
+                f"Доступно: {format_token_amount(e.details['available'])} токенов\n\n"
+                f"Купите подписку: /start → 💎 Подписка"
+            )
+            await clear_state_preserve_settings(state)
+            return
+
+    # Progress message
+    mode_text = "по фото" if reference_image_path else "по тексту"
+    progress_msg = await message.answer(
+        f"✨ Генерирую {'изображения' if batch_mode else 'изображение'} {mode_text} с Seedream 5.0 Lite..."
+    )
+
+    seedream5_service = Seedream5Service()
+
+    async def update_progress(text: str):
+        try:
+            await progress_msg.edit_text(text, parse_mode=None)
+        except Exception:
+            pass
+
+    # Generate image(s)
+    result = await seedream5_service.generate_image(
+        prompt=prompt,
+        progress_callback=update_progress,
+        size=size_key,
+        reference_image=reference_image_path,
+        batch_mode=batch_mode,
+        max_images=batch_count if batch_mode else 1,
+        watermark=False,
+        output_format=output_format,
+        optimize_prompt="standard" if optimize_prompt else None
+    )
+
+    # Clean up reference image
+    if reference_image_path:
+        cleanup_temp_file(reference_image_path)
+
+    if result.success:
+        tokens_used = result.metadata.get("tokens_used", estimated_tokens)
+        images_count = result.metadata.get("images_count", 1)
+        all_images = result.metadata.get("all_images", [{"path": result.image_path}])
+
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            user_tokens = await sub_service.get_available_tokens(user.id)
+
+        # Log the operation
+        try:
+            from app.services.logging import ai_logger
+            await ai_logger.log_operation(
+                user_id=user.id,
+                model_id="seedream-5.0",
+                operation_category="image_gen",
+                tokens_cost=tokens_used,
+                prompt=prompt[:500] if prompt else "",
+                status="success",
+                units=float(images_count),
+                request_type="image"
+            )
+        except Exception as log_err:
+            logger.warning("seedream5_log_failed", error=str(log_err))
+
+        # Send all images
+        for idx, img_info in enumerate(all_images):
+            img_path = img_info.get("path")
+            if not img_path:
+                continue
+
+            try:
+                if idx == len(all_images) - 1:
+                    # Last image - show full info
+                    info_text = format_generation_message(
+                        content_type=CONTENT_TYPES["image"],
+                        model_name="Seedream 5.0 Lite",
+                        tokens_used=tokens_used,
+                        user_tokens=user_tokens,
+                        prompt=prompt
+                    )
+                    if images_count > 1:
+                        info_text = f"📸 Изображение {idx + 1}/{images_count}\n\n" + info_text
+
+                    # Create action keyboard with download, new image, and home
+                    builder = create_action_keyboard(
+                        action_text="✨ Создать новое изображение",
+                        action_callback="bot.seedream_5.0",
+                        file_path=img_path,
+                        file_type="image",
+                        user_id=user.telegram_id
+                    )
+
+                    # Check file size, optimize if > 2MB for Telegram
+                    file_size = os.path.getsize(img_path)
+                    if file_size > 2 * 1024 * 1024:
+                        img_obj = Image.open(img_path)
+                        if img_obj.mode in ("RGBA", "LA", "P"):
+                            background = Image.new("RGB", img_obj.size, (255, 255, 255))
+                            if img_obj.mode == "P":
+                                img_obj = img_obj.convert("RGBA")
+                            background.paste(
+                                img_obj,
+                                mask=img_obj.split()[-1] if img_obj.mode == "RGBA" else None
+                            )
+                            img_obj = background
+
+                        buffer = io.BytesIO()
+                        img_obj.save(buffer, format="JPEG", quality=85, optimize=True)
+                        buffer.seek(0)
+
+                        await message.answer_photo(
+                            photo=BufferedInputFile(buffer.read(), filename="seedream5.jpg"),
+                            caption=info_text,
+                            reply_markup=builder.as_markup()
+                        )
+                    else:
+                        photo = FSInputFile(img_path)
+                        await message.answer_photo(
+                            photo=photo,
+                            caption=info_text,
+                            reply_markup=builder.as_markup()
+                        )
+                else:
+                    # Not the last image - simple caption
+                    photo = FSInputFile(img_path)
+                    await message.answer_photo(
+                        photo=photo,
+                        caption=f"📸 Изображение {idx + 1}/{images_count}"
+                    )
+
+            except Exception as send_error:
+                logger.error("seedream5_image_send_failed", error=str(send_error), idx=idx)
+                try:
+                    doc_file = FSInputFile(img_path)
+                    await message.answer_document(
+                        document=doc_file,
+                        caption=f"📸 Изображение {idx + 1}/{images_count}"
+                    )
+                except Exception:
+                    pass
+
+        await progress_msg.delete()
+
+    else:
+        # Refund tokens on error
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            await sub_service.rollback_tokens(user.id, estimated_tokens)
+
+        await progress_msg.edit_text(
+            f"❌ Ошибка генерации Seedream 5.0 Lite:\n\n{result.error}\n\n"
+            f"💰 Токены возвращены на баланс."
+        )
+
+    await clear_state_preserve_settings(state)
 
 
 # ==============================================

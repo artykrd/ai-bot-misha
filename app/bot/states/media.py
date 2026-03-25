@@ -21,6 +21,9 @@ PERSISTENT_SETTINGS_KEYS = [
     "sora_quality", "sora_duration", "sora_aspect_ratio",
     # Seedream settings
     "seedream_size", "seedream_batch_mode", "seedream_batch_count",
+    # Seedream 5.0 settings
+    "seedream5_size", "seedream5_aspect_ratio", "seedream5_batch_mode", "seedream5_batch_count",
+    "seedream5_output_format", "seedream5_optimize_prompt",
     # Kling Motion Control settings
     "kling_mc_mode", "kling_mc_orientation", "kling_mc_sound",
     # Kling 3 settings
