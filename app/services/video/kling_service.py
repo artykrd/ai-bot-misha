@@ -132,22 +132,6 @@ class KlingService(BaseVideoProvider):
         # Return just the base64 string without data: prefix
         return base64.b64encode(image_data).decode("utf-8")
 
-    async def _image_to_base64_url(self, image_path: str) -> str:
-        """Convert local image file to base64 data URL for Omni API."""
-        path = Path(image_path)
-        if not path.exists():
-            raise FileNotFoundError(f"Image not found: {image_path}")
-
-        with open(path, "rb") as f:
-            image_data = f.read()
-
-        ext = path.suffix.lower()
-        mime_map = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
-        mime_type = mime_map.get(ext, "image/jpeg")
-
-        b64 = base64.b64encode(image_data).decode("utf-8")
-        return f"data:{mime_type};base64,{b64}"
-
     async def generate_video(
         self,
         prompt: str,
@@ -215,15 +199,15 @@ class KlingService(BaseVideoProvider):
                 endpoint_type = "image2video"
             elif len(images) == 2:
                 # Multi-image-to-video (start + end frame)
-                # Use Omni Video API for start+end frame generation
-                # Old image_tail parameter on /v1/videos/image2video is deprecated
-                task_id = await self._create_omni_video_with_frames(
+                # Uses image_tail on /v1/videos/image2video
+                # Per docs: image_tail requires kling-v2-6 + mode "pro"
+                task_id = await self._create_image2video_with_tail(
                     prompt=prompt,
                     image_paths=images,
                     duration=duration,
                     aspect_ratio=aspect_ratio
                 )
-                endpoint_type = "omni-video"
+                endpoint_type = "image2video"
             else:
                 return VideoResponse(
                     success=False,
@@ -393,42 +377,40 @@ class KlingService(BaseVideoProvider):
                 else:
                     return data.get("id") or data.get("task_id")
 
-    async def _create_omni_video_with_frames(
+    async def _create_image2video_with_tail(
         self,
         prompt: str,
         image_paths: List[str],
         duration: int,
         aspect_ratio: str
     ) -> str:
-        """Create video generation with start+end frames via Omni Video API."""
+        """Create image-to-video with start+end frames via image_tail parameter.
+
+        Per Kling docs, image_tail requires model kling-v2-6 with mode pro.
+        Base64 must be raw without data: prefix.
+        """
         if not self.use_official:
             raise ValueError("Multi-image-to-video requires official Kling API")
 
-        url = f"{self.base_url}/v1/videos/omni-video"
+        url = f"{self.base_url}/v1/videos/image2video"
 
-        # Convert images to base64 data URIs for Omni API
-        first_frame_base64 = await self._image_to_base64_url(image_paths[0])
-        end_frame_base64 = await self._image_to_base64_url(image_paths[1])
+        # Raw base64 without data: prefix (required by Kling API)
+        image_base64 = await self._image_to_base64(image_paths[0])
+        image_tail_base64 = await self._image_to_base64(image_paths[1])
 
         payload = {
-            "model_name": "kling-video-o1",
+            "model_name": "kling-v2-6",
             "prompt": prompt,
-            "image_list": [
-                {
-                    "image_url": first_frame_base64,
-                    "type": "first_frame"
-                },
-                {
-                    "image_url": end_frame_base64,
-                    "type": "end_frame"
-                }
-            ],
+            "image": image_base64,
+            "image_tail": image_tail_base64,
+            "duration": str(duration),
             "mode": "pro",
         }
 
         logger.info(
-            "kling_omni_video_request",
-            model="kling-video-o1",
+            "kling_image2video_with_tail",
+            model="kling-v2-6",
+            mode="pro",
             duration=duration,
             images_count=len(image_paths)
         )
