@@ -210,11 +210,21 @@ class KlingService(BaseVideoProvider):
                         original_model=model,
                         new_model=multi_image_model
                     )
+                # image_tail with kling-v2-1 in std mode only supports duration=5
+                multi_image_duration = duration
+                if multi_image_model == "kling-v2-1" and duration == 10:
+                    multi_image_duration = 5
+                    logger.info(
+                        "kling_duration_override_for_image_tail",
+                        original_duration=duration,
+                        new_duration=multi_image_duration,
+                        model=multi_image_model
+                    )
                 task_id = await self._create_multi_image2video(
                     prompt=prompt,
                     model=multi_image_model,
                     image_paths=images,
-                    duration=duration,
+                    duration=multi_image_duration,
                     aspect_ratio=aspect_ratio
                 )
                 endpoint_type = "image2video"  # Uses same polling endpoint
