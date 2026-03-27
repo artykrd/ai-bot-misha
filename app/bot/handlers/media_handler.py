@@ -1599,7 +1599,7 @@ async def process_video_prompt(message: Message, state: FSMContext, user: User):
 
 @router.message(MediaState.kling_waiting_for_prompt, F.photo)
 async def process_kling_photo(message: Message, state: FSMContext, user: User):
-    """Handle photo for Kling video generation (supports up to 2 photos for v2.5)."""
+    """Handle photo for Kling video generation (supports up to 2 photos as start+end frames)."""
     data = await state.get_data()
     kling_settings = KlingSettings.from_dict(data)
 
@@ -1620,22 +1620,15 @@ async def process_kling_photo(message: Message, state: FSMContext, user: User):
     kling_images.append(str(temp_path))
     await state.update_data(kling_images=kling_images)
 
-    # Check max images based on version
-    max_images = 2 if kling_settings.version == "2.5" else 1
+    # All Kling versions support up to 2 images (start + end frame via Omni API)
+    max_images = 2
 
     if len(kling_images) > max_images:
         # Too many images - remove the last one and warn
         cleanup_temp_file(str(temp_path))
         kling_images.pop()
         await state.update_data(kling_images=kling_images)
-
-        if max_images == 1:
-            await message.answer(
-                f"⚠️ Версия {kling_settings.version} поддерживает только 1 изображение.\n"
-                "Переключитесь на версию 2.5 для использования двух изображений."
-            )
-        else:
-            await message.answer("⚠️ Максимум 2 изображения для версии 2.5.")
+        await message.answer("⚠️ Максимум 2 изображения (начальный и конечный кадры).")
         return
 
     # Check if photo has caption (description) - process immediately
@@ -1646,24 +1639,18 @@ async def process_kling_photo(message: Message, state: FSMContext, user: User):
         # No caption - show status
         photos_count = len(kling_images)
 
-        if kling_settings.version == "2.5":
-            if photos_count == 1:
-                await message.answer(
-                    f"✅ Фото {photos_count} сохранено! (начальный кадр)\n\n"
-                    "📸 Вы можете:\n"
-                    "• Загрузить второе фото (конечный кадр)\n"
-                    "• Отправить текстовый промпт для начала генерации\n\n"
-                    "💡 В версии 2.5 можно использовать 2 фото как начальный и конечный кадры."
-                )
-            else:
-                await message.answer(
-                    f"✅ Фото {photos_count} сохранено! (конечный кадр)\n\n"
-                    "📝 Теперь отправьте текстовое описание видео."
-                )
+        if photos_count == 1:
+            await message.answer(
+                f"✅ Фото {photos_count} сохранено! (начальный кадр)\n\n"
+                "📸 Вы можете:\n"
+                "• Загрузить второе фото (конечный кадр)\n"
+                "• Отправить текстовый промпт для начала генерации\n\n"
+                "💡 Можно использовать 2 фото как начальный и конечный кадры."
+            )
         else:
             await message.answer(
-                "✅ Фото получено!\n\n"
-                "📝 Теперь отправьте описание видео, которое хотите создать."
+                f"✅ Фото {photos_count} сохранено! (конечный кадр)\n\n"
+                "📝 Теперь отправьте текстовое описание видео."
             )
 
 

@@ -245,15 +245,16 @@ async def process_kling_photo_async(message: Message, state: FSMContext, user: U
         data = await state.get_data()
         kling_settings = KlingSettings.from_dict(data)
 
-        if kling_settings.version == "2.5" and photos_count < 2:
+        if photos_count < 2:
             await message.answer(
-                f"✅ Фото {photos_count} сохранено!\n\n"
+                f"✅ Фото {photos_count} сохранено! (начальный кадр)\n\n"
                 f"📸 Вы можете:\n"
-                f"• Загрузить ещё одно фото (версия 2.5 поддерживает до 2 изображений)\n"
-                f"• Отправить текстовый промпт для начала генерации"
+                f"• Загрузить ещё одно фото (конечный кадр)\n"
+                f"• Отправить текстовый промпт для начала генерации\n\n"
+                f"💡 Можно использовать 2 фото как начальный и конечный кадры."
             )
         else:
             await message.answer(
-                f"✅ Фото сохранено!\n\n"
+                f"✅ Фото {photos_count} сохранено! (конечный кадр)\n\n"
                 f"📝 Теперь отправьте текстовый промпт для генерации видео."
             )
