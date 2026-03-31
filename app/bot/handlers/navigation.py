@@ -131,7 +131,7 @@ async def back_to_main(callback: CallbackQuery, user: User, state: FSMContext):
 – GPT Image — генерация изображений от OpenAI.
 
 🎬 Создание видео:
-– Sora 2, Veo 3.1 — новейшие модели видеогенерации;
+– Veo 3.1 — новейшая модель видеогенерации;
 – Midjourney Video, Hailuo, Luma, Kling — создание видео по описанию.
 
 🎵 Работа с аудио:
@@ -597,7 +597,8 @@ async def show_nano_banana_2(callback: CallbackQuery, state: FSMContext, user: U
         "**Возможности:**\n"
         "📝 Генерация по тексту\n"
         "🖼 Генерация по изображениям\n"
-        "✏️ Редактирование\n\n"
+        "✏️ Редактирование\n"
+        "👗 Примерка одежды — отправьте 2 фото (человек + одежда) и напишите \"примерь\"\n\n"
         f"⚙️ **Разрешение:** {nb2_settings.resolution}\n"
         f"📐 **Формат:** {nb2_settings.aspect_ratio}\n\n"
         f"💰 **Стоимость:** {format_token_amount(tokens_cost)} токенов за изображение\n"
@@ -1244,7 +1245,6 @@ async def show_help_tokens(callback: CallbackQuery):
 • Nano Banana (фото) — {format_token_amount(get_image_model_billing("nano-banana-image").tokens_per_generation)} токенов
 • Banana PRO (фото) — {format_token_amount(get_image_model_billing("banana-pro").tokens_per_generation)} токенов
 • DALL-E 3 — {format_token_amount(get_image_model_billing("dalle3").tokens_per_generation)} токенов
-• Sora 2 (видео) — {format_token_amount(get_video_model_billing("sora2").tokens_per_generation)} токенов
 • Veo 3.1 Fast (видео) — {format_token_amount(get_video_model_billing("veo-3.1-fast").tokens_per_generation)} токенов
 • Midjourney Video SD (видео) — {format_token_amount(get_video_model_billing("midjourney-video-sd").tokens_per_generation)} токенов
 • Midjourney Video HD (видео) — {format_token_amount(get_video_model_billing("midjourney-video-hd").tokens_per_generation)} токенов

@@ -76,7 +76,7 @@ async def show_subscriptions(callback: CallbackQuery, user: User):
 ✨ **Что входит в подписку:**
 – Доступ ко всем AI моделям (GPT-4, Claude, Gemini, и др.)
 – Генерация изображений (Midjourney, DALL-E, Stable Diffusion)
-– Генерация видео (Sora, Veo, Luma, Kling)
+– Генерация видео (Veo, Luma, Kling, Hailuo)
 – Создание музыки (Suno)
 – Инструменты для работы с фото и аудио
 

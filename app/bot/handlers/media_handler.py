@@ -74,7 +74,7 @@ from app.core.billing_config import (
     get_kling_api_model,
 )
 from app.core.temp_files import get_temp_file_path, cleanup_temp_file
-from app.services.video import VeoService, SoraService, LumaService, HailuoService, KlingService
+from app.services.video import VeoService, LumaService, HailuoService, KlingService
 from app.services.video.kling_effects_service import KlingEffectsService
 from app.services.image import DalleService, GeminiImageService, StabilityService, RemoveBgService, NanoBananaService, KlingImageService, RecraftService, SeedreamService, MidjourneyService
 from app.services.image.seedream5_service import Seedream5Service
@@ -323,120 +323,6 @@ async def start_veo(callback: CallbackQuery, state: FSMContext, user: User):
 
     await callback.message.answer(text, reply_markup=back_to_main_keyboard())
     await callback.answer()
-
-
-@router.callback_query(F.data == "bot.sora")
-async def start_sora(callback: CallbackQuery, state: FSMContext, user: User):
-    from app.bot.keyboards.inline import sora_main_keyboard
-    from app.bot.states.media import SoraSettings
-    from app.core.billing_config import get_sora_tokens_cost
-
-    # Get or create Sora settings from FSM
-    data = await state.get_data()
-    sora_settings = SoraSettings.from_dict(data)
-
-    total_tokens = await get_available_tokens(user.id)
-    tokens_per_video = get_sora_tokens_cost(sora_settings.quality, sora_settings.duration)
-    videos_available = int(total_tokens / tokens_per_video) if total_tokens > 0 else 0
-
-    text = (
-        "☁️ **Sora 2 · вирусные ролики с озвучкой**\n\n"
-        "✏️ Нейросеть создает видео длиной до 15 секунд, в котором может быть звук, "
-        "возможна озвучка сцен и персонажей в кадре, смена локаций и т.д.\n\n"
-        "📸 При желании можно прикрепить 1 фото с промптом и создать видео на его основе.\n\n"
-        "⛔️ Sora не может озвучивать людей на фото и делать так, чтобы они учавствовали в кадре. "
-        "Отправляйте фото без людей в кадре.\n\n"
-        f"⚙️ **Параметры**\n"
-        f"{sora_settings.get_display_settings()}\n\n"
-        "💰 **Стоимость:** Sora 2 — 7 000т./1 сек., Sora 2 Pro (720P) — 20 000т./1 сек.\n\n"
-        f"🔹 Баланса хватит на {videos_available} видео. "
-        f"1 видео = {format_token_amount(tokens_per_video)} токенов"
-    )
-
-    await state.set_state(MediaState.waiting_for_video_prompt)
-    settings_dict = sora_settings.to_dict()
-    await state.update_data(service="sora", image_path=None, photo_caption_prompt=None, **settings_dict)
-
-    try:
-        await callback.message.edit_text(text, reply_markup=sora_main_keyboard())
-    except Exception:
-        await callback.message.answer(text, reply_markup=sora_main_keyboard())
-    await callback.answer()
-
-
-# Sora 2 settings handlers
-@router.callback_query(F.data == "sora.settings")
-async def sora_settings_menu(callback: CallbackQuery, state: FSMContext, user: User):
-    from app.bot.keyboards.inline import sora_settings_keyboard
-    text = "⚙️ **Настройки Sora 2**\n\nВыберите параметр для изменения:"
-    try:
-        await callback.message.edit_text(text, reply_markup=sora_settings_keyboard())
-    except Exception:
-        await callback.message.answer(text, reply_markup=sora_settings_keyboard())
-    await callback.answer()
-
-
-@router.callback_query(F.data == "sora.settings.duration")
-async def sora_duration_setting(callback: CallbackQuery, state: FSMContext, user: User):
-    from app.bot.keyboards.inline import sora_duration_keyboard
-    from app.bot.states.media import SoraSettings
-    data = await state.get_data()
-    sora_settings = SoraSettings.from_dict(data)
-    text = "🕓 **Длительность видео**\n\nВыберите длительность:"
-    try:
-        await callback.message.edit_text(text, reply_markup=sora_duration_keyboard(sora_settings.duration))
-    except Exception:
-        await callback.message.answer(text, reply_markup=sora_duration_keyboard(sora_settings.duration))
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("sora.set.duration:"))
-async def sora_set_duration(callback: CallbackQuery, state: FSMContext, user: User):
-    duration = int(callback.data.split(":")[1])
-    await state.update_data(sora_duration=duration)
-    await start_sora(callback, state, user)
-
-
-@router.callback_query(F.data == "sora.settings.quality")
-async def sora_quality_setting(callback: CallbackQuery, state: FSMContext, user: User):
-    from app.bot.keyboards.inline import sora_quality_keyboard
-    from app.bot.states.media import SoraSettings
-    data = await state.get_data()
-    sora_settings = SoraSettings.from_dict(data)
-    text = "🎯 **Качество видео**\n\nВыберите качество:"
-    try:
-        await callback.message.edit_text(text, reply_markup=sora_quality_keyboard(sora_settings.quality))
-    except Exception:
-        await callback.message.answer(text, reply_markup=sora_quality_keyboard(sora_settings.quality))
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("sora.set.quality:"))
-async def sora_set_quality(callback: CallbackQuery, state: FSMContext, user: User):
-    quality = callback.data.split(":")[1]
-    await state.update_data(sora_quality=quality)
-    await start_sora(callback, state, user)
-
-
-@router.callback_query(F.data == "sora.settings.aspect_ratio")
-async def sora_aspect_ratio_setting(callback: CallbackQuery, state: FSMContext, user: User):
-    from app.bot.keyboards.inline import sora_aspect_ratio_keyboard
-    from app.bot.states.media import SoraSettings
-    data = await state.get_data()
-    sora_settings = SoraSettings.from_dict(data)
-    text = "📐 **Формат видео**\n\nВыберите формат:"
-    try:
-        await callback.message.edit_text(text, reply_markup=sora_aspect_ratio_keyboard(sora_settings.aspect_ratio))
-    except Exception:
-        await callback.message.answer(text, reply_markup=sora_aspect_ratio_keyboard(sora_settings.aspect_ratio))
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("sora.set.aspect_ratio:"))
-async def sora_set_aspect_ratio(callback: CallbackQuery, state: FSMContext, user: User):
-    aspect_ratio = callback.data.split(":", 1)[1]
-    await state.update_data(sora_aspect_ratio=aspect_ratio)
-    await start_sora(callback, state, user)
 
 
 @router.callback_query(F.data == "bot.luma")
@@ -1511,8 +1397,6 @@ async def process_video_photo(message: Message, state: FSMContext, user: User):
         # Route to appropriate video service
         if service_name == "veo":
             await process_veo_video(message, user, state)
-        elif service_name == "sora":
-            await process_sora_video(message, user, state)
         elif service_name == "luma":
             await process_luma_video(message, user, state)
         elif service_name == "hailuo":
@@ -1559,11 +1443,10 @@ async def process_video_prompt(message: Message, state: FSMContext, user: User):
         return
 
     data = await state.get_data()
-    service_name = data.get("service", "sora")
+    service_name = data.get("service", "veo")
 
     display_names = {
         "veo": "Veo 3.1",
-        "sora": "Sora 2",
         "luma": "Luma Dream Machine",
         "hailuo": "Hailuo",
         "kling": "Kling AI",
@@ -1575,8 +1458,6 @@ async def process_video_prompt(message: Message, state: FSMContext, user: User):
     # Route to appropriate video service
     if service_name == "veo":
         await process_veo_video(message, user, state)
-    elif service_name == "sora":
-        await process_sora_video(message, user, state)
     elif service_name == "luma":
         await process_luma_video(message, user, state)
     elif service_name == "hailuo":
@@ -1859,144 +1740,6 @@ async def process_veo_video(message: Message, user: User, state: FSMContext):
         await state.update_data(image_path=None, photo_caption_prompt=None)
 
 
-async def process_sora_video(message: Message, user: User, state: FSMContext):
-    """Process Sora 2 video generation using callback-based flow.
-
-    1. Reserve tokens
-    2. Send createTask to Kie.ai with callBackUrl
-    3. Save job to DB
-    4. Return immediately — callback handler delivers the result
-    """
-    from app.bot.states.media import SoraSettings
-    from app.core.billing_config import get_sora_tokens_cost
-    from app.services.video_job_service import VideoJobService
-
-    # Get state data
-    data = await state.get_data()
-    sora_settings = SoraSettings.from_dict(data)
-
-    prompt = data.get("photo_caption_prompt") or message.text
-    image_path = data.get("image_path", None)
-
-    api_model = sora_settings.get_api_model(has_image=bool(image_path))
-    estimated_tokens = get_sora_tokens_cost(sora_settings.quality, sora_settings.duration)
-
-    # Step 1: Reserve tokens
-    async with async_session_maker() as session:
-        sub_service = SubscriptionService(session)
-        try:
-            await sub_service.reserve_tokens(user.id, estimated_tokens)
-        except InsufficientTokensError as e:
-            if image_path:
-                cleanup_temp_file(image_path)
-            await message.answer(
-                f"❌ Недостаточно токенов!\n\n"
-                f"Требуется: {estimated_tokens:,} токенов\n"
-                f"Доступно: {e.details['available']:,} токенов"
-            )
-            await clear_state_preserve_settings(state)
-            return
-
-    quality_text = "Pro" if sora_settings.quality == "pro" else "Stable"
-
-    # Image-to-video not supported yet (needs CDN upload)
-    if image_path:
-        cleanup_temp_file(image_path)
-        await message.answer(
-            "⚠️ **Image-to-Video для Sora 2 временно недоступен**\n\n"
-            "Sora 2 API требует загрузки изображения на CDN сервер.\n\n"
-            "Используйте text-to-video режим или альтернативные сервисы:\n"
-            "• 🌊 Veo 3.1 (поддерживает image-to-video)\n"
-            "• 🎥 Hailuo (поддерживает image-to-video)",
-            parse_mode="Markdown"
-        )
-        async with async_session_maker() as session:
-            sub_service = SubscriptionService(session)
-            await sub_service.rollback_tokens(user.id, estimated_tokens)
-        await state.update_data(image_path=None, photo_caption_prompt=None)
-        return
-
-    # Step 2: Send progress message
-    mode_text = "text-to-video"
-    progress_msg = await message.answer(
-        f"⏳ Ваше видео Sora 2 {quality_text} ({mode_text}, {sora_settings.duration}с) "
-        f"добавлено в очередь на генерацию!\n\n"
-        f"Мы отправим вам результат, как только он будет готов. "
-        f"Это может занять несколько минут.\n\n"
-        f"Вы можете продолжать пользоваться ботом."
-    )
-
-    # Step 3: Create task via Kie.ai API with callback
-    sora_service = SoraService()
-    try:
-        task_id = await sora_service.create_task(
-            prompt=prompt,
-            model=api_model,
-            aspect_ratio=sora_settings.aspect_ratio,
-            n_frames=str(sora_settings.duration),
-        )
-    except Exception as e:
-        logger.error("sora_create_task_failed", error=str(e), user_id=user.id)
-        # Rollback tokens on API failure
-        async with async_session_maker() as session:
-            sub_service = SubscriptionService(session)
-            await sub_service.rollback_tokens(user.id, estimated_tokens)
-        await progress_msg.edit_text(
-            f"❌ Ошибка создания задачи Sora 2:\n{str(e)[:200]}\n\n"
-            f"💰 Токены возвращены на баланс.",
-            parse_mode=None,
-        )
-        await state.update_data(image_path=None, photo_caption_prompt=None)
-        return
-
-    # Step 4: Save job to database
-    try:
-        async with async_session_maker() as session:
-            job_service = VideoJobService(session)
-            job = await job_service.create_job(
-                user_id=user.id,
-                provider="sora",
-                model_id=api_model,
-                prompt=prompt,
-                input_data={
-                    "aspect_ratio": sora_settings.aspect_ratio,
-                    "n_frames": str(sora_settings.duration),
-                    "quality": sora_settings.quality,
-                    "quality_text": quality_text,
-                },
-                chat_id=message.chat.id,
-                tokens_cost=estimated_tokens,
-                progress_message_id=progress_msg.message_id,
-            )
-            # Store task_id from Kie.ai
-            await job_service.update_job_status(
-                job.id,
-                "processing",
-                task_id=task_id,
-            )
-            logger.info(
-                "sora_job_created",
-                job_id=job.id,
-                task_id=task_id,
-                user_id=user.id,
-                model=api_model,
-                tokens=estimated_tokens,
-            )
-    except Exception as e:
-        logger.error("sora_job_save_failed", error=str(e), user_id=user.id)
-        async with async_session_maker() as session:
-            sub_service = SubscriptionService(session)
-            await sub_service.rollback_tokens(user.id, estimated_tokens)
-        await progress_msg.edit_text(
-            f"❌ Ошибка сохранения задачи:\n{str(e)[:200]}\n\n"
-            f"💰 Токены возвращены на баланс.",
-            parse_mode=None,
-        )
-        await state.update_data(image_path=None, photo_caption_prompt=None)
-        return
-
-    # Done — handler returns, callback will deliver the result
-    await state.update_data(image_path=None, photo_caption_prompt=None)
 
 
 async def process_luma_video(message: Message, user: User, state: FSMContext):
@@ -6898,8 +6641,22 @@ async def process_nano_banana_2_image(message: Message, user: User, state: FSMCo
     # Generate image
     nb2_service = NanoBanana2Service()
 
+    # Enhance prompt for clothing try-on scenarios with multiple images
+    enhanced_prompt = prompt
+    total_images = len(image_paths) + len(nb2_image_urls)
+    if total_images >= 2 and prompt:
+        tryon_keywords = ["пример", "одень", "надень", "одежд", "платье", "костюм", "наряд",
+                          "футболк", "рубашк", "try on", "wear", "dress", "outfit"]
+        prompt_lower = prompt.lower()
+        if any(kw in prompt_lower for kw in tryon_keywords):
+            enhanced_prompt = (
+                f"Virtual try-on: Take the person from the first image and dress them in the clothing/outfit "
+                f"shown in the second image. Keep the person's face, body proportions and pose natural. "
+                f"Original instruction: {prompt}"
+            )
+
     result = await nb2_service.generate_image(
-        prompt=prompt,
+        prompt=enhanced_prompt,
         progress_callback=update_progress,
         image_paths=image_paths,
         image_urls=nb2_image_urls,

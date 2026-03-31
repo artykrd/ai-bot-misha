@@ -293,7 +293,21 @@ class KlingService(BaseVideoProvider):
 
         except Exception as e:
             error_msg = str(e)
-            logger.error("kling_generation_failed", error=error_msg, model=model)
+            # Classify and translate user-caused errors
+            if "is not supported with image_tail" in error_msg:
+                error_msg = (
+                    "Текущая модель не поддерживает режим с двумя изображениями (начальный + конечный кадр). "
+                    "Попробуйте отправить одно изображение или используйте текстовый режим."
+                )
+                logger.warning("kling_image_tail_not_supported", error=str(e), model=model)
+            elif "not in a valid base64 format" in error_msg:
+                error_msg = (
+                    "Не удалось обработать изображение. Попробуйте отправить другое изображение "
+                    "в формате JPG или PNG."
+                )
+                logger.warning("kling_invalid_base64", error=str(e), model=model)
+            else:
+                logger.error("kling_generation_failed", error=error_msg, model=model)
 
             if progress_callback:
                 await progress_callback(f"❌ Ошибка: {error_msg}")

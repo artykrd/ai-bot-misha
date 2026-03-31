@@ -76,11 +76,6 @@ PRESET_BUTTONS = {
                 "description": "Nano Banana PRO - улучшенная версия"
             },
             {
-                "text": "Sora Video",
-                "callback_data": "bot.sora",
-                "description": "Генерация видео через Sora"
-            },
-            {
                 "text": "Kling Video",
                 "callback_data": "bot.kling_main",
                 "description": "Генерация видео через Kling"

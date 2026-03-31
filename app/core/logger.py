@@ -85,12 +85,54 @@ def setup_logging() -> None:
     )
 
     # ERROR ONLY handler - NO COLORS, simple format
+    # Filter out user-caused errors (safety filters, content policy, prompt issues, API transient errors)
+    class UserErrorFilter(logging.Filter):
+        """Filter out user-caused and transient API errors from error.log."""
+        USER_ERROR_PATTERNS = [
+            # Safety filter / content policy
+            "фильтром безопасности",
+            "Генерация заблокирована",
+            "Prohibited Use policy",
+            "filtered out",
+            "content_policy_violation",
+            "safety_filter",
+            "blocked by safety",
+            "PROHIBITED_CONTENT",
+            "FinishReason.SAFETY",
+            "FinishReason.IMAGE_OTHER",
+            # Prompt issues
+            "Попробуйте изменить промпт",
+            "API не сгенерировал изображение",
+            "Генерация прервана",
+            "Your request was rejected",
+            # Transient API errors (502, 503, timeouts from external APIs)
+            "502: Bad gateway",
+            "503 Service",
+            "unexpected mimetype: text/html",
+            # Kling user errors
+            "is not supported with image_tail",
+            "not in a valid base64 format",
+            # Telegram network errors (transient)
+            "TelegramNetworkError",
+            "Request timeout error",
+            # Webhook health check (already downgraded to warning but just in case)
+            "webhook_health_check_failed",
+        ]
+
+        def filter(self, record: logging.LogRecord) -> bool:
+            msg = record.getMessage()
+            for pattern in self.USER_ERROR_PATTERNS:
+                if pattern in msg:
+                    return False
+            return True
+
     error_handler = logging.FileHandler(
         filename=log_dir / "error.log",
         mode='a',
         encoding="utf-8",
     )
     error_handler.setLevel(logging.ERROR)
+    error_handler.addFilter(UserErrorFilter())
     error_handler.setFormatter(
         structlog.stdlib.ProcessorFormatter(
             processor=structlog.processors.KeyValueRenderer(key_order=["timestamp", "level", "event"]),

@@ -205,7 +205,7 @@ async def cmd_start(message: Message, user: User, state: FSMContext):
 – GPT Image — генерация изображений от OpenAI.
 
 🎬 Создание видео:
-– Sora 2, Veo 3.1 — новейшие модели видеогенерации;
+– Veo 3.1 — новейшая модель видеогенерации;
 – Midjourney Video, Hailuo, Luma, Kling — создание видео по описанию.
 
 🎵 Работа с аудио:
@@ -246,7 +246,7 @@ async def show_main_menu(callback: CallbackQuery, user: User, state: FSMContext)
 – GPT Image — генерация изображений от OpenAI.
 
 🎬 Создание видео:
-– Sora 2, Veo 3.1 — новейшие модели видеогенерации;
+– Veo 3.1 — новейшая модель видеогенерации;
 – Midjourney Video, Hailuo, Luma, Kling — создание видео по описанию.
 
 🎵 Работа с аудио:

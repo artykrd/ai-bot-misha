@@ -180,7 +180,6 @@ class ErrorNotificationHandler(logging.Handler):
                 "nano_banana_service": "Nano Banana",
                 "dalle_service": "DALL-E",
                 "veo_service": "Veo",
-                "sora_service": "Sora",
                 "suno_service": "Suno",
                 "referral": "Реферальная программа",
                 "subscription_service": "Система подписок",

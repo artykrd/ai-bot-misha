@@ -23,7 +23,6 @@ logger = get_logger(__name__)
 
 
 veo_billing = get_video_model_billing("veo-3.1-fast")
-sora_billing = get_video_model_billing("sora2")
 luma_billing = get_video_model_billing("luma")
 hailuo_billing = get_video_model_billing("hailuo")
 kling_billing = get_video_model_billing("kling-video")
@@ -35,12 +34,6 @@ MODEL_COSTS = {
         "default_duration": 8,
         "requires_confirmation": True,
         "description": "Veo 3.1 Fast"
-    },
-    "sora-2": {
-        "base_cost": sora_billing.tokens_per_generation,
-        "default_duration": 10,
-        "requires_confirmation": True,
-        "description": "Sora 2"
     },
     "luma": {
         "base_cost": luma_billing.tokens_per_generation,
@@ -66,11 +59,6 @@ RATE_LIMITS = {
         "per_user": 2,  # 2 запроса в час на пользователя
         "global": 10,    # 10 запросов в час глобально
         "window": 3600   # 1 час
-    },
-    "sora-2": {
-        "per_user": 5,
-        "global": 20,
-        "window": 3600
     },
     "default": {
         "per_user": 10,

@@ -220,11 +220,19 @@ class NanoBananaService(BaseImageProvider):
                     "через 2-3 минуты. Приносим извинения за ожидание!"
                 )
 
-            logger.error(
-                "nano_banana_generation_failed",
-                error=last_error_msg,
-                prompt=prompt[:100] if prompt else "None",
-            )
+            # Downgrade to warning for user-caused errors (safety, quotas)
+            if any(p in last_error_msg for p in ["фильтром безопасности", "перегружен", "Генерация прервана", "Попробуйте"]):
+                logger.warning(
+                    "nano_banana_generation_user_error",
+                    error=last_error_msg,
+                    prompt=prompt[:100] if prompt else "None",
+                )
+            else:
+                logger.error(
+                    "nano_banana_generation_failed",
+                    error=last_error_msg,
+                    prompt=prompt[:100] if prompt else "None",
+                )
 
             if progress_callback:
                 await progress_callback("❌ Ошибка генерации")
@@ -548,5 +556,9 @@ class NanoBananaService(BaseImageProvider):
             return str(image_path)
 
         except Exception as e:
-            logger.error("nano_banana_generation_error", error=str(e))
+            error_str = str(e)
+            if any(p in error_str for p in ["фильтром безопасности", "Генерация прервана", "Попробуйте", "не сгенерировал"]):
+                logger.warning("nano_banana_generation_user_error", error=error_str)
+            else:
+                logger.error("nano_banana_generation_error", error=error_str)
             raise

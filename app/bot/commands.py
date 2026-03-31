@@ -14,7 +14,6 @@ BOT_COMMANDS = [
     BotCommand(command="start", description="🦁 Главное меню"),
     BotCommand(command="shop", description="💎 Оформить подписку"),
     BotCommand(command="models", description="🤖 Выбрать модель"),
-    BotCommand(command="sora", description="☁️ Sora 2"),
     BotCommand(command="veo", description="🌊 Veo 3.1"),
     BotCommand(command="nano", description="🍌 Nano Banana"),
     BotCommand(command="suno", description="🎵 Suno"),
