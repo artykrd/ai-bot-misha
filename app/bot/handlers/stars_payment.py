@@ -310,11 +310,21 @@ async def process_successful_stars_payment(message: Message, user: User):
                 if user_db and user_db.username:
                     user_display = f"@{user_db.username} ({user_db.full_name})"
 
+                tariff_id = payload.get('tariff_id', '')
+                tokens_in_tariff = payload.get('tokens', '')
+                days_in_tariff = payload.get('days', '')
+                tariff_desc = ""
+                if tokens_in_tariff:
+                    tariff_desc = f" ({int(tokens_in_tariff):,} токенов"
+                    if days_in_tariff:
+                        tariff_desc += f" на {days_in_tariff} дней"
+                    tariff_desc += ")"
+
                 admin_message = (
                     f"⭐ Новая покупка (Звёзды)!\n\n"
                     f"👤 Пользователь: {user_display}\n"
-                    f"📦 Тариф: {payload.get('tariff_id', '')}\n"
-                    f"💵 Сумма: {stars_amount} XTR\n"
+                    f"📦 Тариф: {tariff_id}{tariff_desc}\n"
+                    f"💵 Сумма: {stars_amount} ⭐ (Telegram Stars)\n"
                     f"📊 Всего покупок: {total_purchases}"
                 )
 

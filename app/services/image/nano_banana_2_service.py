@@ -295,21 +295,47 @@ class NanoBanana2Service(BaseImageProvider):
 
         except Exception as e:
             error_msg = str(e)
-            logger.error(
-                "nano_banana_2_generation_failed",
-                error=error_msg,
-                error_type=type(e).__name__,
-                prompt=prompt[:200] if prompt else "None",
-                resolution=kwargs.get("resolution", "2K"),
-                aspect_ratio=kwargs.get("aspect_ratio", "auto"),
-                images_count=len(kwargs.get("image_paths", [])),
-            )
+            # Downgrade user-caused errors to warning
+            is_user_error = any(p in error_msg for p in [
+                "Prohibited Use policy", "filtered out", "502:", "503 Service",
+                "unexpected mimetype", "Bad gateway",
+            ])
+            if is_user_error:
+                logger.warning(
+                    "nano_banana_2_generation_user_error",
+                    error=error_msg,
+                    error_type=type(e).__name__,
+                    prompt=prompt[:200] if prompt else "None",
+                    resolution=kwargs.get("resolution", "2K"),
+                    aspect_ratio=kwargs.get("aspect_ratio", "auto"),
+                    images_count=len(kwargs.get("image_paths", [])),
+                )
+            else:
+                logger.error(
+                    "nano_banana_2_generation_failed",
+                    error=error_msg,
+                    error_type=type(e).__name__,
+                    prompt=prompt[:200] if prompt else "None",
+                    resolution=kwargs.get("resolution", "2K"),
+                    aspect_ratio=kwargs.get("aspect_ratio", "auto"),
+                    images_count=len(kwargs.get("image_paths", [])),
+                )
 
             # User-friendly error messages
             if "Prohibited Use policy" in error_msg or "filtered out" in error_msg:
                 error_msg = (
                     "🛡️ Изображение заблокировано политикой безопасности Google.\n"
                     "Попробуйте изменить промпт или использовать другое фото."
+                )
+            elif "502" in error_msg or "Bad gateway" in error_msg or "503" in error_msg:
+                error_msg = (
+                    "⚠️ Сервис временно недоступен (ошибка сервера).\n"
+                    "Попробуйте повторить запрос через несколько минут."
+                )
+            elif "unexpected mimetype" in error_msg or "text/html" in error_msg:
+                error_msg = (
+                    "⚠️ Сервис временно недоступен.\n"
+                    "Попробуйте повторить запрос через несколько минут."
                 )
 
             if progress_callback:

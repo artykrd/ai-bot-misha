@@ -121,10 +121,6 @@ MODEL_ACTIONS = {
         "text": "🎬 Создать новое видео",
         "callback": "bot.veo"
     },
-    "sora": {
-        "text": "🎬 Создать новое видео",
-        "callback": "bot.sora"
-    },
     "luma": {
         "text": "🎬 Создать новое видео",
         "callback": "bot.luma"

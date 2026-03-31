@@ -148,30 +148,6 @@ async def promocode_from_menu(message: Message, state: FSMContext, user: User):
     await start_promocode_activation(message, state, user)
 
 
-# Media generation commands
-@router.message(Command("sora"))
-async def cmd_sora(message: Message, state):
-    """Sora 2 command - directly open Sora interface."""
-    from app.bot.keyboards.inline import back_to_main_keyboard
-    from app.bot.handlers.media_handler import MediaState
-    from app.core.billing_config import get_video_model_billing, format_token_amount
-
-    sora_billing = get_video_model_billing("sora2")
-    text = (
-        "**Sora 2 - Video Generation**\n\n"
-        "Sora 2 может создавать реалистичные видео длительностью до 20 секунд по вашему описанию.\n\n"
-        f"💰 **Стоимость:** {format_token_amount(sora_billing.tokens_per_generation)} токенов за видео\n\n"
-        "✏️ **Отправьте текстовое описание видео, которое вы хотите создать**"
-    )
-
-    await state.set_state(MediaState.waiting_for_video_prompt)
-    # Clear old data when starting fresh session
-    await state.update_data(service="sora", image_path=None, photo_caption_prompt=None)
-
-    await message.answer(text, reply_markup=back_to_main_keyboard())
-
-
-
 @router.message(Command("veo"))
 async def cmd_veo(message: Message, state):
     """Veo 3.1 command - directly open Veo interface."""

@@ -18,7 +18,6 @@ MENU_BUTTONS = [
     ("Kling", "bot.kling_main"),
     ("Kling 3", "bot.kling3"),
     ("Kling O1", "bot.kling_o1"),
-    ("Sora", "bot.sora"),
     ("Hailuo", "bot.hailuo"),
     ("Midjourney Video", "bot.mjvideo"),
     ("Luma", "bot.luma"),
@@ -284,23 +283,20 @@ def create_video_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
     builder.row(
-        InlineKeyboardButton(text="☁️ Sora 2", callback_data="bot.sora"),
-        InlineKeyboardButton(text="🌊 Veo 3.1", callback_data="bot.veo")
-    )
-    builder.row(
-        InlineKeyboardButton(text="🎞 Kling", callback_data="bot.kling_main"),
+        InlineKeyboardButton(text="🌊 Veo 3.1", callback_data="bot.veo"),
         InlineKeyboardButton(text="🎥 Hailuo", callback_data="bot.hailuo")
     )
     builder.row(
+        InlineKeyboardButton(text="🎞 Kling", callback_data="bot.kling_main"),
+        InlineKeyboardButton(text="📹 Luma", callback_data="bot.luma")
+    )
+    builder.row(
         InlineKeyboardButton(text="⚡ Kling 3", callback_data="bot.kling3"),
-        InlineKeyboardButton(text="📹 Luma", callback_data="bot.luma"),
+        InlineKeyboardButton(text="🧠 Kling O1", callback_data="bot.kling_o1"),
     )
     builder.row(
         InlineKeyboardButton(text="🌆 Midjourney", callback_data="bot.mjvideo"),
         InlineKeyboardButton(text="✨ Kling Эффекты", callback_data="bot.kling_effects")
-    )
-    builder.row(
-        InlineKeyboardButton(text="🧠 Kling O1", callback_data="bot.kling_o1")
     )
     builder.row(
         InlineKeyboardButton(text="⬅️ В главное меню", callback_data="bot.back")
@@ -1686,107 +1682,6 @@ def seedream5_batch_count_keyboard(current_count: int = 3) -> InlineKeyboardMark
             text="⬅️ Назад",
             callback_data="bot.seedream_5.0"
         )
-    )
-
-    return builder.as_markup()
-
-
-# ======================
-# SORA 2 KEYBOARDS
-# ======================
-
-def sora_main_keyboard() -> InlineKeyboardMarkup:
-    """Main Sora 2 keyboard with settings button."""
-    builder = InlineKeyboardBuilder()
-
-    builder.row(
-        InlineKeyboardButton(text="⚙️ Настройки", callback_data="sora.settings")
-    )
-    builder.row(
-        InlineKeyboardButton(text="⬅️ В главное меню", callback_data="bot.back")
-    )
-
-    return builder.as_markup()
-
-
-def sora_settings_keyboard() -> InlineKeyboardMarkup:
-    """Sora 2 settings menu keyboard."""
-    builder = InlineKeyboardBuilder()
-
-    builder.row(
-        InlineKeyboardButton(text="🕓 Длительность", callback_data="sora.settings.duration")
-    )
-    builder.row(
-        InlineKeyboardButton(text="🎯 Качество", callback_data="sora.settings.quality")
-    )
-    builder.row(
-        InlineKeyboardButton(text="📐 Формат видео", callback_data="sora.settings.aspect_ratio")
-    )
-    builder.row(
-        InlineKeyboardButton(text="⬅️ Назад к Sora 2", callback_data="bot.sora")
-    )
-
-    return builder.as_markup()
-
-
-def sora_duration_keyboard(current_duration: int = 10) -> InlineKeyboardMarkup:
-    """Sora 2 duration selection keyboard."""
-    builder = InlineKeyboardBuilder()
-
-    durations = [10, 15]
-
-    for duration in durations:
-        text = f"✅ {duration} секунд" if duration == current_duration else f"{duration} секунд"
-        builder.row(
-            InlineKeyboardButton(text=text, callback_data=f"sora.set.duration:{duration}")
-        )
-
-    builder.row(
-        InlineKeyboardButton(text="⬅️ Назад к Sora 2", callback_data="bot.sora")
-    )
-
-    return builder.as_markup()
-
-
-def sora_quality_keyboard(current_quality: str = "stable") -> InlineKeyboardMarkup:
-    """Sora 2 quality selection keyboard."""
-    builder = InlineKeyboardBuilder()
-
-    qualities = [
-        ("stable", "Стандартное (7 000т./сек.)"),
-        ("pro", "Pro 720P (20 000т./сек.)"),
-    ]
-
-    for quality_id, quality_name in qualities:
-        text = f"✅ {quality_name}" if quality_id == current_quality else quality_name
-        builder.row(
-            InlineKeyboardButton(text=text, callback_data=f"sora.set.quality:{quality_id}")
-        )
-
-    builder.row(
-        InlineKeyboardButton(text="⬅️ Назад к Sora 2", callback_data="bot.sora")
-    )
-
-    return builder.as_markup()
-
-
-def sora_aspect_ratio_keyboard(current_ratio: str = "landscape") -> InlineKeyboardMarkup:
-    """Sora 2 aspect ratio selection keyboard."""
-    builder = InlineKeyboardBuilder()
-
-    ratios = [
-        ("landscape", "16:9 (альбомный)"),
-        ("portrait", "9:16 (портретный)"),
-    ]
-
-    for ratio_id, ratio_name in ratios:
-        text = f"✅ {ratio_name}" if ratio_id == current_ratio else ratio_name
-        builder.row(
-            InlineKeyboardButton(text=text, callback_data=f"sora.set.aspect_ratio:{ratio_id}")
-        )
-
-    builder.row(
-        InlineKeyboardButton(text="⬅️ Назад к Sora 2", callback_data="bot.sora")
     )
 
     return builder.as_markup()

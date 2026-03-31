@@ -143,7 +143,10 @@ class MidjourneyService:
 
         except Exception as e:
             error_msg = str(e)
-            logger.error("midjourney_generation_failed", error=error_msg, task_type=task_type)
+            if any(p in error_msg for p in ["временно недоступен", "Сетевая ошибка", "text/html"]):
+                logger.warning("midjourney_generation_transient_error", error=error_msg, task_type=task_type)
+            else:
+                logger.error("midjourney_generation_failed", error=error_msg, task_type=task_type)
 
             if progress_callback:
                 await progress_callback(f"❌ Ошибка: {error_msg}")
@@ -189,26 +192,61 @@ class MidjourneyService:
         return payload
 
     async def _create_task(self, payload: dict) -> str:
-        """Create Midjourney generation task via Kie.ai API."""
+        """Create Midjourney generation task via Kie.ai API with retry for transient errors."""
         url = f"{self.BASE_URL}/api/v1/mj/generate"
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_key}"
         }
+        max_retries = 3
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=headers, json=payload) as response:
-                data = await response.json()
+        for attempt in range(max_retries + 1):
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(url, headers=headers, json=payload) as response:
+                        content_type = response.content_type or ""
 
-                if data.get("code") != 200:
-                    error_msg = data.get("msg", "Unknown error")
-                    raise Exception(f"Midjourney API error: {error_msg}")
+                        # Handle HTML error responses (502, 503, Cloudflare errors)
+                        if "text/html" in content_type or response.status >= 500:
+                            if attempt < max_retries:
+                                backoff = 2 ** (attempt + 1)
+                                logger.warning(
+                                    "midjourney_api_transient_error",
+                                    status=response.status,
+                                    content_type=content_type,
+                                    attempt=attempt + 1,
+                                    backoff=backoff,
+                                )
+                                await asyncio.sleep(backoff)
+                                continue
+                            raise Exception(
+                                "Сервис Midjourney временно недоступен. Попробуйте позже."
+                            )
 
-                task_id = data.get("data", {}).get("taskId")
-                if not task_id:
-                    raise Exception("No taskId in API response")
+                        data = await response.json()
 
-                return task_id
+                        if data.get("code") != 200:
+                            error_msg = data.get("msg", "Unknown error")
+                            raise Exception(f"Midjourney API error: {error_msg}")
+
+                        task_id = data.get("data", {}).get("taskId")
+                        if not task_id:
+                            raise Exception("No taskId in API response")
+
+                        return task_id
+
+            except aiohttp.ClientError as e:
+                if attempt < max_retries:
+                    backoff = 2 ** (attempt + 1)
+                    logger.warning(
+                        "midjourney_network_error_retry",
+                        error=str(e),
+                        attempt=attempt + 1,
+                        backoff=backoff,
+                    )
+                    await asyncio.sleep(backoff)
+                    continue
+                raise Exception(f"Сетевая ошибка Midjourney после {max_retries} попыток: {e}")
 
     async def _poll_task_status(
         self,

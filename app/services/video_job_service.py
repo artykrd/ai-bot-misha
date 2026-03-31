@@ -11,7 +11,7 @@ from aiogram.exceptions import TelegramBadRequest
 from app.database.database import async_session_maker
 from app.database.repositories.video_job import VideoJobRepository
 from app.database.models.video_job import VideoGenerationJob
-from app.services.video import KlingService, SoraService, VeoService, LumaService, HailuoService, Kling3Service, KlingO1Service
+from app.services.video import KlingService, VeoService, LumaService, HailuoService, Kling3Service, KlingO1Service
 from app.services.logging import log_ai_operation_background, ai_logger
 from app.core.logger import get_logger
 
@@ -74,7 +74,6 @@ class VideoJobService:
             "kling": KlingService,
             "kling3": Kling3Service,
             "kling_o1": KlingO1Service,
-            "sora": SoraService,
             "veo": VeoService,
             "luma": LumaService,
             "hailuo": HailuoService,

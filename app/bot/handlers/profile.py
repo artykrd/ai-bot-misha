@@ -54,7 +54,6 @@ def calculate_service_availability(total_tokens: int) -> str:
     count = total_tokens // face_billing.tokens_per_generation
     lines.append(f"- Face Swap: {count} запросов;")
 
-    sora_billing = get_video_model_billing("sora2")
     veo_billing = get_video_model_billing("veo-3.1-fast")
     mj_sd_billing = get_video_model_billing("midjourney-video-sd")
     hailuo_billing = get_video_model_billing("hailuo")
@@ -62,7 +61,6 @@ def calculate_service_availability(total_tokens: int) -> str:
     kling_billing = get_video_model_billing("kling-video")
     kling_fx_billing = get_video_model_billing("kling-effects")
 
-    lines.append(f"- Sora 2: {total_tokens // sora_billing.tokens_per_generation} запросов;")
     lines.append(f"- Veo 3.1: {total_tokens // veo_billing.tokens_per_generation} запросов;")
     lines.append(f"- Midjourney Video SD: {total_tokens // mj_sd_billing.tokens_per_generation} запросов;")
     lines.append(f"- Hailuo: {total_tokens // hailuo_billing.tokens_per_generation} запросов;")
@@ -163,7 +161,6 @@ async def show_tokens_info(callback: CallbackQuery, user: User):
 • DALL-E 3 — {format_token_amount(get_image_model_billing("dalle3").tokens_per_generation)} токенов
 • Stable Diffusion — {format_token_amount(get_image_model_billing("stable-diffusion").tokens_per_generation)} токенов
 • Recraft — {format_token_amount(get_image_model_billing("recraft").tokens_per_generation)} токенов
-• Sora 2 (видео) — {format_token_amount(get_video_model_billing("sora2").tokens_per_generation)} токенов
 • Veo 3.1 Fast (видео) — {format_token_amount(get_video_model_billing("veo-3.1-fast").tokens_per_generation)} токенов
 • Kling (видео) — {format_token_amount(get_video_model_billing("kling-video").tokens_per_generation)} токенов
 • Kling Effects (видео) — {format_token_amount(get_video_model_billing("kling-effects").tokens_per_generation)} токенов

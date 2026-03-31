@@ -17,8 +17,6 @@ PERSISTENT_SETTINGS_KEYS = [
     "kling_version", "kling_duration", "kling_aspect_ratio", "kling_auto_translate",
     # Kling image settings
     "kling_image_model", "kling_image_aspect_ratio", "kling_image_resolution", "kling_image_auto_translate",
-    # Sora settings
-    "sora_quality", "sora_duration", "sora_aspect_ratio",
     # Seedream settings
     "seedream_size", "seedream_batch_mode", "seedream_batch_count",
     # Seedream 5.0 settings
@@ -122,54 +120,6 @@ class KlingImageSettings:
         parts.append(f"Разрешение: {self.resolution}")
         parts.append(f"Автоперевод: {'включен' if self.auto_translate else 'выключен'}")
         return "\n".join(parts)
-
-
-@dataclass
-class SoraSettings:
-    """Sora 2 video generation settings stored in FSM."""
-    quality: str = "stable"  # "stable" or "pro"
-    duration: int = 10  # 10 or 15 seconds
-    aspect_ratio: str = "landscape"  # "landscape" or "portrait"
-
-    def to_dict(self) -> dict:
-        """Convert to dict for FSM storage."""
-        return {
-            "sora_quality": self.quality,
-            "sora_duration": self.duration,
-            "sora_aspect_ratio": self.aspect_ratio,
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict) -> "SoraSettings":
-        """Create from FSM data dict."""
-        return cls(
-            quality=data.get("sora_quality", "stable"),
-            duration=data.get("sora_duration", 10),
-            aspect_ratio=data.get("sora_aspect_ratio", "landscape"),
-        )
-
-    def get_display_settings(self) -> str:
-        """Get formatted settings string for display."""
-        quality_names = {
-            "stable": "Стандартное (Stable)",
-            "pro": "Высокое (Pro 720P)",
-        }
-        aspect_names = {
-            "landscape": "16:9 (альбомный)",
-            "portrait": "9:16 (портретный)",
-        }
-        parts = []
-        parts.append(f"Длительность: {self.duration} сек.")
-        parts.append(f"Качество: {quality_names.get(self.quality, self.quality)}")
-        parts.append(f"Формат: {aspect_names.get(self.aspect_ratio, self.aspect_ratio)}")
-        return "\n".join(parts)
-
-    def get_api_model(self, has_image: bool = False) -> str:
-        """Get API model name based on settings and mode."""
-        if self.quality == "pro":
-            return "sora-2-image-to-video" if has_image else "sora-2-text-to-video"
-        else:
-            return "sora-2-image-to-video-stable" if has_image else "sora-2-text-to-video-stable"
 
 
 @dataclass

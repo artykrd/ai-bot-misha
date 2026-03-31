@@ -48,7 +48,7 @@ class HealthChecker:
                 }
         except Exception as e:
             response_time = (datetime.utcnow() - start_time).total_seconds()
-            logger.error("webhook_health_check_failed", error=str(e))
+            logger.warning("webhook_health_check_failed", error=str(e))
             return {
                 "status": "unhealthy",
                 "status_code": None,

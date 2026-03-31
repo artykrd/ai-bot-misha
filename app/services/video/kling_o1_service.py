@@ -26,7 +26,8 @@ from app.services.video.base import BaseVideoProvider, VideoResponse
 logger = get_logger(__name__)
 
 # Model name for Kie.ai API
-KLING_O1_MODEL = "kling-video-o1"
+# Note: Kie.ai may update model names. If this fails, check their docs for current names.
+KLING_O1_MODEL = "kling-v2-master"
 
 # Callback URL for async notifications
 KLING_O1_CALLBACK_URL = "https://mikhail-bot.archy-tech.ru/api/kling_o1_callback"
@@ -269,7 +270,11 @@ class KlingO1Service(BaseVideoProvider):
 
         except Exception as e:
             error_msg = str(e)
-            logger.error("kling_o1_generation_failed", error=error_msg)
+            if "model name" in error_msg.lower() and "not supported" in error_msg.lower():
+                error_msg = "Модель Kling O1 временно недоступна. Попробуйте позже или используйте другую модель."
+                logger.warning("kling_o1_model_not_supported", error=str(e))
+            else:
+                logger.error("kling_o1_generation_failed", error=error_msg)
 
             if progress_callback:
                 await progress_callback(f"❌ Ошибка: {error_msg}")
