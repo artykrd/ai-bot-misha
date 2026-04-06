@@ -241,37 +241,81 @@ class Kling3Service(BaseVideoProvider):
         return payload
 
     async def _create_task(self, payload: dict) -> str:
-        """Create a generation task via Kie.ai API."""
+        """Create a generation task via Kie.ai API with retry for transient errors."""
         url = f"{self.BASE_URL}/api/v1/jobs/createTask"
-
         timeout = aiohttp.ClientTimeout(total=60)
+        max_retries = 3
 
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(
-                url,
-                headers=self._get_auth_headers(),
-                json=payload
-            ) as response:
-                data = await response.json()
+        for attempt in range(max_retries + 1):
+            try:
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.post(
+                        url,
+                        headers=self._get_auth_headers(),
+                        json=payload
+                    ) as response:
+                        response_status = response.status
 
-                if data.get("code") != 200:
-                    error_msg = data.get("msg") or data.get("message") or "Unknown error"
-                    error_code = data.get("code", "unknown")
+                        # Retry on 5xx server errors
+                        if response_status >= 500 and attempt < max_retries:
+                            response_text = await response.text()
+                            backoff = 2 ** (attempt + 1)
+                            logger.warning(
+                                "kling3_server_error_retry",
+                                status=response_status,
+                                attempt=attempt + 1,
+                                backoff=backoff,
+                                response=response_text[:300],
+                            )
+                            await asyncio.sleep(backoff)
+                            continue
 
-                    if error_code == 401:
-                        raise Exception("Ошибка аутентификации. Проверьте KIE_API_KEY.")
-                    elif error_code == 402:
-                        raise Exception("Недостаточно средств на аккаунте Kie.ai.")
-                    elif error_code == 429:
-                        raise Exception("Превышен лимит запросов. Попробуйте позже.")
-                    else:
-                        raise Exception(f"Kie.ai API error ({error_code}): {error_msg}")
+                        data = await response.json()
 
-                task_id = data.get("data", {}).get("taskId")
-                if not task_id:
-                    raise Exception("No taskId in API response")
+                        if data.get("code") != 200:
+                            error_msg = data.get("msg") or data.get("message") or "Unknown error"
+                            error_code = data.get("code", "unknown")
 
-                return task_id
+                            # Retry on server-side error codes
+                            if isinstance(error_code, int) and error_code >= 500 and attempt < max_retries:
+                                backoff = 2 ** (attempt + 1)
+                                logger.warning(
+                                    "kling3_api_error_retry",
+                                    error_code=error_code,
+                                    error_msg=error_msg,
+                                    attempt=attempt + 1,
+                                    backoff=backoff,
+                                )
+                                await asyncio.sleep(backoff)
+                                continue
+
+                            if error_code == 401:
+                                raise Exception("Ошибка аутентификации. Проверьте KIE_API_KEY.")
+                            elif error_code == 402:
+                                raise Exception("Недостаточно средств на аккаунте Kie.ai.")
+                            elif error_code == 429:
+                                raise Exception("Превышен лимит запросов. Попробуйте позже.")
+                            else:
+                                raise Exception(f"Kie.ai API error ({error_code}): {error_msg}")
+
+                        task_id = data.get("data", {}).get("taskId")
+                        if not task_id:
+                            raise Exception("No taskId in API response")
+
+                        return task_id
+
+            except aiohttp.ClientError as e:
+                if attempt < max_retries:
+                    backoff = 2 ** (attempt + 1)
+                    logger.warning(
+                        "kling3_network_error_retry",
+                        error=str(e),
+                        attempt=attempt + 1,
+                        backoff=backoff,
+                    )
+                    await asyncio.sleep(backoff)
+                    continue
+                raise Exception(f"Kie.ai API network error after {max_retries} retries: {e}")
 
     async def _poll_task_status(
         self,
