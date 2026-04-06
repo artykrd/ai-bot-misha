@@ -44,16 +44,24 @@ class LoggingMiddleware(BaseMiddleware):
             result = await handler(event, data)
             return result
         except TelegramBadRequest as e:
-            if "query is too old" in str(e):
+            error_str = str(e)
+            if "query is too old" in error_str:
                 logger.warning(
                     "callback_query_expired",
                     user_id=event.from_user.id if hasattr(event, 'from_user') and event.from_user else None,
                     event_type=type(event).__name__,
                 )
                 return None
+            if "MESSAGE_ID_INVALID" in error_str or "message to edit not found" in error_str:
+                logger.warning(
+                    "message_id_invalid",
+                    user_id=event.from_user.id if hasattr(event, 'from_user') and event.from_user else None,
+                    event_type=type(event).__name__,
+                )
+                return None
             logger.error(
                 "handler_error",
-                error=str(e),
+                error=error_str,
                 event_type=type(event).__name__
             )
             raise

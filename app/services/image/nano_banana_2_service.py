@@ -553,7 +553,7 @@ class NanoBanana2Service(BaseImageProvider):
         self,
         task_id: str,
         progress_callback: Optional[Callable[[str], Awaitable[None]]] = None,
-        max_wait_time: int = 300,
+        max_wait_time: int = 600,
         poll_interval: int = 5,
     ) -> str:
         """
@@ -578,7 +578,7 @@ class NanoBanana2Service(BaseImageProvider):
             while True:
                 elapsed = time.time() - start_time
                 if elapsed > max_wait_time:
-                    raise Exception("Таймаут генерации изображения (5 минут)")
+                    raise Exception("Таймаут генерации изображения (10 минут)")
 
                 try:
                     async with session.get(
