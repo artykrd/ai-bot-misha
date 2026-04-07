@@ -145,7 +145,7 @@ async def create_kling3_video_job(
             job = await job_service.create_job(
                 user_id=user.id,
                 provider="kling3",
-                model_id="kling-3.0/video",
+                model_id="kling-v3-omni",
                 prompt=prompt,
                 input_data=input_data,
                 chat_id=message.chat.id,
