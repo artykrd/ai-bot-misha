@@ -1,5 +1,5 @@
 """
-Kling O1 (Omni Video) generation service via Kie.ai API.
+Kling O1 (Omni Video) generation service via official Kling API.
 
 Supports:
 - Text-to-video
@@ -8,12 +8,13 @@ Supports:
 - Video feature reference
 
 API model: kling-video-o1
-Uses Kie.ai's /api/v1/jobs/createTask endpoint.
+Uses /v1/videos/omni-video endpoint with JWT authentication.
 """
 import time
 import asyncio
 import base64
 import re
+import jwt
 from typing import Optional, Callable, Awaitable, List, Dict
 from pathlib import Path
 
@@ -25,19 +26,15 @@ from app.services.video.base import BaseVideoProvider, VideoResponse
 
 logger = get_logger(__name__)
 
-# Model name for Kie.ai API
-# Note: Kie.ai may update model names. If this fails, check their docs for current names.
-KLING_O1_MODEL = "kling-v2-master"
+# Official Kling API
+OFFICIAL_API_URL = "https://api-singapore.klingai.com"
 
-# Callback URL for async notifications
-KLING_O1_CALLBACK_URL = "https://mikhail-bot.archy-tech.ru/api/kling_o1_callback"
+# Model name for official API
+KLING_O1_MODEL = "kling-video-o1"
 
 # Max images: 4 with video, 7 without
 MAX_IMAGES_WITH_VIDEO = 4
 MAX_IMAGES_WITHOUT_VIDEO = 7
-
-# Max video size for base64 encoding (10MB limit to avoid huge payloads)
-MAX_VIDEO_BASE64_SIZE = 10 * 1024 * 1024
 
 
 def translate_mentions_to_api_format(prompt: str) -> str:
@@ -48,9 +45,6 @@ def translate_mentions_to_api_format(prompt: str) -> str:
     - @Video1, @video1 → <<<video_1>>>
     - @Image1, @image1 → <<<image_1>>>
     - @Element1, @element1 → <<<image_N>>> (elements are passed as images)
-
-    Elements are placed before plain images in image_list, so @Element1 maps
-    to <<<image_1>>> if element 1 is at index 0, etc.
     """
     def _make_video_ref(m: re.Match) -> str:
         return "<<<video_" + m.group(1) + ">>>"
@@ -72,11 +66,11 @@ def translate_mentions_to_api_format(prompt: str) -> str:
 
 class KlingO1Service(BaseVideoProvider):
     """
-    Kling O1 (Omni Video) API integration via Kie.ai.
+    Kling O1 (Omni Video) API integration via official Kling platform.
 
     Two-step flow:
-    1. POST /api/v1/jobs/createTask → returns taskId
-    2. Poll GET /api/v1/jobs/recordInfo?taskId=... until state=success
+    1. POST /v1/videos/omni-video → returns task_id
+    2. Poll GET /v1/videos/omni-video/{task_id} until task_status=succeed
 
     Supports:
     - Text-to-video (prompt only)
@@ -86,25 +80,59 @@ class KlingO1Service(BaseVideoProvider):
     - Mixed: video + images + prompt
 
     Modes: std (1080p), pro (4K)
-    Duration: 5, 10 seconds
-    Aspect ratios: 1:1, 16:9, 9:16 (not applicable for video editing)
+    Duration: 3-10 seconds
+    Aspect ratios: 1:1, 16:9, 9:16
     """
 
-    BASE_URL = "https://api.kie.ai"
+    def __init__(
+        self,
+        access_key: Optional[str] = None,
+        secret_key: Optional[str] = None,
+    ):
+        self.access_key = access_key or getattr(settings, 'kling_access_key', None)
+        self.secret_key = secret_key or getattr(settings, 'kling_secret_key', None)
+        self.base_url = OFFICIAL_API_URL
 
-    def __init__(self, api_key: Optional[str] = None):
-        super().__init__(api_key or getattr(settings, 'kie_api_key', None) or "")
-        if not self.api_key:
-            logger.warning("kie_api_key_missing_for_kling_o1")
+        if not self.access_key or not self.secret_key:
+            logger.warning("kling_o1_official_keys_missing")
 
-    def _get_auth_headers(self) -> dict:
-        return {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}"
+        super().__init__(self.access_key or "")
+
+        self._jwt_token = None
+        self._jwt_expires_at = 0
+
+    def _generate_jwt_token(self) -> str:
+        """Generate JWT token for official Kling API authentication."""
+        if not self.access_key or not self.secret_key:
+            raise ValueError("Kling access_key and secret_key are required")
+
+        current_time = int(time.time())
+
+        if self._jwt_token and current_time < (self._jwt_expires_at - 300):
+            return self._jwt_token
+
+        headers = {"alg": "HS256", "typ": "JWT"}
+        payload = {
+            "iss": self.access_key,
+            "exp": current_time + 1800,
+            "nbf": current_time - 5,
         }
 
-    async def _image_to_base64_url(self, image_path: str) -> str:
-        """Convert local image file to base64 data URL."""
+        token = jwt.encode(payload, self.secret_key, algorithm="HS256", headers=headers)
+        self._jwt_token = token
+        self._jwt_expires_at = current_time + 1800
+
+        return token
+
+    def _get_auth_headers(self) -> dict:
+        token = self._generate_jwt_token()
+        return {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}",
+        }
+
+    async def _image_to_base64(self, image_path: str) -> str:
+        """Convert local image file to raw base64 string (no data: prefix)."""
         path = Path(image_path)
         if not path.exists():
             raise FileNotFoundError(f"Image not found: {image_path}")
@@ -112,41 +140,7 @@ class KlingO1Service(BaseVideoProvider):
         with open(path, "rb") as f:
             image_data = f.read()
 
-        ext = path.suffix.lower()
-        mime_map = {
-            ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg",
-            ".png": "image/png",
-            ".webp": "image/webp",
-        }
-        mime_type = mime_map.get(ext, "image/jpeg")
-        b64 = base64.b64encode(image_data).decode("utf-8")
-        return f"data:{mime_type};base64,{b64}"
-
-    async def _video_to_base64_url(self, video_path: str) -> Optional[str]:
-        """
-        Convert local video file to base64 data URL.
-        Returns None if file is too large for base64 encoding.
-        """
-        path = Path(video_path)
-        if not path.exists():
-            raise FileNotFoundError(f"Video not found: {video_path}")
-
-        file_size = path.stat().st_size
-        if file_size > MAX_VIDEO_BASE64_SIZE:
-            return None  # Too large for base64
-
-        with open(path, "rb") as f:
-            video_data = f.read()
-
-        ext = path.suffix.lower()
-        mime_map = {
-            ".mp4": "video/mp4",
-            ".mov": "video/quicktime",
-        }
-        mime_type = mime_map.get(ext, "video/mp4")
-        b64 = base64.b64encode(video_data).decode("utf-8")
-        return f"data:{mime_type};base64,{b64}"
+        return base64.b64encode(image_data).decode("utf-8")
 
     async def generate_video(
         self,
@@ -156,7 +150,7 @@ class KlingO1Service(BaseVideoProvider):
         **kwargs
     ) -> VideoResponse:
         """
-        Generate video using Kling O1 via Kie.ai API.
+        Generate video using Kling O1 via official API.
 
         Args:
             prompt: Video generation prompt (can contain @mentions)
@@ -167,7 +161,7 @@ class KlingO1Service(BaseVideoProvider):
                 - video_url: Public URL of reference/base video
                 - video_is_base: True=video editing, False=feature reference
                 - keep_original_sound: 'yes' or 'no' (default 'yes')
-                - duration: Video duration (5 or 10 seconds)
+                - duration: Video duration (3-10 seconds)
                 - aspect_ratio: Aspect ratio (1:1, 16:9, 9:16)
                 - mode: Resolution mode ('std' for 1080p, 'pro' for 4K)
 
@@ -184,10 +178,10 @@ class KlingO1Service(BaseVideoProvider):
         aspect_ratio = kwargs.get("aspect_ratio", "1:1")
         mode = kwargs.get("mode", "std")
 
-        if not self.api_key:
+        if not self.access_key or not self.secret_key:
             return VideoResponse(
                 success=False,
-                error="Kie.ai API ключ не настроен для Kling O1",
+                error="Kling API ключи не настроены для Kling O1",
                 processing_time=time.time() - start_time
             )
 
@@ -227,7 +221,7 @@ class KlingO1Service(BaseVideoProvider):
                 await progress_callback("⏳ Видео добавлено в очередь на обработку...")
 
             # Poll for result
-            video_url_result = await self._poll_task_status(
+            video_result_url, video_id = await self._poll_task_status(
                 task_id=task_id,
                 progress_callback=progress_callback,
             )
@@ -237,7 +231,7 @@ class KlingO1Service(BaseVideoProvider):
                 await progress_callback("📥 Скачиваю готовое видео...")
 
             filename = self._generate_filename("mp4")
-            video_path = await self._download_file(video_url_result, filename)
+            video_path = await self._download_file(video_result_url, filename)
 
             processing_time = time.time() - start_time
 
@@ -260,6 +254,7 @@ class KlingO1Service(BaseVideoProvider):
                     "provider": "kling_o1",
                     "model": KLING_O1_MODEL,
                     "task_id": task_id,
+                    "video_id": video_id,
                     "mode": mode,
                     "duration": duration,
                     "aspect_ratio": aspect_ratio,
@@ -296,17 +291,16 @@ class KlingO1Service(BaseVideoProvider):
         aspect_ratio: str,
         mode: str,
     ) -> dict:
-        """Build API request payload for Kling O1."""
+        """Build API request payload for Kling O1 official API."""
         if mode not in ("std", "pro"):
             logger.warning("kling_o1_invalid_mode", mode=mode)
             mode = "std"
 
-        if duration not in (5, 10):
+        if duration not in range(3, 11):
             logger.warning("kling_o1_invalid_duration", duration=duration)
             duration = 5
 
-        # Base input
-        input_data: Dict = {
+        payload: Dict = {
             "model_name": KLING_O1_MODEL,
             "prompt": prompt,
             "mode": mode,
@@ -314,87 +308,118 @@ class KlingO1Service(BaseVideoProvider):
 
         # Duration and aspect_ratio: not applicable for video editing (base type)
         if not (video_url and video_is_base):
-            input_data["duration"] = str(duration)
-            input_data["aspect_ratio"] = aspect_ratio
+            payload["duration"] = str(duration)
+            payload["aspect_ratio"] = aspect_ratio
 
         # Add image_list if images provided
         if images:
             image_list = []
             for img_path in images:
                 try:
-                    b64_url = await self._image_to_base64_url(img_path)
-                    image_list.append({"image_url": b64_url})
+                    b64 = await self._image_to_base64(img_path)
+                    image_list.append({"image_url": b64})
                 except Exception as e:
                     logger.warning("kling_o1_image_encode_failed", path=img_path, error=str(e))
             if image_list:
-                input_data["image_list"] = image_list
+                payload["image_list"] = image_list
 
         # Add video_list if video provided
         if video_url:
             refer_type = "base" if video_is_base else "feature"
-            input_data["video_list"] = [
+            payload["video_list"] = [
                 {
                     "video_url": video_url,
                     "refer_type": refer_type,
                     "keep_original_sound": keep_original_sound,
                 }
             ]
-
-        payload = {
-            "model": KLING_O1_MODEL,
-            "input": input_data,
-        }
+            # When video is present, sound must be off
+            payload["sound"] = "off"
 
         return payload
 
     async def _create_task(self, payload: dict) -> str:
-        """Create a generation task via Kie.ai API."""
-        url = f"{self.BASE_URL}/api/v1/jobs/createTask"
+        """Create a generation task via official Kling API."""
+        url = f"{self.base_url}/v1/videos/omni-video"
         timeout = aiohttp.ClientTimeout(total=60)
+        max_retries = 3
 
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(
-                url,
-                headers=self._get_auth_headers(),
-                json=payload
-            ) as response:
-                data = await response.json()
+        for attempt in range(max_retries + 1):
+            try:
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.post(
+                        url,
+                        headers=self._get_auth_headers(),
+                        json=payload
+                    ) as response:
+                        response_status = response.status
 
-                if data.get("code") != 200:
-                    error_msg = data.get("msg") or data.get("message") or "Unknown error"
-                    error_code = data.get("code", "unknown")
+                        if response_status >= 500 and attempt < max_retries:
+                            response_text = await response.text()
+                            backoff = 2 ** (attempt + 1)
+                            logger.warning(
+                                "kling_o1_server_error_retry",
+                                status=response_status,
+                                attempt=attempt + 1,
+                                backoff=backoff,
+                                response=response_text[:300],
+                            )
+                            await asyncio.sleep(backoff)
+                            continue
 
-                    if error_code == 401:
-                        raise Exception("Ошибка аутентификации. Проверьте KIE_API_KEY.")
-                    elif error_code == 402:
-                        raise Exception("Недостаточно средств на аккаунте Kie.ai.")
-                    elif error_code == 429:
-                        raise Exception("Превышен лимит запросов. Попробуйте позже.")
-                    else:
-                        raise Exception(f"Kie.ai API error ({error_code}): {error_msg}")
+                        if response_status == 401:
+                            self._jwt_token = None
+                            self._jwt_expires_at = 0
+                            error_text = await response.text()
+                            raise Exception(f"Ошибка аутентификации. Проверьте ключи API. ({error_text})")
 
-                task_id = data.get("data", {}).get("taskId")
-                if not task_id:
-                    raise Exception("No taskId in API response")
+                        if response_status == 429:
+                            error_text = await response.text()
+                            raise Exception(f"Превышен лимит запросов или недостаточно средств. ({error_text})")
 
-                return task_id
+                        if response_status not in [200, 201]:
+                            error_text = await response.text()
+                            raise Exception(f"Kling API error: {response_status} - {error_text}")
+
+                        data = await response.json()
+
+                        task_id = data.get("data", {}).get("task_id")
+                        if not task_id:
+                            raise Exception(f"No task_id in API response: {data}")
+
+                        return task_id
+
+            except aiohttp.ClientError as e:
+                if attempt < max_retries:
+                    backoff = 2 ** (attempt + 1)
+                    logger.warning(
+                        "kling_o1_network_error_retry",
+                        error=str(e),
+                        attempt=attempt + 1,
+                        backoff=backoff,
+                    )
+                    await asyncio.sleep(backoff)
+                    continue
+                raise Exception(f"Kling API network error after {max_retries} retries: {e}")
+
+        raise Exception("Kling API: max retries exceeded")
 
     async def _poll_task_status(
         self,
         task_id: str,
         progress_callback: Optional[Callable[[str], Awaitable[None]]] = None,
         max_wait_time: int = 1200,
-        poll_interval: int = 10,
-    ) -> str:
+        poll_interval: int = 5,
+    ) -> tuple:
         """
         Poll task status until completion.
 
         Returns:
-            Video URL from resultJson
+            Tuple of (video_url, video_id)
         """
-        url = f"{self.BASE_URL}/api/v1/jobs/recordInfo"
+        url = f"{self.base_url}/v1/videos/omni-video/{task_id}"
         start_time = time.time()
-        last_state = None
+        last_status = None
         retry_count = 0
         max_retries = 4
 
@@ -406,9 +431,14 @@ class KlingO1Service(BaseVideoProvider):
                 try:
                     async with session.get(
                         url,
-                        headers=self._get_auth_headers(),
-                        params={"taskId": task_id}
+                        headers=self._get_auth_headers()
                     ) as response:
+                        if response.status == 401:
+                            self._jwt_token = None
+                            self._jwt_expires_at = 0
+                            await asyncio.sleep(poll_interval)
+                            continue
+
                         if response.status != 200:
                             error_text = await response.text()
                             raise Exception(
@@ -416,47 +446,34 @@ class KlingO1Service(BaseVideoProvider):
                             )
 
                         data = await response.json()
-
-                        if data.get("code") != 200:
-                            error_msg = data.get("msg", "Unknown error")
-                            raise Exception(f"Status API error: {error_msg}")
-
                         task_data = data.get("data", {})
-                        state = task_data.get("state", "unknown")
+                        status = task_data.get("task_status", "unknown")
+                        status_msg = task_data.get("task_status_msg", "")
 
-                        if state != last_state and progress_callback:
-                            if state == "waiting":
+                        if status != last_status and progress_callback:
+                            if status in ["submitted", "pending", "queued"]:
+                                await progress_callback("⏳ Видео в очереди...")
+                            elif status in ["processing", "running"]:
                                 elapsed = int(time.time() - start_time)
                                 await progress_callback(
                                     f"⚙️ Обрабатываю видео Kling O1... ({elapsed}с)"
                                 )
 
-                        last_state = state
+                        last_status = status
                         retry_count = 0
 
-                        if state == "success":
-                            import json
-                            result_json_str = task_data.get("resultJson", "{}")
-                            try:
-                                result_json = (
-                                    json.loads(result_json_str)
-                                    if isinstance(result_json_str, str)
-                                    else result_json_str
-                                )
-                            except json.JSONDecodeError:
-                                raise Exception("Ошибка разбора результата генерации")
+                        if status in ["succeed", "completed"]:
+                            videos = task_data.get("task_result", {}).get("videos", [])
+                            if videos:
+                                video_url = videos[0].get("url")
+                                video_id = videos[0].get("id")
+                                return (video_url, video_id)
+                            raise Exception("URL видео не найден в ответе")
 
-                            result_urls = result_json.get("resultUrls", [])
-                            if not result_urls:
-                                raise Exception("URL видео не найден в ответе")
-
-                            return result_urls[0]
-
-                        if state == "fail":
-                            fail_msg = task_data.get("failMsg") or "Неизвестная ошибка"
-                            fail_code = task_data.get("failCode") or ""
+                        if status in ["failed", "error"]:
+                            fail_msg = status_msg or "Неизвестная ошибка"
                             raise Exception(
-                                f"Генерация не удалась: {fail_msg} ({fail_code})"
+                                f"Генерация не удалась: {fail_msg}"
                             )
 
                 except aiohttp.ClientError as e:
@@ -489,11 +506,11 @@ class KlingO1Service(BaseVideoProvider):
         mode: str = "std",
     ) -> str:
         """
-        Create task and return taskId without waiting for result.
+        Create task and return task_id without waiting for result.
         Used for callback-based async flow.
         """
-        if not self.api_key:
-            raise Exception("Kie.ai API ключ не настроен для Kling O1")
+        if not self.access_key or not self.secret_key:
+            raise Exception("Kling API ключи не настроены для Kling O1")
 
         api_prompt = translate_mentions_to_api_format(prompt)
 
@@ -507,7 +524,5 @@ class KlingO1Service(BaseVideoProvider):
             aspect_ratio=aspect_ratio,
             mode=mode,
         )
-
-        payload["callBackUrl"] = KLING_O1_CALLBACK_URL
 
         return await self._create_task(payload)

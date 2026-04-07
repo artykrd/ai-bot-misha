@@ -816,7 +816,7 @@ class KlingService(BaseVideoProvider):
         image_base64 = await self._image_to_base64(image_path)
 
         payload = {
-            "imageUrl": image_base64,
+            "image_url": image_base64,
             "video_url": video_url,
             "mode": mode,
             "character_orientation": character_orientation,
