@@ -184,6 +184,13 @@ class Kling3Service(BaseVideoProvider):
             error_msg = str(e)
             logger.error("kling3_generation_failed", error=error_msg)
 
+            # User-friendly messages for server errors
+            if "500" in error_msg and "Server exception" in error_msg:
+                error_msg = (
+                    "⚠️ Сервер Kling 3.0 временно недоступен.\n"
+                    "Попробуйте повторить запрос через несколько минут."
+                )
+
             if progress_callback:
                 await progress_callback(f"❌ Ошибка: {error_msg}")
 
