@@ -5387,11 +5387,16 @@ async def kling_mc_receive_video_file(message: Message, state: FSMContext, user:
         )
         return
 
-    # Kling API limit: video duration must be 3-30 seconds
-    if video.duration and video.duration > 30:
+    # Kling API limit: video duration depends on character_orientation
+    data = await state.get_data()
+    orientation = data.get("kling_mc_orientation", "image")
+    max_duration = 10 if orientation == "image" else 30
+
+    if video.duration and video.duration > max_duration:
         await message.answer(
             f"⚠️ Видео слишком длинное ({video.duration} сек).\n\n"
-            f"Kling Motion Control поддерживает видео длительностью от 3 до 30 секунд.\n"
+            f"При ориентации персонажа «{'по изображению' if orientation == 'image' else 'по видео'}» "
+            f"максимальная длительность — {max_duration} секунд.\n"
             f"Пожалуйста, обрежьте видео и отправьте снова."
         )
         return
