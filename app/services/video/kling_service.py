@@ -780,6 +780,7 @@ class KlingService(BaseVideoProvider):
             "No complete upper body detected in the video": "В видео не обнаружена верхняя часть тела. Убедитесь, что верхняя часть тела полностью видна",
             "ensure the upper body is clearly visible": "",
             "The input was rejected": "Входные данные были отклонены",
+            "The character in the reference image or the first frame of the motion video is invalid": "Персонаж на изображении или в первом кадре видео не распознан. Убедитесь, что на фото видно верхнюю часть тела или полную фигуру (включая голову и конечности), персонаж занимает достаточную площадь кадра и не перекрыт другими объектами",
             "No face detected": "Лицо не обнаружено. Убедитесь, что лицо чётко видно на изображении",
             "No human detected": "Человек не обнаружен на изображении",
             "Image resolution is too low": "Разрешение изображения слишком низкое",
@@ -800,6 +801,30 @@ class KlingService(BaseVideoProvider):
 
         return translated.strip() if translated.strip() else error_msg
 
+    def _validate_motion_control_image(self, image_path: str) -> None:
+        """Validate image meets Kling Motion Control requirements."""
+        from PIL import Image as PILImage
+
+        img = PILImage.open(image_path)
+        width, height = img.size
+
+        # Minimum dimension: 300px
+        if width < 300 or height < 300:
+            raise ValueError(
+                f"Изображение слишком маленькое ({width}x{height}). "
+                f"Минимальный размер — 300x300 пикселей. "
+                f"Отправьте фото в большем разрешении или как файл (документ)."
+            )
+
+        # Aspect ratio: 1:2.5 ~ 2.5:1
+        aspect = max(width, height) / min(width, height)
+        if aspect > 2.5:
+            raise ValueError(
+                f"Неподходящее соотношение сторон изображения ({width}x{height}). "
+                f"Допустимое соотношение — от 1:2.5 до 2.5:1. "
+                f"Используйте менее вытянутое изображение."
+            )
+
     async def _create_motion_control_task(
         self,
         image_path: str,
@@ -812,20 +837,20 @@ class KlingService(BaseVideoProvider):
         """Create motion control task via Kling API."""
         url = f"{self.base_url}/v1/videos/motion-control"
 
+        # Validate image before sending
+        self._validate_motion_control_image(image_path)
+
         # Convert image to base64
         image_base64 = await self._image_to_base64(image_path)
 
         payload = {
+            "model_name": "kling-v2-6",
             "image_url": image_base64,
             "video_url": video_url,
             "mode": mode,
             "character_orientation": character_orientation,
             "keep_original_sound": keep_original_sound,
         }
-
-        # For character_orientation='image', video duration must not exceed 10 seconds
-        if character_orientation == "image":
-            payload["duration"] = "10"
 
         if prompt:
             payload["prompt"] = prompt[:2500]
