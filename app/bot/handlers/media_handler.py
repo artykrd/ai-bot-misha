@@ -164,6 +164,7 @@ async def send_video_safe(
                         f"📥 Видео ({size_mb} МБ) превышает лимит Telegram.\n"
                         f"Скачайте по ссылке (действует 1 час):\n{download_url}",
                         reply_markup=reply_markup,
+                        parse_mode=None,
                     )
                     return True
                 except Exception as link_e:
@@ -171,6 +172,7 @@ async def send_video_safe(
                     await message.answer(
                         f"{caption}\n\n⚠️ Видео слишком большое для отправки через Telegram ({size_mb} МБ).",
                         reply_markup=reply_markup,
+                        parse_mode=None,
                     )
                     return False
 
@@ -208,11 +210,27 @@ async def send_video_safe(
                         return True
                     except Exception as doc_e:
                         logger.error("video_send_all_failed", error=str(doc_e), size=file_size)
-                        await message.answer(
-                            f"{caption}\n\n⚠️ Не удалось отправить видео. Попробуйте позже.",
-                            reply_markup=reply_markup,
-                        )
-                        return False
+                        # Last resort: send download link
+                        try:
+                            from app.api.file_download import create_download_token, get_download_url
+                            size_mb = file_size // (1024 * 1024)
+                            token = create_download_token(actual_video_path)
+                            download_url = get_download_url(token)
+                            await message.answer(
+                                f"{caption}\n\n"
+                                f"📥 Видео ({size_mb} МБ) превышает лимит Telegram.\n"
+                                f"Скачайте по ссылке (действует 1 час):\n{download_url}",
+                                reply_markup=reply_markup,
+                                parse_mode=None,
+                            )
+                            return True
+                        except Exception:
+                            await message.answer(
+                                f"{caption}\n\n⚠️ Не удалось отправить видео. Попробуйте позже.",
+                                reply_markup=reply_markup,
+                                parse_mode=None,
+                            )
+                            return False
         return False
     finally:
         # Clean up compressed file if we created one

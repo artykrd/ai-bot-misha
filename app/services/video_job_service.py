@@ -325,6 +325,7 @@ class VideoJobService:
                                 f"Скачайте по ссылке (действует 1 час):\n{download_url}"
                             ),
                             reply_markup=reply_markup,
+                            parse_mode=None,
                         )
                     except Exception as link_e:
                         logger.error("video_job_download_link_failed", error=str(link_e), job_id=job.id)
@@ -332,6 +333,7 @@ class VideoJobService:
                             chat_id=job.chat_id,
                             text=f"{caption}\n\n⚠️ Не удалось отправить видео ({size_mb} МБ). Файл превышает лимит Telegram.",
                             reply_markup=reply_markup,
+                            parse_mode=None,
                         )
 
                 # Delete progress message
