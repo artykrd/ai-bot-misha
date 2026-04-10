@@ -1100,6 +1100,7 @@ async def start_nano(callback: CallbackQuery, state: FSMContext, user: User):
         nano_is_pro=False,
         reference_image_path=None,
         reference_image_paths=[],
+        nb_image_urls=[],
         photo_caption_prompt=None,
         multi_images_count=0,
         nano_aspect_ratio=current_ratio  # Preserve existing format or set default
@@ -1147,6 +1148,7 @@ async def start_nano_pro(callback: CallbackQuery, state: FSMContext, user: User)
         nano_is_pro=True,
         reference_image_path=None,
         reference_image_paths=[],
+        nb_image_urls=[],
         photo_caption_prompt=None,
         multi_images_count=0,
         nano_aspect_ratio=current_ratio  # Preserve existing format or set default
@@ -2260,12 +2262,17 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
         reference_image_paths.append(str(temp_path))
         update_data = {"reference_image_paths": reference_image_paths}
 
-        # For NB2: also store Telegram file URL for Kie.ai API
+        # Store Telegram file URL for Kie.ai API (NB and NB2)
         if service_name == "nano_banana_2":
             nb2_image_urls = data.get("nb2_image_urls", [])
             telegram_file_url = f"https://api.telegram.org/file/bot{message.bot.token}/{file.file_path}"
             nb2_image_urls.append(telegram_file_url)
             update_data["nb2_image_urls"] = nb2_image_urls
+        elif service_name == "nano_banana":
+            nb_image_urls = data.get("nb_image_urls", [])
+            telegram_file_url = f"https://api.telegram.org/file/bot{message.bot.token}/{file.file_path}"
+            nb_image_urls.append(telegram_file_url)
+            update_data["nb_image_urls"] = nb_image_urls
 
         await state.update_data(**update_data)
 
@@ -2361,7 +2368,12 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
             cleanup_temp_file(old_reference_path)
 
         # Save NEW image path to state
-        await state.update_data(reference_image_path=str(temp_path))
+        update_data = {"reference_image_path": str(temp_path)}
+        # For Nano Banana: also store Telegram file URL for Kie.ai API
+        if service_name == "nano_banana":
+            telegram_file_url = f"https://api.telegram.org/file/bot{message.bot.token}/{file.file_path}"
+            update_data["nb_image_urls"] = [telegram_file_url]
+        await state.update_data(**update_data)
 
         service_display = {
             "nano_banana": "Nano Banana",
@@ -2671,7 +2683,7 @@ async def process_gemini_image(message: Message, user: User, state: FSMContext):
 
 
 async def process_nano_image(message: Message, user: User, state: FSMContext):
-    """Process Nano Banana (Gemini 2.5 Flash Image or Gemini 3 Pro Image) image generation.
+    """Process Nano Banana image generation via Kie.ai API.
 
     Supports both single and multiple image generation modes.
     """
@@ -2680,6 +2692,7 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
     prompt = data.get("photo_caption_prompt") or message.text
     reference_image_path = data.get("reference_image_path", None)
     reference_image_paths = data.get("reference_image_paths", [])
+    nb_image_urls = data.get("nb_image_urls", [])
     multi_images_count = data.get("multi_images_count", 0)
     nano_is_pro = data.get("nano_is_pro", False)
     aspect_ratio = data.get("nano_aspect_ratio", "auto")
@@ -2893,7 +2906,7 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
                 prompt_start=up[:400]
             )
 
-        async def generate_single_image(index: int, image_prompt: str, ref_image: str = None):
+        async def generate_single_image(index: int, image_prompt: str, ref_image: str = None, img_urls: list = None):
             """Generate a single image with unique prompt."""
             try:
                 result = await nano_service.generate_image(
@@ -2901,7 +2914,8 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
                     model=model,
                     progress_callback=None,  # Disable individual progress for parallel generation
                     aspect_ratio=aspect_ratio,
-                    reference_image_path=ref_image
+                    reference_image_path=ref_image,
+                    image_urls=img_urls or [],
                 )
                 return (index, result, ref_image)
             except Exception as e:
@@ -2920,9 +2934,10 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
         if reference_image_paths:
             # Use same reference for all images to keep bottle/product identical
             ref_path = reference_image_paths[0]
+            ref_urls = nb_image_urls[:1] if nb_image_urls else []
             for idx in range(images_to_generate):
                 task_prompt = unique_prompts[idx] if idx < len(unique_prompts) else prompt
-                tasks.append(generate_single_image(idx, task_prompt, ref_path))
+                tasks.append(generate_single_image(idx, task_prompt, ref_path, ref_urls))
         else:
             # No reference images: generate all as text-to-image with unique prompts
             for idx in range(images_to_generate):
@@ -3017,7 +3032,8 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
         model=model,
         progress_callback=update_progress,
         aspect_ratio=aspect_ratio,
-        reference_image_path=reference_image_path or (reference_image_paths[0] if reference_image_paths else None)
+        reference_image_path=reference_image_path or (reference_image_paths[0] if reference_image_paths else None),
+        image_urls=nb_image_urls,
     )
 
     if result.success:
