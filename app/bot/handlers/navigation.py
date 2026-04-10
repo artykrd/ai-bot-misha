@@ -407,7 +407,8 @@ PRO-режим: отключен
     await state.update_data(
         service="nano_banana",
         nano_aspect_ratio=current_ratio,  # Preserve existing format or set default
-        nano_is_pro=False
+        nano_is_pro=False,
+        nb_image_urls=[],
     )
 
     # Use answer() instead of edit_text() because callback may come from media message
@@ -552,6 +553,7 @@ async def nano_multi_count_selected(callback: CallbackQuery, state: FSMContext):
         service="nano_banana",
         multi_images_count=count,
         reference_image_paths=[],  # List for multiple reference images
+        nb_image_urls=[],
         photo_caption_prompt=None
     )
 
