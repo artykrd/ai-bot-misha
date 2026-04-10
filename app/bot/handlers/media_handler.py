@@ -39,7 +39,8 @@ from app.bot.keyboards.inline import (
     nano_format_keyboard,
     nano_multi_images_keyboard,
     seedream_keyboard,
-    seedream_size_keyboard,
+    seedream_resolution_keyboard,
+    seedream_aspect_ratio_keyboard,
     seedream_batch_count_keyboard,
     seedream_back_keyboard,
     seedream5_keyboard,
@@ -5988,7 +5989,8 @@ async def _show_seedream_menu(callback: CallbackQuery, state: FSMContext, user: 
     """Show Seedream 4.5 menu with current settings."""
     # Get current settings from state
     data = await state.get_data()
-    current_size = data.get("seedream_size", "2K")
+    current_resolution = data.get("seedream_resolution", "2K")
+    current_aspect_ratio = data.get("seedream_aspect_ratio", "auto")
     batch_mode = data.get("seedream_batch_mode", False)
     batch_count = data.get("seedream_batch_count", 3)
 
@@ -6012,7 +6014,8 @@ async def _show_seedream_menu(callback: CallbackQuery, state: FSMContext, user: 
 
     text += (
         f"\n⚙️ **Текущие настройки:**\n"
-        f"• Разрешение: {current_size}\n"
+        f"• Разрешение: {current_resolution}\n"
+        f"• Формат: {current_aspect_ratio}\n"
         f"• Пакетная генерация: {'ВКЛ (' + str(batch_count) + ' шт.)' if batch_mode else 'ВЫКЛ'}\n\n"
         f"💰 **Стоимость:** {format_token_amount(tokens_per_image)} токенов за изображение\n"
         f"🔹 Токенов хватит на **{requests_available}** изображений\n\n"
@@ -6025,12 +6028,15 @@ async def _show_seedream_menu(callback: CallbackQuery, state: FSMContext, user: 
     await state.update_data(
         service="seedream",
         seedream_version="4.5",
-        seedream_size=current_size,
+        seedream_resolution=current_resolution,
+        seedream_aspect_ratio=current_aspect_ratio,
         seedream_batch_mode=batch_mode,
         seedream_batch_count=batch_count,
         reference_image_path=None,
         photo_caption_prompt=None
     )
+
+    keyboard = seedream_keyboard(current_resolution, current_aspect_ratio, batch_mode)
 
     # Check if message has photo (can't edit_text on photo messages)
     try:
@@ -6038,54 +6044,87 @@ async def _show_seedream_menu(callback: CallbackQuery, state: FSMContext, user: 
             # Message is a photo - send new message instead of editing
             await callback.message.answer(
                 text,
-                reply_markup=seedream_keyboard(current_size, batch_mode),
+                reply_markup=keyboard,
                 parse_mode="Markdown"
             )
         else:
             await callback.message.edit_text(
                 text,
-                reply_markup=seedream_keyboard(current_size, batch_mode),
+                reply_markup=keyboard,
                 parse_mode="Markdown"
             )
     except Exception:
         # Fallback: send new message if edit fails
         await callback.message.answer(
             text,
-            reply_markup=seedream_keyboard(current_size, batch_mode),
+            reply_markup=keyboard,
             parse_mode="Markdown"
         )
     await callback.answer()
 
 
-@router.callback_query(F.data == "seedream.settings.size")
-async def seedream_size_settings(callback: CallbackQuery, state: FSMContext):
-    """Show Seedream size selection."""
+@router.callback_query(F.data == "seedream.settings.resolution")
+async def seedream_resolution_settings(callback: CallbackQuery, state: FSMContext):
+    """Show Seedream resolution selection."""
     data = await state.get_data()
-    current_size = data.get("seedream_size", "2K")
+    current_resolution = data.get("seedream_resolution", "2K")
 
     text = (
         f"📐 **Выберите разрешение изображения**\n\n"
-        f"• **2K/4K** — автоматический размер по описанию\n"
-        f"• **1:1, 16:9, 9:16...** — конкретное соотношение сторон\n\n"
-        f"Текущий выбор: **{current_size}**"
+        f"• **2K** — стандартное качество\n"
+        f"• **4K** — высокое качество\n\n"
+        f"Текущий выбор: **{current_resolution}**"
     )
 
     await callback.message.edit_text(
         text,
-        reply_markup=seedream_size_keyboard(current_size),
+        reply_markup=seedream_resolution_keyboard(current_resolution),
         parse_mode="Markdown"
     )
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("seedream.set.size|"))
-async def seedream_set_size(callback: CallbackQuery, state: FSMContext, user: User):
-    """Set Seedream size."""
-    parts = callback.data.split("|")
-    new_size = parts[1]
+@router.callback_query(F.data.startswith("seedream.set.resolution|"))
+async def seedream_set_resolution(callback: CallbackQuery, state: FSMContext, user: User):
+    """Set Seedream resolution."""
+    new_resolution = callback.data.split("|")[1]
 
-    await state.update_data(seedream_size=new_size)
-    await callback.answer(f"Разрешение установлено: {new_size}")
+    await state.update_data(seedream_resolution=new_resolution)
+    await callback.answer(f"Разрешение установлено: {new_resolution}")
+
+    await _show_seedream_menu(callback, state, user)
+
+
+@router.callback_query(F.data == "seedream.settings.aspect_ratio")
+async def seedream_aspect_ratio_settings(callback: CallbackQuery, state: FSMContext):
+    """Show Seedream aspect ratio selection."""
+    data = await state.get_data()
+    current_ratio = data.get("seedream_aspect_ratio", "auto")
+
+    text = (
+        f"🖼 **Выберите формат изображения**\n\n"
+        f"**1:1** — квадратное, для соцсетей\n"
+        f"**4:3 / 3:4** — классический фото формат\n"
+        f"**16:9 / 9:16** — широкоэкранный / сторис\n"
+        f"**auto** — автоматический выбор\n\n"
+        f"Текущий выбор: **{current_ratio}**"
+    )
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=seedream_aspect_ratio_keyboard(current_ratio),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("seedream.set.aspect_ratio|"))
+async def seedream_set_aspect_ratio(callback: CallbackQuery, state: FSMContext, user: User):
+    """Set Seedream aspect ratio."""
+    new_ratio = callback.data.split("|")[1]
+
+    await state.update_data(seedream_aspect_ratio=new_ratio)
+    await callback.answer(f"Формат установлен: {new_ratio}")
 
     await _show_seedream_menu(callback, state, user)
 
@@ -6822,7 +6861,9 @@ async def process_seedream_image(message: Message, user: User, state: FSMContext
     """Process Seedream 4.5 image generation."""
     data = await state.get_data()
     prompt = data.get("photo_caption_prompt") or message.text
-    size = data.get("seedream_size", "2K")
+    resolution = data.get("seedream_resolution", "2K")
+    aspect_ratio = data.get("seedream_aspect_ratio", "auto")
+    size = f"{resolution}|{aspect_ratio}"
     batch_mode = data.get("seedream_batch_mode", False)
     batch_count = data.get("seedream_batch_count", 3)
     reference_image_path = data.get("reference_image_path")

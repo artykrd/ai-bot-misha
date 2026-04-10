@@ -36,7 +36,29 @@ logger = get_logger(__name__)
 SEEDREAM_MODEL = "seedream-4-5-251128"
 
 # Available sizes for Seedream 4.5
+# Format: "{resolution}|{aspect_ratio}" -> pixel dimensions
 SEEDREAM_SIZES = {
+    # 2K resolution
+    "2K|auto": "2K",
+    "2K|1:1": "2048x2048",
+    "2K|4:3": "2304x1728",
+    "2K|3:4": "1728x2304",
+    "2K|16:9": "2560x1440",
+    "2K|9:16": "1440x2560",
+    "2K|3:2": "2496x1664",
+    "2K|2:3": "1664x2496",
+    "2K|21:9": "3024x1296",
+    # 4K resolution
+    "4K|auto": "4K",
+    "4K|1:1": "4096x4096",
+    "4K|4:3": "4608x3456",
+    "4K|3:4": "3456x4608",
+    "4K|16:9": "5120x2880",
+    "4K|9:16": "2880x5120",
+    "4K|3:2": "4992x3328",
+    "4K|2:3": "3328x4992",
+    "4K|21:9": "6048x2592",
+    # Backward compatibility (legacy single-key format)
     "2K": "2K",
     "4K": "4K",
     "1:1": "2048x2048",
