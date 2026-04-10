@@ -1349,15 +1349,27 @@ def suno_final_keyboard() -> InlineKeyboardMarkup:
 # SEEDREAM KEYBOARDS
 # =============================================
 
-def seedream_keyboard(current_size: str = "2K", batch_mode: bool = False) -> InlineKeyboardMarkup:
+def seedream_keyboard(
+    current_resolution: str = "2K",
+    current_aspect_ratio: str = "auto",
+    batch_mode: bool = False,
+) -> InlineKeyboardMarkup:
     """Seedream 4.5 main keyboard with settings."""
     builder = InlineKeyboardBuilder()
 
-    # Size selection
+    # Resolution selection
     builder.row(
         InlineKeyboardButton(
-            text=f"📐 Разрешение: {current_size}",
-            callback_data="seedream.settings.size"
+            text=f"📐 Разрешение: {current_resolution}",
+            callback_data="seedream.settings.resolution"
+        )
+    )
+
+    # Aspect ratio selection
+    builder.row(
+        InlineKeyboardButton(
+            text=f"🖼 Формат: {current_aspect_ratio}",
+            callback_data="seedream.settings.aspect_ratio"
         )
     )
 
@@ -1390,37 +1402,54 @@ def seedream_keyboard(current_size: str = "2K", batch_mode: bool = False) -> Inl
     return builder.as_markup()
 
 
-def seedream_size_keyboard(current_size: str = "2K") -> InlineKeyboardMarkup:
-    """Seedream 4.5 size selection keyboard."""
+def seedream_resolution_keyboard(current_resolution: str = "2K") -> InlineKeyboardMarkup:
+    """Seedream 4.5 resolution selection keyboard."""
     builder = InlineKeyboardBuilder()
 
-    sizes = [
-        ("2K", "2K"),
-        ("4K", "4K"),
-        ("1:1", "1:1"),
-        ("4:3", "4:3"),
-        ("3:4", "3:4"),
-        ("16:9", "16:9"),
-        ("9:16", "9:16"),
-    ]
+    resolutions = ["2K", "4K"]
 
-    # Add checkmark to current size
-    def format_button_text(size: str) -> str:
-        return f"✅ {size}" if size == current_size else size
+    def format_button_text(res: str) -> str:
+        return f"✅ {res}" if res == current_resolution else res
 
-    # Build in rows of 3
-    for i in range(0, len(sizes), 3):
-        row_buttons = []
-        for j in range(3):
-            if i + j < len(sizes):
-                size_name, size_value = sizes[i + j]
-                row_buttons.append(
-                    InlineKeyboardButton(
-                        text=format_button_text(size_name),
-                        callback_data=f"seedream.set.size|{size_value}"
-                    )
-                )
-        builder.row(*row_buttons)
+    builder.row(
+        *[
+            InlineKeyboardButton(
+                text=format_button_text(res),
+                callback_data=f"seedream.set.resolution|{res}"
+            )
+            for res in resolutions
+        ]
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="⬅️ Назад к Seedream",
+            callback_data="bot.seedream_4.5"
+        )
+    )
+
+    return builder.as_markup()
+
+
+def seedream_aspect_ratio_keyboard(current_ratio: str = "auto") -> InlineKeyboardMarkup:
+    """Seedream 4.5 aspect ratio selection keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    ratios = ["1:1", "4:3", "3:4", "16:9", "9:16", "auto"]
+
+    def format_button_text(ratio: str) -> str:
+        return f"✅ {ratio}" if ratio == current_ratio else ratio
+
+    builder.row(
+        InlineKeyboardButton(text=format_button_text("1:1"), callback_data="seedream.set.aspect_ratio|1:1"),
+        InlineKeyboardButton(text=format_button_text("4:3"), callback_data="seedream.set.aspect_ratio|4:3"),
+        InlineKeyboardButton(text=format_button_text("3:4"), callback_data="seedream.set.aspect_ratio|3:4"),
+    )
+    builder.row(
+        InlineKeyboardButton(text=format_button_text("16:9"), callback_data="seedream.set.aspect_ratio|16:9"),
+        InlineKeyboardButton(text=format_button_text("9:16"), callback_data="seedream.set.aspect_ratio|9:16"),
+        InlineKeyboardButton(text=format_button_text("auto"), callback_data="seedream.set.aspect_ratio|auto"),
+    )
 
     builder.row(
         InlineKeyboardButton(

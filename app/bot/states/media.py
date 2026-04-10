@@ -18,7 +18,7 @@ PERSISTENT_SETTINGS_KEYS = [
     # Kling image settings
     "kling_image_model", "kling_image_aspect_ratio", "kling_image_resolution", "kling_image_auto_translate",
     # Seedream settings
-    "seedream_size", "seedream_batch_mode", "seedream_batch_count",
+    "seedream_resolution", "seedream_aspect_ratio", "seedream_batch_mode", "seedream_batch_count",
     # Seedream 5.0 settings
     "seedream5_size", "seedream5_aspect_ratio", "seedream5_batch_mode", "seedream5_batch_count",
     "seedream5_output_format", "seedream5_optimize_prompt",
