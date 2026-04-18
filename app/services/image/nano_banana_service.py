@@ -260,7 +260,35 @@ class NanoBananaService(BaseImageProvider):
                 )
 
             # User-friendly error messages
-            if "429" in error_msg or "Превышен лимит" in error_msg:
+            if error_msg.startswith("generation_timeout:"):
+                minutes = error_msg.split(":")[1]
+                error_msg = (
+                    f"⏰ Генерация заняла слишком много времени ({minutes} мин).\n\n"
+                    "Возможные причины:\n"
+                    "• Сервис сейчас перегружен — попробуйте позже\n"
+                    "• Сложный запрос — упростите промпт или уменьшите разрешение\n\n"
+                    "Попробуйте снова через несколько минут."
+                )
+            elif error_msg.startswith("generation_fail:"):
+                parts = error_msg.split(":", 2)
+                fail_msg = parts[1] if len(parts) > 1 else ""
+                fail_code = parts[2] if len(parts) > 2 else ""
+                if any(w in fail_msg.lower() for w in ("safety", "policy", "prohibited", "content", "filter")):
+                    error_msg = (
+                        "🛡️ Генерация заблокирована фильтром безопасности Google.\n"
+                        "Попробуйте изменить промпт или использовать другое изображение."
+                    )
+                elif any(w in fail_msg.lower() for w in ("quota", "limit", "credit")):
+                    error_msg = (
+                        "❌ Превышена квота сервиса.\n"
+                        "Попробуйте повторить запрос через несколько минут."
+                    )
+                else:
+                    error_msg = (
+                        f"❌ Генерация не удалась.\n\n"
+                        f"Попробуйте изменить промпт или параметры и повторить запрос."
+                    )
+            elif "429" in error_msg or "Превышен лимит" in error_msg:
                 error_msg = (
                     "❌ Сервис временно перегружен (превышена квота API).\n\n"
                     "Мы уже пробовали несколько раз — пожалуйста, повторите запрос\n"
@@ -491,7 +519,7 @@ class NanoBananaService(BaseImageProvider):
         self,
         task_id: str,
         progress_callback: Optional[Callable[[str], Awaitable[None]]] = None,
-        max_wait_time: int = 600,
+        max_wait_time: int = 1500,
         poll_interval: int = 5,
     ) -> str:
         """
@@ -500,7 +528,7 @@ class NanoBananaService(BaseImageProvider):
         Args:
             task_id: Task ID from createTask response
             progress_callback: Optional progress callback
-            max_wait_time: Maximum wait time in seconds (default 10 minutes)
+            max_wait_time: Maximum wait time in seconds (default 25 minutes)
             poll_interval: Polling interval in seconds
 
         Returns:
@@ -509,6 +537,7 @@ class NanoBananaService(BaseImageProvider):
         url = f"{self.BASE_URL}/api/v1/jobs/recordInfo"
         start_time = time.time()
         last_state = None
+        last_progress_update = -30.0
         retry_count = 0
         max_retries = 4
 
@@ -516,7 +545,7 @@ class NanoBananaService(BaseImageProvider):
             while True:
                 elapsed = time.time() - start_time
                 if elapsed > max_wait_time:
-                    raise Exception("Таймаут генерации изображения (10 минут)")
+                    raise Exception(f"generation_timeout:{int(max_wait_time // 60)}")
 
                 try:
                     async with session.get(
@@ -536,24 +565,24 @@ class NanoBananaService(BaseImageProvider):
 
                         task_data = data.get("data", {})
                         state = task_data.get("state", "unknown")
+                        elapsed_int = int(elapsed)
 
-                        # Update progress on state change
-                        if state != last_state and progress_callback:
-                            elapsed_int = int(elapsed)
+                        # Update on state change OR every 30 seconds
+                        should_update = (state != last_state) or (elapsed - last_progress_update >= 30)
+                        if should_update and progress_callback:
+                            last_progress_update = elapsed
                             state_messages = {
-                                "waiting": f"⏳ В очереди... ({elapsed_int}с)",
-                                "queuing": f"⏳ В очереди на генерацию... ({elapsed_int}с)",
-                                "generating": f"🎨 Генерирую изображение... ({elapsed_int}с)",
+                                "waiting": f"⏳ В очереди... ({elapsed_int}с)\nСложные изображения могут занять до 20 мин",
+                                "queuing": f"⏳ В очереди на генерацию... ({elapsed_int}с)\nСложные изображения могут занять до 20 мин",
+                                "generating": f"🎨 Генерирую изображение... ({elapsed_int}с)\nПожалуйста, подождите — это может занять до 20 мин",
                             }
-                            msg = state_messages.get(state)
-                            if msg:
-                                await progress_callback(msg)
+                            msg = state_messages.get(state, f"⏳ Генерация... ({elapsed_int}с)")
+                            await progress_callback(msg)
 
                         last_state = state
                         retry_count = 0
 
                         if state == "success":
-                            # Extract image URL from resultJson
                             result_json_str = task_data.get("resultJson", "{}")
                             try:
                                 result_json = json.loads(result_json_str) if isinstance(result_json_str, str) else result_json_str
@@ -569,7 +598,7 @@ class NanoBananaService(BaseImageProvider):
                         if state == "fail":
                             fail_msg = task_data.get("failMsg") or "Неизвестная ошибка"
                             fail_code = task_data.get("failCode") or ""
-                            raise Exception(f"Генерация не удалась: {fail_msg} ({fail_code})")
+                            raise Exception(f"generation_fail:{fail_msg}:{fail_code}")
 
                 except aiohttp.ClientError as e:
                     retry_count += 1
