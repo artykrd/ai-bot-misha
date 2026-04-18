@@ -2594,12 +2594,16 @@ async def process_dalle_image(message: Message, user: User, state: FSMContext):
         if reference_image_path:
             cleanup_temp_file(reference_image_path)
 
+        # Refund tokens
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            await sub_service.rollback_tokens(user.id, estimated_tokens)
+
         try:
             await progress_msg.edit_text(
-                f"❌ Ошибка генерации изображения:\n{result.error}"
+                f"❌ Ошибка генерации изображения:\n{result.error}\n\nТокены возвращены на ваш счёт."
             )
         except Exception:
-            # Ignore errors when message is not modified
             pass
 
     # Clear state after generation (success or failure)
@@ -2672,12 +2676,16 @@ async def process_gemini_image(message: Message, user: User, state: FSMContext):
 
         await progress_msg.delete()
     else:
+        # Refund tokens
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            await sub_service.rollback_tokens(user.id, estimated_tokens)
+
         try:
             await progress_msg.edit_text(
-                f"❌ Ошибка генерации изображения:\n{result.error}"
+                f"❌ Ошибка генерации изображения:\n{result.error}\n\nТокены возвращены на ваш счёт."
             )
         except Exception:
-            # Ignore errors when message is not modified
             pass
 
     await clear_state_preserve_settings(state)
@@ -3013,14 +3021,25 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
                     logger.error("nano_multi_image_send_failed", index=idx, error=str(send_error))
 
             await progress_msg.delete()
+            if failed_count > 0:
+                # Refund tokens for failed images
+                refund_amount = failed_count * cost_per_image
+                async with async_session_maker() as session:
+                    sub_service = SubscriptionService(session)
+                    await sub_service.rollback_tokens(user.id, refund_amount)
+
         else:
-            # All failed
+            # All failed — refund all tokens
             for ref_path in reference_image_paths:
                 cleanup_temp_file(ref_path)
 
+            async with async_session_maker() as session:
+                sub_service = SubscriptionService(session)
+                await sub_service.rollback_tokens(user.id, estimated_tokens)
+
             await progress_msg.edit_text(
                 f"❌ Не удалось создать ни одного изображения.\n"
-                f"Попробуйте изменить промпт или параметры.",
+                f"Попробуйте изменить промпт или параметры.\n\nТокены возвращены на ваш счёт.",
                 parse_mode=None
             )
 
@@ -3162,9 +3181,14 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
         for ref_path in reference_image_paths:
             cleanup_temp_file(ref_path)
 
+        # Refund tokens
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            await sub_service.rollback_tokens(user.id, estimated_tokens)
+
         try:
             await progress_msg.edit_text(
-                f"❌ Ошибка генерации изображения:\n{result.error}",
+                f"❌ Ошибка генерации изображения:\n{result.error}\n\nТокены возвращены на ваш счёт.",
                 parse_mode=None
             )
         except Exception:
@@ -3307,9 +3331,14 @@ async def process_kling_image(message: Message, user: User, state: FSMContext):
         if reference_image_path:
             cleanup_temp_file(reference_image_path)
 
+        # Refund tokens
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            await sub_service.rollback_tokens(user.id, estimated_tokens)
+
         try:
             await progress_msg.edit_text(
-                f"❌ Ошибка генерации изображения:\n{result.error}",
+                f"❌ Ошибка генерации изображения:\n{result.error}\n\nТокены возвращены на ваш счёт.",
                 parse_mode=None
             )
         except Exception:
@@ -3422,9 +3451,14 @@ async def process_recraft_image(message: Message, user: User, state: FSMContext)
         await state.update_data(photo_caption_prompt=None)
 
     else:
+        # Refund tokens
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            await sub_service.rollback_tokens(user.id, estimated_tokens)
+
         try:
             await progress_msg.edit_text(
-                f"❌ Ошибка генерации изображения:\n{result.error}",
+                f"❌ Ошибка генерации изображения:\n{result.error}\n\nТокены возвращены на ваш счёт.",
                 parse_mode=None
             )
         except Exception:
@@ -3688,9 +3722,14 @@ async def process_replace_bg_prompt(message: Message, state: FSMContext, user: U
             tokens=estimated_tokens
         )
     else:
+        # Refund tokens
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            await sub_service.rollback_tokens(user.id, estimated_tokens)
+
         try:
             await progress_msg.edit_text(
-                f"❌ Ошибка замены фона:\n{result.error}"
+                f"❌ Ошибка замены фона:\n{result.error}\n\nТокены возвращены на ваш счёт."
             )
         except Exception:
             pass
