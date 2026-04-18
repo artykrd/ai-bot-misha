@@ -2750,13 +2750,14 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
         # Multi-image mode
         progress_msg = await message.answer(
             f"🍌 Генерирую {images_to_generate} изображений с {model_display}...\n"
-            f"⏳ Пожалуйста, подождите..."
+            f"⏳ Это может занять до 20 минут — вы можете пользоваться ботом пока идёт генерация."
         )
     else:
         # Single-image mode
-        mode_text = "image-to-image" if (reference_image_path or reference_image_paths) else "text-to-image"
+        mode_text = "по фото" if (reference_image_path or reference_image_paths) else "по тексту"
         progress_msg = await message.answer(
-            f"🍌 Генерирую изображение с {model_display} ({mode_text})..."
+            f"🍌 Генерирую изображение {mode_text} с {model_display}...\n"
+            f"⏳ Обычно занимает 2–10 минут. Вы можете пользоваться ботом пока идёт генерация."
         )
 
     nano_service = NanoBananaService()
@@ -6746,7 +6747,7 @@ async def process_nano_banana_2_image(message: Message, user: User, state: FSMCo
     progress_msg = await message.answer(
         f"🍌 Nano Banana 2: генерирую изображение {mode_display} "
         f"({nb2_settings.resolution}, {nb2_settings.aspect_ratio})...\n"
-        f"⏳ Пожалуйста, подождите..."
+        f"⏳ Обычно занимает 2–10 минут. Вы можете пользоваться ботом пока идёт генерация."
     )
 
     async def update_progress(text: str):
