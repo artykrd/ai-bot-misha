@@ -85,6 +85,29 @@ class VideoJobService:
 
         return service_class()
 
+    async def _refund_tokens(self, job: VideoGenerationJob) -> None:
+        """Refund tokens to user when a video job fails."""
+        if job.tokens_cost <= 0:
+            return
+        try:
+            from app.services.subscription.subscription_service import SubscriptionService
+            sub_service = SubscriptionService(self.session)
+            await sub_service.rollback_tokens(job.user_id, job.tokens_cost)
+            logger.info(
+                "video_job_tokens_refunded",
+                job_id=job.id,
+                user_id=job.user_id,
+                tokens=job.tokens_cost,
+            )
+        except Exception as e:
+            logger.error(
+                "video_job_token_refund_failed",
+                job_id=job.id,
+                user_id=job.user_id,
+                tokens=job.tokens_cost,
+                error=str(e),
+            )
+
     async def _update_ai_request(
         self,
         job: VideoGenerationJob,
@@ -366,13 +389,16 @@ class VideoJobService:
                     error_message=error_msg
                 )
 
+                # Refund tokens
+                await self._refund_tokens(updated_job or job)
+
                 # Notify user
                 if job.progress_message_id:
                     try:
                         await bot.edit_message_text(
                             chat_id=job.chat_id,
                             message_id=job.progress_message_id,
-                            text=f"❌ Ошибка генерации видео:\n{error_msg}"
+                            text=f"❌ Ошибка генерации видео:\n{error_msg}\n\nТокены возвращены на ваш счёт."
                         )
                     except Exception:
                         pass
@@ -396,13 +422,16 @@ class VideoJobService:
                 error_message=str(e)[:500]
             )
 
+            # Refund tokens
+            await self._refund_tokens(updated_job or job)
+
             # Notify user
             if job.progress_message_id:
                 try:
                     await bot.edit_message_text(
                         chat_id=job.chat_id,
                         message_id=job.progress_message_id,
-                        text=f"❌ Ошибка обработки задачи:\n{str(e)[:200]}"
+                        text=f"❌ Ошибка обработки задачи:\n{str(e)[:200]}\n\nТокены возвращены на ваш счёт."
                     )
                 except Exception:
                     pass
@@ -417,8 +446,8 @@ class VideoJobService:
         """Get timeout_waiting jobs for re-polling."""
         return await self.repository.get_timeout_waiting_jobs(limit=limit)
 
-    async def cleanup_expired_jobs(self) -> int:
-        """Mark expired jobs as failed and update linked ai_requests."""
+    async def cleanup_expired_jobs(self, bot=None) -> int:
+        """Mark expired jobs as failed, refund tokens, and optionally notify users."""
         expired_jobs = await self.repository.get_expired_jobs(limit=100)
         count = 0
 
@@ -435,6 +464,26 @@ class VideoJobService:
                 status="failed",
                 error_message="Job expired before completion"
             )
+
+            # Refund tokens
+            await self._refund_tokens(updated_job or job)
+
+            # Notify user if bot is available
+            if bot and job.progress_message_id:
+                try:
+                    await bot.edit_message_text(
+                        chat_id=job.chat_id,
+                        message_id=job.progress_message_id,
+                        text="❌ Время генерации видео истекло.\n\nТокены возвращены на ваш счёт."
+                    )
+                except Exception:
+                    try:
+                        await bot.send_message(
+                            chat_id=job.chat_id,
+                            text="❌ Время генерации видео истекло.\n\nТокены возвращены на ваш счёт."
+                        )
+                    except Exception:
+                        pass
 
             count += 1
 

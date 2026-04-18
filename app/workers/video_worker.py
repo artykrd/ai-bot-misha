@@ -15,6 +15,7 @@ from aiogram import Bot
 
 from app.database.database import async_session_maker
 from app.services.video_job_service import VideoJobService
+from app.services.subscription.subscription_service import SubscriptionService
 from app.database.models.system import SystemSetting
 from app.core.logger import get_logger
 from sqlalchemy import select
@@ -112,16 +113,43 @@ class VideoWorker:
                             error_message="Maximum retry attempts exceeded"
                         )
 
+                        # Refund tokens
+                        refund_note = ""
+                        if job.tokens_cost > 0:
+                            try:
+                                sub_service = SubscriptionService(session)
+                                await sub_service.rollback_tokens(job.user_id, job.tokens_cost)
+                                logger.info(
+                                    "timeout_job_tokens_refunded",
+                                    job_id=job.id,
+                                    user_id=job.user_id,
+                                    tokens=job.tokens_cost,
+                                )
+                                refund_note = "\n\nТокены возвращены на ваш счёт."
+                            except Exception as refund_err:
+                                logger.error(
+                                    "timeout_job_token_refund_failed",
+                                    job_id=job.id,
+                                    user_id=job.user_id,
+                                    error=str(refund_err),
+                                )
+
                         # Notify user
                         if job.progress_message_id:
                             try:
                                 await self.bot.edit_message_text(
                                     chat_id=job.chat_id,
                                     message_id=job.progress_message_id,
-                                    text="❌ Не удалось сгенерировать видео после нескольких попыток."
+                                    text=f"❌ Не удалось сгенерировать видео после нескольких попыток.{refund_note}"
                                 )
                             except Exception:
-                                pass
+                                try:
+                                    await self.bot.send_message(
+                                        chat_id=job.chat_id,
+                                        text=f"❌ Не удалось сгенерировать видео после нескольких попыток.{refund_note}"
+                                    )
+                                except Exception:
+                                    pass
 
                 if tasks:
                     await asyncio.gather(*tasks, return_exceptions=True)
@@ -130,11 +158,11 @@ class VideoWorker:
             logger.error("retry_timeout_jobs_failed", error=str(e))
 
     async def cleanup_expired_jobs(self):
-        """Clean up expired jobs."""
+        """Clean up expired jobs, refund tokens, and notify users."""
         try:
             async with async_session_maker() as session:
                 service = VideoJobService(session)
-                count = await service.cleanup_expired_jobs()
+                count = await service.cleanup_expired_jobs(bot=self.bot)
 
                 if count > 0:
                     logger.info("expired_jobs_cleaned_up", count=count)
