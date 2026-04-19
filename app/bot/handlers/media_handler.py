@@ -2706,6 +2706,11 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
     nano_is_pro = data.get("nano_is_pro", False)
     aspect_ratio = data.get("nano_aspect_ratio", "auto")
 
+    # google/nano-banana doesn't support image_input — upgrade to PRO when images provided
+    has_images = bool(reference_image_path or reference_image_paths or nb_image_urls)
+    if has_images and not nano_is_pro:
+        nano_is_pro = True
+
     # Select model based on PRO flag
     model = "gemini-3-pro-image-preview" if nano_is_pro else "gemini-2.5-flash-image"
 
