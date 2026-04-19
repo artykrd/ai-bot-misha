@@ -1078,16 +1078,12 @@ async def start_nano(callback: CallbackQuery, state: FSMContext, user: User):
         f"💰 **Стоимость генерации: {format_token_amount(nano_billing.tokens_per_generation)} токенов за изображение**\n\n"
         "🎨 **Режимы работы:**\n"
         "• **Text-to-Image:** Отправьте описание изображения\n"
-        "• **Image-to-Image:** Отправьте **одно или несколько фото** + описание\n"
         "• **Множественная генерация:** Кнопка \"🎨 Создать несколько изображений\" (2-10 шт.)\n\n"
-        "✏️ **Отправьте описание изображения ИЛИ фото (можно несколько)**\n\n"
-        "**Примеры text-to-image:**\n"
+        "ℹ️ Для генерации по фото используйте **Nano Banana PRO** или **Nano Banana 2**.\n\n"
+        "✏️ **Отправьте описание изображения**\n\n"
+        "**Примеры:**\n"
         "• \"Кот в космосе среди звёзд\"\n"
-        "• \"Закат на берегу океана с пальмами\"\n\n"
-        "**Примеры image-to-image:**\n"
-        "• Фото + \"Преобразуй в аниме стиль с яркими красками\"\n"
-        "• Несколько фото + \"Сделай в стиле масляной живописи Ван Гога\"\n"
-        "• Фото + \"Преобразуй в фэнтези иллюстрацию с магическими эффектами\""
+        "• \"Закат на берегу океана с пальмами\""
     )
 
     await state.set_state(MediaState.waiting_for_image_prompt)
@@ -2244,6 +2240,17 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
     service_name = data.get("service", "nano_banana")
     multi_images_count = data.get("multi_images_count", 0)
 
+    # Regular Nano Banana (google/nano-banana) doesn't support image_input
+    if service_name == "nano_banana" and not data.get("nano_is_pro", False):
+        await message.answer(
+            "📸 Image-to-image не поддерживается обычной Nano Banana.\n\n"
+            "Для генерации по фото переключитесь на **Nano Banana PRO** "
+            "или **Nano Banana 2** через меню /start.\n\n"
+            "Либо отправьте только текстовое описание для генерации.",
+            parse_mode="Markdown",
+        )
+        return
+
     # Download the photo
     photo = message.photo[-1]
     file = await message.bot.get_file(photo.file_id)
@@ -2705,11 +2712,6 @@ async def process_nano_image(message: Message, user: User, state: FSMContext):
     multi_images_count = data.get("multi_images_count", 0)
     nano_is_pro = data.get("nano_is_pro", False)
     aspect_ratio = data.get("nano_aspect_ratio", "auto")
-
-    # google/nano-banana doesn't support image_input — upgrade to PRO when images provided
-    has_images = bool(reference_image_path or reference_image_paths or nb_image_urls)
-    if has_images and not nano_is_pro:
-        nano_is_pro = True
 
     # Select model based on PRO flag
     model = "gemini-3-pro-image-preview" if nano_is_pro else "gemini-2.5-flash-image"

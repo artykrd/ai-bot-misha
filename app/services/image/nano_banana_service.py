@@ -106,15 +106,19 @@ class NanoBananaService(BaseImageProvider):
 
         has_images = bool(reference_image_path or image_urls)
 
-        # Auto-upgrade to PRO when images are provided,
-        # because google/nano-banana doesn't support image_input
-        actual_is_pro = is_pro
-        if has_images and not actual_is_pro:
-            actual_is_pro = True
-            logger.info("nano_banana_auto_upgrade_to_pro", reason="image_input_requires_pro")
+        # google/nano-banana doesn't support image_input — caller must use PRO for image-to-image
+        if has_images and not is_pro:
+            return ImageResponse(
+                success=False,
+                error=(
+                    "Image-to-image не поддерживается обычной Nano Banana. "
+                    "Переключитесь на Nano Banana PRO."
+                ),
+                processing_time=time.time() - start_time,
+            )
 
         mode = "image-to-image" if has_images else "text-to-image"
-        model_display = "Nano Banana PRO" if actual_is_pro else "Nano Banana"
+        model_display = "Nano Banana PRO" if is_pro else "Nano Banana"
 
         try:
             if progress_callback:
@@ -123,7 +127,7 @@ class NanoBananaService(BaseImageProvider):
                 )
 
             # Build API payload
-            if actual_is_pro:
+            if is_pro:
                 kie_model = "nano-banana-pro"
                 payload = {
                     "model": kie_model,
@@ -146,7 +150,7 @@ class NanoBananaService(BaseImageProvider):
                 }
 
             # Upload and attach images for PRO model
-            if actual_is_pro and has_images:
+            if is_pro and has_images:
                 uploaded_urls = []
 
                 # Upload from URLs first (e.g. Telegram file URLs)
