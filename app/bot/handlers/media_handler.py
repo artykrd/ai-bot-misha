@@ -36,6 +36,7 @@ from app.bot.keyboards.inline import (
     kling_effects_list_keyboard,
     kling_effects_confirm_keyboard,
     nano_banana_keyboard,
+    nano_banana_photo_upsell_keyboard,
     nano_format_keyboard,
     nano_multi_images_keyboard,
     seedream_keyboard,
@@ -2243,11 +2244,11 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
     # Regular Nano Banana (google/nano-banana) doesn't support image_input
     if service_name == "nano_banana" and not data.get("nano_is_pro", False):
         await message.answer(
-            "📸 Image-to-image не поддерживается обычной Nano Banana.\n\n"
-            "Для генерации по фото переключитесь на **Nano Banana PRO** "
-            "или **Nano Banana 2** через меню /start.\n\n"
-            "Либо отправьте только текстовое описание для генерации.",
+            "📸 Обычная Nano Banana генерирует изображения только по текстовому промту — "
+            "загрузка фото не поддерживается.\n\n"
+            "Хотите сгенерировать по этому фото с **Nano Banana PRO** за 25 000 токенов?",
             parse_mode="Markdown",
+            reply_markup=nano_banana_photo_upsell_keyboard(),
         )
         return
 
