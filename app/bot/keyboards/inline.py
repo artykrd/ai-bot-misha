@@ -177,6 +177,18 @@ def nano_banana_keyboard(is_pro: bool = False) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def nano_banana_photo_upsell_keyboard() -> InlineKeyboardMarkup:
+    """Keyboard shown when user sends a photo to regular Nano Banana."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="✨ Сгенерировать в PRO (25 000 токенов)", callback_data="bot.nano_pro")
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад в меню", callback_data="bot.back")
+    )
+    return builder.as_markup()
+
+
 def nano_format_keyboard(current_ratio: str = "auto") -> InlineKeyboardMarkup:
     """Nano Banana format selection keyboard with current selection marked."""
     builder = InlineKeyboardBuilder()
