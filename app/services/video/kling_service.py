@@ -763,7 +763,22 @@ class KlingService(BaseVideoProvider):
 
         except Exception as e:
             error_msg = str(e)
-            logger.error("kling_motion_control_failed", error=error_msg)
+            lower_msg = error_msg.lower()
+            # Downgrade user-caused and external-service errors to warning
+            is_user_or_transient = any(p in lower_msg for p in [
+                "персонаж", "верхняя часть тела", "лицо не обнаружено",
+                "человек не обнаружен", "разрешение изображения",
+                "разрешение видео", "отклонены", "модерацию",
+                "time ожидания", "истекло", "не должно быть",
+                "input was rejected", "no face detected",
+                "no human detected", "no complete upper body",
+                "resolution is too low", "content moderation",
+                "task timeout", "invalid", "not supported",
+            ]) or "Motion Control не удался:" in error_msg
+            if is_user_or_transient:
+                logger.warning("kling_motion_control_user_error", error=error_msg)
+            else:
+                logger.error("kling_motion_control_failed", error=error_msg)
 
             if progress_callback:
                 await progress_callback(f"❌ Ошибка: {error_msg}")

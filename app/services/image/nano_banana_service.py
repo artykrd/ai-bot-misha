@@ -245,11 +245,15 @@ class NanoBananaService(BaseImageProvider):
         except Exception as e:
             error_msg = str(e)
 
-            # Downgrade user-caused errors to warning
+            # Downgrade user-caused errors and transient external errors to warning
+            lower_msg = error_msg.lower()
             is_user_error = any(p in error_msg for p in [
                 "Prohibited Use policy", "filtered out", "502:", "503 Service",
                 "unexpected mimetype", "Bad gateway", "безопасности",
-            ])
+            ]) or any(p in lower_msg for p in [
+                "flagged as sensitive", "sensitive input", "content policy",
+                "safety", "prohibited", "moderation",
+            ]) or error_msg.startswith("generation_timeout:")
             if is_user_error:
                 logger.warning(
                     "nano_banana_generation_user_error",

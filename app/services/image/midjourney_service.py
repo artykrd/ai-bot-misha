@@ -143,7 +143,15 @@ class MidjourneyService:
 
         except Exception as e:
             error_msg = str(e)
-            if any(p in error_msg for p in ["временно недоступен", "Сетевая ошибка", "text/html"]):
+            lower_msg = error_msg.lower()
+            is_transient_or_user_error = any(p in error_msg for p in [
+                "временно недоступен", "Сетевая ошибка", "text/html",
+                "Таймаут генерации", "Генерация не удалась",
+            ]) or any(p in lower_msg for p in [
+                "timeout", "content policy", "safety", "prohibited",
+                "moderation", "banned", "blocked",
+            ])
+            if is_transient_or_user_error:
                 logger.warning("midjourney_generation_transient_error", error=error_msg, task_type=task_type)
             else:
                 logger.error("midjourney_generation_failed", error=error_msg, task_type=task_type)
