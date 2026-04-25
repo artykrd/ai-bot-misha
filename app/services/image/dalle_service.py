@@ -245,69 +245,83 @@ class DalleService(BaseImageProvider):
         if progress_callback:
             await progress_callback(f"🖼 Генерирую изображение GPT Image 2 ({size}, {quality})...")
 
-        # GPT Image models always return b64_json; response_format not supported
         try:
-            response = await self.client.images.generate(
+            # GPT Image models always return b64_json; response_format not supported
+            try:
+                response = await self.client.images.generate(
+                    model=model,
+                    prompt=prompt,
+                    size=size,
+                    quality=quality,
+                    n=n,
+                    output_format=output_format,
+                )
+            except TypeError:
+                # Fallback if SDK version doesn't support output_format
+                response = await self.client.images.generate(
+                    model=model,
+                    prompt=prompt,
+                    size=size,
+                    quality=quality,
+                    n=n,
+                )
+
+            if progress_callback:
+                await progress_callback("💾 Сохраняю изображение...")
+
+            b64_data = response.data[0].b64_json
+            image_bytes = base64.b64decode(b64_data)
+
+            ext = output_format if output_format in ("jpeg", "webp") else "png"
+            filename = self._generate_filename(ext)
+            image_path = str(self.storage_path / filename)
+            with open(image_path, "wb") as f:
+                f.write(image_bytes)
+
+            processing_time = time.time() - start_time
+
+            if progress_callback:
+                await progress_callback("✅ Изображение готово!")
+
+            logger.info(
+                "gpt_image_2_generated",
                 model=model,
-                prompt=prompt,
                 size=size,
                 quality=quality,
-                n=n,
-                output_format=output_format,
-            )
-        except TypeError:
-            # Fallback if SDK version doesn't support output_format
-            response = await self.client.images.generate(
-                model=model,
-                prompt=prompt,
-                size=size,
-                quality=quality,
-                n=n,
+                prompt=prompt[:100],
+                time=processing_time
             )
 
-        if progress_callback:
-            await progress_callback("💾 Сохраняю изображение...")
+            gpt_image_billing = get_image_model_billing("gpt-image-2")
+            tokens_used = gpt_image_billing.tokens_per_generation
 
-        b64_data = response.data[0].b64_json
-        image_bytes = base64.b64decode(b64_data)
+            return ImageResponse(
+                success=True,
+                image_path=image_path,
+                processing_time=processing_time,
+                metadata={
+                    "provider": "openai",
+                    "model": model,
+                    "size": size,
+                    "quality": quality,
+                    "output_format": output_format,
+                    "prompt": prompt,
+                    "tokens_used": tokens_used
+                }
+            )
 
-        ext = output_format if output_format in ("jpeg", "webp") else "png"
-        filename = self._generate_filename(ext)
-        image_path = str(self.storage_path / filename)
-        with open(image_path, "wb") as f:
-            f.write(image_bytes)
+        except Exception as e:
+            error_msg = _get_dalle_error_message(e)
+            logger.error("gpt_image_2_generation_failed", error=str(e), prompt=prompt[:100])
 
-        processing_time = time.time() - start_time
+            if progress_callback:
+                await progress_callback(f"❌ {error_msg}")
 
-        if progress_callback:
-            await progress_callback("✅ Изображение готово!")
-
-        logger.info(
-            "gpt_image_2_generated",
-            model=model,
-            size=size,
-            quality=quality,
-            prompt=prompt[:100],
-            time=processing_time
-        )
-
-        gpt_image_billing = get_image_model_billing("gpt-image-2")
-        tokens_used = gpt_image_billing.tokens_per_generation
-
-        return ImageResponse(
-            success=True,
-            image_path=image_path,
-            processing_time=processing_time,
-            metadata={
-                "provider": "openai",
-                "model": model,
-                "size": size,
-                "quality": quality,
-                "output_format": output_format,
-                "prompt": prompt,
-                "tokens_used": tokens_used
-            }
-        )
+            return ImageResponse(
+                success=False,
+                error=error_msg,
+                processing_time=time.time() - start_time
+            )
 
     async def edit_image_gpt_image_2(
         self,
@@ -382,7 +396,6 @@ class DalleService(BaseImageProvider):
                         prompt=prompt,
                         size=size,
                         n=max(1, min(n, 4)),
-                        response_format="b64_json",
                     )
             finally:
                 for fh in image_files:
