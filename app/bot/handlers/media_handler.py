@@ -1076,21 +1076,25 @@ async def start_gpt_image_2(callback: CallbackQuery, state: FSMContext, user: Us
     requests_available = int(total_tokens / billing.tokens_per_generation) if total_tokens > 0 else 0
 
     data = await state.get_data()
-    gi2_size = data.get("gi2_size", "1024x1024")
-    gi2_quality = data.get("gi2_quality", "medium")
+    gi2_size = data.get("gi2_size", "auto")
+    gi2_quality = data.get("gi2_quality", "auto")
     gi2_format = data.get("gi2_format", "png")
 
     size_labels = {
+        "auto": "Авто",
         "1024x1024": "1:1 (1024×1024)",
         "1536x1024": "3:2 горизонталь (1536×1024)",
         "1024x1536": "2:3 вертикаль (1024×1536)",
-        "auto": "Авто",
+        "2048x2048": "2K 1:1 (2048×2048)",
+        "2048x1152": "2K 16:9 (2048×1152)",
+        "3840x2160": "4K горизонталь (3840×2160)",
+        "2160x3840": "4K вертикаль (2160×3840)",
     }
     quality_labels = {
+        "auto": "Авто 🔄",
         "low": "Низкое ⚡",
         "medium": "Среднее ⭐",
         "high": "Высокое 💎",
-        "auto": "Авто 🔄",
     }
     format_labels = {"png": "PNG", "jpeg": "JPEG", "webp": "WebP"}
 

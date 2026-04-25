@@ -323,21 +323,25 @@ def create_video_keyboard() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def gpt_image_2_keyboard(size: str = "1024x1024", quality: str = "medium") -> InlineKeyboardMarkup:
+def gpt_image_2_keyboard(size: str = "auto", quality: str = "auto") -> InlineKeyboardMarkup:
     """GPT Image 2 settings keyboard."""
     builder = InlineKeyboardBuilder()
 
     size_labels = {
-        "1024x1024": "1:1",
-        "1536x1024": "3:2 (горизонт.)",
-        "1024x1536": "2:3 (вертикаль)",
         "auto": "Авто",
+        "1024x1024": "1:1 (1024×1024)",
+        "1536x1024": "3:2 горизонт. (1536×1024)",
+        "1024x1536": "2:3 вертикаль (1024×1536)",
+        "2048x2048": "2K 1:1 (2048×2048)",
+        "2048x1152": "2K 16:9 (2048×1152)",
+        "3840x2160": "4K горизонт. (3840×2160)",
+        "2160x3840": "4K вертикаль (2160×3840)",
     }
     quality_labels = {
-        "low": "Низкое",
-        "medium": "Среднее",
-        "high": "Высокое",
         "auto": "Авто",
+        "low": "Низкое ⚡",
+        "medium": "Среднее ⭐",
+        "high": "Высокое 💎",
     }
 
     builder.row(
@@ -362,10 +366,14 @@ def gpt_image_2_keyboard(size: str = "1024x1024", quality: str = "medium") -> In
 def gpt_image_2_size_keyboard() -> InlineKeyboardMarkup:
     """GPT Image 2 size selection keyboard."""
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="◾ 1:1 (1024×1024)", callback_data="bot.gi2:size:1024x1024"))
-    builder.row(InlineKeyboardButton(text="▬ 3:2 горизонталь (1536×1024)", callback_data="bot.gi2:size:1536x1024"))
-    builder.row(InlineKeyboardButton(text="▮ 2:3 вертикаль (1024×1536)", callback_data="bot.gi2:size:1024x1536"))
-    builder.row(InlineKeyboardButton(text="🔄 Авто", callback_data="bot.gi2:size:auto"))
+    builder.row(InlineKeyboardButton(text="🔄 Авто (рекомендуется)", callback_data="bot.gi2:size:auto"))
+    builder.row(InlineKeyboardButton(text="◾ 1:1  1024×1024", callback_data="bot.gi2:size:1024x1024"))
+    builder.row(InlineKeyboardButton(text="▬ 3:2  1536×1024 (горизонталь)", callback_data="bot.gi2:size:1536x1024"))
+    builder.row(InlineKeyboardButton(text="▮ 2:3  1024×1536 (вертикаль)", callback_data="bot.gi2:size:1024x1536"))
+    builder.row(InlineKeyboardButton(text="⬛ 2K  2048×2048", callback_data="bot.gi2:size:2048x2048"))
+    builder.row(InlineKeyboardButton(text="📺 2K 16:9  2048×1152", callback_data="bot.gi2:size:2048x1152"))
+    builder.row(InlineKeyboardButton(text="🖥 4K  3840×2160 (горизонталь)", callback_data="bot.gi2:size:3840x2160"))
+    builder.row(InlineKeyboardButton(text="📱 4K  2160×3840 (вертикаль)", callback_data="bot.gi2:size:2160x3840"))
     builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="bot.gpt_image_2"))
     return builder.as_markup()
 
