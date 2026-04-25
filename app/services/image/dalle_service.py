@@ -121,12 +121,14 @@ class DalleService(BaseImageProvider):
             is_gpt_image_2 = model.startswith("gpt-image-2")
 
             if is_gpt_image_2:
+                # Extract model from kwargs to avoid duplicate keyword argument
+                gpt2_kwargs = {k: v for k, v in kwargs.items() if k != "model"}
                 return await self._generate_gpt_image_2(
                     prompt=prompt,
                     model=model,
                     progress_callback=progress_callback,
                     start_time=start_time,
-                    **kwargs
+                    **gpt2_kwargs
                 )
 
             # DALL-E path
@@ -220,24 +222,30 @@ class DalleService(BaseImageProvider):
         **kwargs
     ) -> ImageResponse:
         """Generate image using GPT Image 2 via images.generate endpoint."""
-        size = kwargs.get("size", "1024x1024")
-        quality = kwargs.get("quality", "medium")
+        size = kwargs.get("size", "auto")
+        quality = kwargs.get("quality", "auto")
         n = kwargs.get("n", 1)
         output_format = kwargs.get("output_format", "png")
 
-        valid_sizes = ["1024x1024", "1536x1024", "1024x1536", "auto"]
-        if size not in valid_sizes:
-            size = "1024x1024"
+        # GPT Image 2 supports flexible sizes (multiples of 16, max edge 3840px)
+        # Popular presets; "auto" lets the model decide
+        valid_preset_sizes = {
+            "auto", "1024x1024", "1536x1024", "1024x1536",
+            "2048x2048", "2048x1152", "3840x2160", "2160x3840",
+        }
+        if size not in valid_preset_sizes:
+            size = "auto"
 
         valid_qualities = ["low", "medium", "high", "auto"]
         if quality not in valid_qualities:
-            quality = "medium"
+            quality = "auto"
 
         n = max(1, min(n, 4))
 
         if progress_callback:
             await progress_callback(f"🖼 Генерирую изображение GPT Image 2 ({size}, {quality})...")
 
+        # GPT Image models always return b64_json; response_format not supported
         try:
             response = await self.client.images.generate(
                 model=model,
@@ -245,7 +253,6 @@ class DalleService(BaseImageProvider):
                 size=size,
                 quality=quality,
                 n=n,
-                response_format="b64_json",
                 output_format=output_format,
             )
         except TypeError:
@@ -256,7 +263,6 @@ class DalleService(BaseImageProvider):
                 size=size,
                 quality=quality,
                 n=n,
-                response_format="b64_json",
             )
 
         if progress_callback:
@@ -358,6 +364,7 @@ class DalleService(BaseImageProvider):
                 else:
                     images_arg = image_files
 
+                # GPT Image models always return b64_json; response_format not supported
                 try:
                     response = await self.client.images.edit(
                         model=model,
@@ -366,7 +373,6 @@ class DalleService(BaseImageProvider):
                         size=size,
                         quality=quality,
                         n=max(1, min(n, 4)),
-                        response_format="b64_json",
                         output_format=output_format,
                     )
                 except TypeError:
