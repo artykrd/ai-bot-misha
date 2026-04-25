@@ -18,6 +18,9 @@ import io
 
 from app.bot.keyboards.inline import (
     back_to_main_keyboard,
+    gpt_image_2_keyboard,
+    gpt_image_2_size_keyboard,
+    gpt_image_2_quality_keyboard,
     kling_choice_keyboard,
     kling_main_keyboard,
     kling_settings_keyboard,
@@ -1062,6 +1065,113 @@ async def start_gpt_image(callback: CallbackQuery, state: FSMContext, user: User
 
     await callback.message.answer(text, reply_markup=back_to_main_keyboard(), parse_mode="Markdown")
     await callback.answer()
+
+
+@router.callback_query(F.data == "bot.gpt_image_2")
+async def start_gpt_image_2(callback: CallbackQuery, state: FSMContext, user: User):
+    """Show GPT Image 2 generation interface."""
+    await cleanup_temp_images(state)
+    billing = get_image_model_billing("gpt-image-2")
+    total_tokens = await get_available_tokens(user.id)
+    requests_available = int(total_tokens / billing.tokens_per_generation) if total_tokens > 0 else 0
+
+    data = await state.get_data()
+    gi2_size = data.get("gi2_size", "1024x1024")
+    gi2_quality = data.get("gi2_quality", "medium")
+    gi2_format = data.get("gi2_format", "png")
+
+    size_labels = {
+        "1024x1024": "1:1 (1024×1024)",
+        "1536x1024": "3:2 горизонталь (1536×1024)",
+        "1024x1536": "2:3 вертикаль (1024×1536)",
+        "auto": "Авто",
+    }
+    quality_labels = {
+        "low": "Низкое ⚡",
+        "medium": "Среднее ⭐",
+        "high": "Высокое 💎",
+        "auto": "Авто 🔄",
+    }
+    format_labels = {"png": "PNG", "jpeg": "JPEG", "webp": "WebP"}
+
+    text = (
+        "🖼 **GPT Image 2 · новейший генератор OpenAI**\n\n"
+        "📖 **Возможности:**\n"
+        "– Генерация изображений по текстовому описанию;\n"
+        "– Редактирование изображений с учётом вашего запроса;\n"
+        "– Поддержка нескольких фото в одном запросе (до 3 шт.);\n"
+        "– Гибкий выбор размера, качества и формата.\n\n"
+        f"⚙️ **Текущие настройки:**\n"
+        f"• Размер: {size_labels.get(gi2_size, gi2_size)}\n"
+        f"• Качество: {quality_labels.get(gi2_quality, gi2_quality)}\n"
+        f"• Формат: {format_labels.get(gi2_format, gi2_format)}\n\n"
+        f"🔹 Токенов хватит на {requests_available} запросов. 1 фото = {format_token_amount(billing.tokens_per_generation)} токенов\n\n"
+        "✏️ **Отправьте описание изображения ИЛИ фото с подписью**"
+    )
+
+    await state.set_state(MediaState.waiting_for_image_prompt)
+    await state.update_data(
+        service="gpt_image_2",
+        gi2_size=gi2_size,
+        gi2_quality=gi2_quality,
+        gi2_format=gi2_format,
+        reference_image_path=None,
+        reference_image_paths=[],
+        photo_caption_prompt=None,
+    )
+
+    await callback.message.answer(
+        text,
+        reply_markup=gpt_image_2_keyboard(gi2_size, gi2_quality),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "bot.gi2:size_menu")
+async def gpt_image_2_size_menu(callback: CallbackQuery):
+    """Show size selection for GPT Image 2."""
+    await callback.message.edit_text(
+        "📐 **Выберите формат изображения GPT Image 2:**\n\n"
+        "• **1:1** — квадрат, подходит для аватаров и постов\n"
+        "• **3:2 горизонталь** — широкоформатные сцены, пейзажи\n"
+        "• **2:3 вертикаль** — портреты, мобильные обои\n"
+        "• **Авто** — модель сама выберет оптимальный формат",
+        reply_markup=gpt_image_2_size_keyboard(),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "bot.gi2:quality_menu")
+async def gpt_image_2_quality_menu(callback: CallbackQuery):
+    """Show quality selection for GPT Image 2."""
+    await callback.message.edit_text(
+        "✨ **Выберите качество генерации GPT Image 2:**\n\n"
+        "• **Низкое ⚡** — быстро, меньше деталей\n"
+        "• **Среднее ⭐** — баланс скорости и качества (рекомендуется)\n"
+        "• **Высокое 💎** — максимальная детализация, дольше\n"
+        "• **Авто 🔄** — модель выберет оптимальное качество",
+        reply_markup=gpt_image_2_quality_keyboard(),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("bot.gi2:size:"))
+async def gpt_image_2_set_size(callback: CallbackQuery, state: FSMContext, user: User):
+    """Set size for GPT Image 2 and return to main screen."""
+    size = callback.data.split("bot.gi2:size:")[1]
+    await state.update_data(gi2_size=size)
+    await start_gpt_image_2(callback, state, user)
+
+
+@router.callback_query(F.data.startswith("bot.gi2:quality:"))
+async def gpt_image_2_set_quality(callback: CallbackQuery, state: FSMContext, user: User):
+    """Set quality for GPT Image 2 and return to main screen."""
+    quality = callback.data.split("bot.gi2:quality:")[1]
+    await state.update_data(gi2_quality=quality)
+    await start_gpt_image_2(callback, state, user)
 
 
 @router.callback_query(F.data == "bot.nano")
@@ -2289,6 +2399,7 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
         service_display = {
             "nano_banana": "Nano Banana",
             "dalle": "DALL-E",
+            "gpt_image_2": "GPT Image 2",
             "seedream": "Seedream 4.5",
             "seedream5": "Seedream 5.0 Lite",
             "gemini_image": "Gemini",
@@ -2306,6 +2417,8 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
                 await process_nano_image(message, user, state)
             elif service_name == "dalle":
                 await process_dalle_image(message, user, state)
+            elif service_name == "gpt_image_2":
+                await process_gpt_image_2(message, user, state)
             elif service_name == "seedream":
                 await process_seedream_image(message, user, state)
             elif service_name == "seedream5":
@@ -2387,6 +2500,7 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
         service_display = {
             "nano_banana": "Nano Banana",
             "dalle": "DALL-E",
+            "gpt_image_2": "GPT Image 2",
             "seedream": "Seedream 4.5",
             "seedream5": "Seedream 5.0 Lite",
             "gemini_image": "Gemini",
@@ -2403,6 +2517,8 @@ async def process_image_photo(message: Message, state: FSMContext, user: User):
             # Route to appropriate image service
             if service_name == "dalle":
                 await process_dalle_image(message, user, state)
+            elif service_name == "gpt_image_2":
+                await process_gpt_image_2(message, user, state)
             elif service_name == "gemini_image":
                 await process_gemini_image(message, user, state)
             elif service_name == "nano_banana":
@@ -2450,6 +2566,8 @@ async def process_image_prompt(message: Message, state: FSMContext, user: User):
 
     if service_name == "dalle":
         await process_dalle_image(message, user, state)
+    elif service_name == "gpt_image_2":
+        await process_gpt_image_2(message, user, state)
     elif service_name == "gemini_image":
         await process_gemini_image(message, user, state)
     elif service_name == "nano_banana":
@@ -2615,6 +2733,140 @@ async def process_dalle_image(message: Message, user: User, state: FSMContext):
             pass
 
     # Clear state after generation (success or failure)
+    await clear_state_preserve_settings(state)
+
+
+async def process_gpt_image_2(message: Message, user: User, state: FSMContext):
+    """Process GPT Image 2 generation or editing."""
+    data = await state.get_data()
+
+    prompt = data.get("photo_caption_prompt") or message.text
+    reference_image_path = data.get("reference_image_path", None)
+    reference_image_paths = data.get("reference_image_paths", [])
+    gi2_size = data.get("gi2_size", "1024x1024")
+    gi2_quality = data.get("gi2_quality", "medium")
+    gi2_format = data.get("gi2_format", "png")
+
+    billing = get_image_model_billing("gpt-image-2")
+    estimated_tokens = billing.tokens_per_generation
+
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+        try:
+            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+        except InsufficientTokensError as e:
+            if reference_image_path:
+                cleanup_temp_file(reference_image_path)
+            for p in reference_image_paths:
+                cleanup_temp_file(p)
+            await message.answer(
+                f"❌ Недостаточно токенов для генерации изображения!\n\n"
+                f"Требуется: {estimated_tokens:,} токенов\n"
+                f"Доступно: {e.details['available']:,} токенов\n\n"
+                f"Купите подписку: /start → 💎 Подписка"
+            )
+            await clear_state_preserve_settings(state)
+            return
+
+    dalle_service = DalleService()
+    model_name_api = "gpt-image-2-2026-04-21"
+
+    has_reference = bool(reference_image_path or reference_image_paths)
+
+    if has_reference:
+        main_image = reference_image_path or (reference_image_paths[0] if reference_image_paths else None)
+        extra_images = reference_image_paths[1:] if not reference_image_path else reference_image_paths
+
+        progress_msg = await message.answer("🖼 Редактирую изображение с GPT Image 2...")
+
+        async def update_progress(text: str):
+            try:
+                await progress_msg.edit_text(text, parse_mode=None)
+            except Exception:
+                pass
+
+        result = await dalle_service.edit_image_gpt_image_2(
+            prompt=prompt,
+            image_path=main_image,
+            progress_callback=update_progress,
+            model=model_name_api,
+            size=gi2_size,
+            quality=gi2_quality,
+            output_format=gi2_format,
+            reference_image_paths=extra_images,
+        )
+    else:
+        progress_msg = await message.answer("🖼 Генерирую изображение с GPT Image 2...")
+
+        async def update_progress(text: str):
+            try:
+                await progress_msg.edit_text(text, parse_mode=None)
+            except Exception:
+                pass
+
+        result = await dalle_service.generate_image(
+            prompt=prompt,
+            progress_callback=update_progress,
+            model=model_name_api,
+            size=gi2_size,
+            quality=gi2_quality,
+            output_format=gi2_format,
+        )
+
+    if result.success:
+        tokens_used = result.metadata.get("tokens_used", estimated_tokens)
+
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            user_tokens = await sub_service.get_available_tokens(user.id)
+
+        operation = "изображение" if not has_reference else "редактирование изображения"
+        caption_text = format_generation_message(
+            content_type=operation,
+            model_name="GPT Image 2",
+            tokens_used=tokens_used,
+            user_tokens=user_tokens,
+            prompt=prompt
+        )
+
+        builder = create_action_keyboard(
+            action_text=MODEL_ACTIONS["gpt_image_2"]["text"],
+            action_callback=MODEL_ACTIONS["gpt_image_2"]["callback"],
+            file_path=result.image_path,
+            file_type="image",
+            user_id=user.telegram_id
+        )
+
+        image_file = FSInputFile(result.image_path)
+        await message.answer_photo(
+            photo=image_file,
+            caption=caption_text,
+            reply_markup=builder.as_markup()
+        )
+
+        if reference_image_path:
+            cleanup_temp_file(reference_image_path)
+        for p in reference_image_paths:
+            cleanup_temp_file(p)
+
+        await progress_msg.delete()
+    else:
+        if reference_image_path:
+            cleanup_temp_file(reference_image_path)
+        for p in reference_image_paths:
+            cleanup_temp_file(p)
+
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            await sub_service.rollback_tokens(user.id, estimated_tokens)
+
+        try:
+            await progress_msg.edit_text(
+                f"❌ Ошибка генерации:\n{result.error}\n\nТокены возвращены на ваш счёт."
+            )
+        except Exception:
+            pass
+
     await clear_state_preserve_settings(state)
 
 
@@ -4752,11 +5004,15 @@ async def handle_photo_action_choice(callback: CallbackQuery, state: FSMContext)
         banana_pro_billing = get_image_model_billing("banana-pro")
         mj_billing = get_image_model_billing("midjourney")
         dalle_billing_img = get_image_model_billing("dalle3")
+        gpt_image_2_billing = get_image_model_billing("gpt-image-2")
         recraft_billing = get_image_model_billing("recraft")
         seedream_billing = get_image_model_billing("seedream-4.5")
         kling_img_billing = get_image_model_billing("kling-image")
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🖼 GPT Image 2", callback_data="photo_image:gpt_image_2"),
+            ],
             [
                 InlineKeyboardButton(text="🍌 Nano Banana", callback_data="photo_image:nano"),
                 InlineKeyboardButton(text="🍌 Banana PRO", callback_data="photo_image:banana_pro"),
@@ -4780,6 +5036,7 @@ async def handle_photo_action_choice(callback: CallbackQuery, state: FSMContext)
 
         caption_text = (
             "Выберите модель для генерации изображения:\n\n"
+            f"GPT Image 2 — {format_token_amount(gpt_image_2_billing.tokens_per_generation)} токенов\n"
             f"Nano Banana — {format_token_amount(nano_billing.tokens_per_generation)} токенов\n"
             f"Banana PRO — {format_token_amount(banana_pro_billing.tokens_per_generation)} токенов\n"
             f"GPT Image (DALL-E 3) — {format_token_amount(dalle_billing_img.tokens_per_generation)} токенов\n"
@@ -4947,6 +5204,7 @@ async def handle_photo_image_model_choice(callback: CallbackQuery, state: FSMCon
         "nano": "nano_banana",
         "banana_pro": "nano_banana",  # Banana PRO uses nano_banana with is_pro flag
         "nano_banana_2": "nano_banana_2",
+        "gpt_image_2": "gpt_image_2",
         "dalle": "dalle",
         "midjourney": "midjourney",
         "recraft": "recraft",
@@ -4982,6 +5240,7 @@ async def handle_photo_image_model_choice(callback: CallbackQuery, state: FSMCon
     model_names = {
         "nano": "Nano Banana",
         "banana_pro": "Banana PRO",
+        "gpt_image_2": "GPT Image 2",
         "dalle": "GPT Image (DALL-E 3)",
         "midjourney": "Midjourney",
         "recraft": "Recraft",
@@ -4994,6 +5253,7 @@ async def handle_photo_image_model_choice(callback: CallbackQuery, state: FSMCon
     examples = {
         "nano": "Сделай в стиле аниме\nПреобразуй в акварельный рисунок",
         "banana_pro": "Преврати в профессиональный портрет\nСделай в стиле киберпанк",
+        "gpt_image_2": "Отредактируй фото в стиле аниме\nДобавь художественный эффект на фото",
         "dalle": "Отправьте описание нового изображения",
         "midjourney": "Стилизуй под масляную живопись\nСделай в стиле фэнтези",
         "recraft": "Преврати в иллюстрацию\nСделай в стиле логотипа",

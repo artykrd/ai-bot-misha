@@ -25,6 +25,11 @@ router = Router(name="text_ai")
 
 # Model configurations with new billing
 MODEL_CONFIGS = {
+    "gpt-5.5-2026-04-23": {
+        "display_name": "GPT-5.5",
+        "description": "Самая мощная модель OpenAI — флагман нового поколения",
+        "billing_id": "gpt-5.5-2026-04-23",
+    },
     "gpt-4o": {
         "display_name": "GPT-4o",
         "description": "Самая продвинутая модель OpenAI",
@@ -76,6 +81,7 @@ MODEL_CONFIGS = {
         "billing_id": "sonar-pro",
     },
     # Legacy model mappings
+    "gpt-5.5": "gpt-5.5-2026-04-23",
     "gpt-4": "gpt-4o",
     "gpt-4-mini": "gpt-4.1-mini",
     "claude": "claude-4",

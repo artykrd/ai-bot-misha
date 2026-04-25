@@ -157,6 +157,10 @@ MODEL_ACTIONS = {
         "text": "🎨 Создать новое изображение",
         "callback": "bot.gpt_image"
     },
+    "gpt_image_2": {
+        "text": "🖼 Создать новое изображение",
+        "callback": "bot.gpt_image_2"
+    },
     "nano_banana": {
         "text": "🎨 Создать новое изображение",
         "callback": "bot.nano"

@@ -1,6 +1,7 @@
 """
-OpenAI DALL-E image generation service.
+OpenAI DALL-E and GPT Image 2 image generation service.
 """
+import base64
 import time
 from typing import Optional, Callable, Awaitable
 from pathlib import Path
@@ -91,17 +92,17 @@ class DalleService(BaseImageProvider):
         **kwargs
     ) -> ImageResponse:
         """
-        Generate image using DALL-E.
+        Generate image using DALL-E or GPT Image 2.
 
         Args:
             prompt: Text description for image generation
             progress_callback: Optional async callback for progress updates
             **kwargs: Additional parameters:
-                - model: DALL-E model (dall-e-2, dall-e-3, default: dall-e-3)
-                - size: Image size (1024x1024, 1792x1024, 1024x1792 for dall-e-3)
-                - quality: Image quality (standard, hd, default: standard)
-                - style: Image style (vivid, natural, default: vivid)
-                - n: Number of images (1-10 for dall-e-2, only 1 for dall-e-3)
+                - model: Model ID (dall-e-2, dall-e-3, gpt-image-2-*, default: dall-e-3)
+                - size: Image size
+                - quality: Image quality
+                - style: Image style (DALL-E 3 only: vivid, natural)
+                - n: Number of images
 
         Returns:
             ImageResponse with image path or error
@@ -116,19 +117,29 @@ class DalleService(BaseImageProvider):
             )
 
         try:
-            # Get parameters
             model = kwargs.get("model", "dall-e-3")
+            is_gpt_image_2 = model.startswith("gpt-image-2")
+
+            if is_gpt_image_2:
+                return await self._generate_gpt_image_2(
+                    prompt=prompt,
+                    model=model,
+                    progress_callback=progress_callback,
+                    start_time=start_time,
+                    **kwargs
+                )
+
+            # DALL-E path
             size = kwargs.get("size", "1024x1024")
             quality = kwargs.get("quality", "standard")
             style = kwargs.get("style", "vivid")
             n = kwargs.get("n", 1)
 
-            # Validate size based on model
             if model == "dall-e-3":
                 valid_sizes = ["1024x1024", "1792x1024", "1024x1792"]
                 if size not in valid_sizes:
                     size = "1024x1024"
-                n = 1  # DALL-E 3 only supports n=1
+                n = 1
             else:  # dall-e-2
                 valid_sizes = ["256x256", "512x512", "1024x1024"]
                 if size not in valid_sizes:
@@ -137,7 +148,6 @@ class DalleService(BaseImageProvider):
             if progress_callback:
                 await progress_callback(f"🎨 Генерирую изображение ({model}, {size})...")
 
-            # Generate image
             response = await self.client.images.generate(
                 model=model,
                 prompt=prompt,
@@ -148,13 +158,11 @@ class DalleService(BaseImageProvider):
                 response_format="url"
             )
 
-            # Download the first image
             image_url = response.data[0].url
 
             if progress_callback:
                 await progress_callback("💾 Сохраняю изображение...")
 
-            # Download image
             filename = self._generate_filename("png")
             image_path = await self._download_file(image_url, filename)
 
@@ -193,6 +201,234 @@ class DalleService(BaseImageProvider):
         except Exception as e:
             error_msg = _get_dalle_error_message(e)
             logger.error("dalle_image_generation_failed", error=str(e), prompt=prompt[:100])
+
+            if progress_callback:
+                await progress_callback(f"❌ {error_msg}")
+
+            return ImageResponse(
+                success=False,
+                error=error_msg,
+                processing_time=time.time() - start_time
+            )
+
+    async def _generate_gpt_image_2(
+        self,
+        prompt: str,
+        model: str,
+        progress_callback: Optional[Callable[[str], Awaitable[None]]],
+        start_time: float,
+        **kwargs
+    ) -> ImageResponse:
+        """Generate image using GPT Image 2 via images.generate endpoint."""
+        size = kwargs.get("size", "1024x1024")
+        quality = kwargs.get("quality", "medium")
+        n = kwargs.get("n", 1)
+        output_format = kwargs.get("output_format", "png")
+
+        valid_sizes = ["1024x1024", "1536x1024", "1024x1536", "auto"]
+        if size not in valid_sizes:
+            size = "1024x1024"
+
+        valid_qualities = ["low", "medium", "high", "auto"]
+        if quality not in valid_qualities:
+            quality = "medium"
+
+        n = max(1, min(n, 4))
+
+        if progress_callback:
+            await progress_callback(f"🖼 Генерирую изображение GPT Image 2 ({size}, {quality})...")
+
+        try:
+            response = await self.client.images.generate(
+                model=model,
+                prompt=prompt,
+                size=size,
+                quality=quality,
+                n=n,
+                response_format="b64_json",
+                output_format=output_format,
+            )
+        except TypeError:
+            # Fallback if SDK version doesn't support output_format
+            response = await self.client.images.generate(
+                model=model,
+                prompt=prompt,
+                size=size,
+                quality=quality,
+                n=n,
+                response_format="b64_json",
+            )
+
+        if progress_callback:
+            await progress_callback("💾 Сохраняю изображение...")
+
+        b64_data = response.data[0].b64_json
+        image_bytes = base64.b64decode(b64_data)
+
+        ext = output_format if output_format in ("jpeg", "webp") else "png"
+        filename = self._generate_filename(ext)
+        image_path = str(self.storage_path / filename)
+        with open(image_path, "wb") as f:
+            f.write(image_bytes)
+
+        processing_time = time.time() - start_time
+
+        if progress_callback:
+            await progress_callback("✅ Изображение готово!")
+
+        logger.info(
+            "gpt_image_2_generated",
+            model=model,
+            size=size,
+            quality=quality,
+            prompt=prompt[:100],
+            time=processing_time
+        )
+
+        gpt_image_billing = get_image_model_billing("gpt-image-2")
+        tokens_used = gpt_image_billing.tokens_per_generation
+
+        return ImageResponse(
+            success=True,
+            image_path=image_path,
+            processing_time=processing_time,
+            metadata={
+                "provider": "openai",
+                "model": model,
+                "size": size,
+                "quality": quality,
+                "output_format": output_format,
+                "prompt": prompt,
+                "tokens_used": tokens_used
+            }
+        )
+
+    async def edit_image_gpt_image_2(
+        self,
+        prompt: str,
+        image_path: str,
+        progress_callback: Optional[Callable[[str], Awaitable[None]]] = None,
+        **kwargs
+    ) -> ImageResponse:
+        """
+        Edit an existing image using GPT Image 2 via images.edit endpoint.
+
+        Supports multi-image input: pass additional images as reference_image_paths list.
+        """
+        start_time = time.time()
+
+        if not self.client:
+            return ImageResponse(
+                success=False,
+                error="OpenAI API key not configured",
+                processing_time=time.time() - start_time
+            )
+
+        model = kwargs.get("model", "gpt-image-2-2026-04-21")
+        size = kwargs.get("size", "1024x1024")
+        quality = kwargs.get("quality", "medium")
+        n = kwargs.get("n", 1)
+        output_format = kwargs.get("output_format", "png")
+        reference_image_paths = kwargs.get("reference_image_paths", [])
+
+        valid_sizes = ["1024x1024", "1536x1024", "1024x1536", "auto"]
+        if size not in valid_sizes:
+            size = "1024x1024"
+
+        try:
+            if progress_callback:
+                await progress_callback("🖼 Редактирую изображение с GPT Image 2...")
+
+            # Collect all image file handles
+            image_files = []
+            all_paths = [image_path] + reference_image_paths
+
+            for path in all_paths:
+                p = Path(path)
+                if p.exists():
+                    image_files.append(open(path, "rb"))
+
+            if not image_files:
+                raise FileNotFoundError("No valid image files found")
+
+            try:
+                # images.edit accepts a single image or list of images
+                if len(image_files) == 1:
+                    images_arg = image_files[0]
+                else:
+                    images_arg = image_files
+
+                try:
+                    response = await self.client.images.edit(
+                        model=model,
+                        image=images_arg,
+                        prompt=prompt,
+                        size=size,
+                        quality=quality,
+                        n=max(1, min(n, 4)),
+                        response_format="b64_json",
+                        output_format=output_format,
+                    )
+                except TypeError:
+                    response = await self.client.images.edit(
+                        model=model,
+                        image=images_arg,
+                        prompt=prompt,
+                        size=size,
+                        n=max(1, min(n, 4)),
+                        response_format="b64_json",
+                    )
+            finally:
+                for fh in image_files:
+                    fh.close()
+
+            if progress_callback:
+                await progress_callback("💾 Сохраняю результат...")
+
+            b64_data = response.data[0].b64_json
+            image_bytes = base64.b64decode(b64_data)
+
+            ext = output_format if output_format in ("jpeg", "webp") else "png"
+            filename = self._generate_filename(ext)
+            result_path = str(self.storage_path / filename)
+            with open(result_path, "wb") as f:
+                f.write(image_bytes)
+
+            processing_time = time.time() - start_time
+
+            if progress_callback:
+                await progress_callback("✅ Готово!")
+
+            logger.info(
+                "gpt_image_2_edited",
+                model=model,
+                size=size,
+                quality=quality,
+                prompt=prompt[:100],
+                time=processing_time
+            )
+
+            gpt_image_billing = get_image_model_billing("gpt-image-2")
+            tokens_used = gpt_image_billing.tokens_per_generation
+
+            return ImageResponse(
+                success=True,
+                image_path=result_path,
+                processing_time=processing_time,
+                metadata={
+                    "provider": "openai",
+                    "model": model,
+                    "operation": "edit",
+                    "size": size,
+                    "quality": quality,
+                    "prompt": prompt,
+                    "tokens_used": tokens_used
+                }
+            )
+
+        except Exception as e:
+            error_msg = _get_dalle_error_message(e)
+            logger.error("gpt_image_2_edit_failed", error=str(e), prompt=prompt[:100])
 
             if progress_callback:
                 await progress_callback(f"❌ {error_msg}")
