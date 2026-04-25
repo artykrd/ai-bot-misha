@@ -59,6 +59,13 @@ class FixedModelBilling:
 # TEXT MODELS (Dynamic billing)
 # ==============================================
 TEXT_MODELS: Dict[str, TextModelBilling] = {
+    # GPT-5.5 — most powerful OpenAI model
+    "gpt-5.5-2026-04-23": TextModelBilling(
+        base_tokens=200,
+        per_gpt_token=33,
+        display_name="GPT-5.5"
+    ),
+
     # GPT Models
     "gpt-4.1-mini": TextModelBilling(
         base_tokens=140,
@@ -132,6 +139,7 @@ TEXT_MODELS: Dict[str, TextModelBilling] = {
 
 # Legacy model mappings (for backward compatibility)
 LEGACY_TEXT_MODEL_MAP = {
+    "gpt-5.5": "gpt-5.5-2026-04-23",
     "gpt-4": "gpt-4o",
     "gpt-4-mini": "gpt-4.1-mini",
     "claude": "claude-4",
@@ -144,6 +152,12 @@ LEGACY_TEXT_MODEL_MAP = {
 # IMAGE MODELS (Fixed billing)
 # ==============================================
 IMAGE_MODELS: Dict[str, FixedModelBilling] = {
+    "gpt-image-2": FixedModelBilling(
+        tokens_per_generation=11000,
+        display_name="GPT Image 2",
+        description_suffix="Стоимость генерации: 11 000 токенов за изображение",
+        model_type=ModelType.IMAGE
+    ),
     "dalle3": FixedModelBilling(
         tokens_per_generation=9500,
         display_name="DALL·E 3",

@@ -24,6 +24,16 @@ def _get_redis_client():
 
 # Model ID to AI service mapping with new billing system
 MODEL_MAPPINGS = {
+    340: {
+        "name": "GPT 5.5",
+        "provider": "openai",
+        "model_id": "gpt-5.5-2026-04-23",
+        "billing_id": "gpt-5.5-2026-04-23",
+        "cost_per_request": 2000,
+        "supports_vision": True,
+        "supports_voice": True,
+        "supports_files": True
+    },
     324: {
         "name": "GPT 4.1 Mini",
         "provider": "openai",

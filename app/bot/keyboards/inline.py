@@ -52,7 +52,10 @@ def ai_models_keyboard() -> InlineKeyboardMarkup:
     """AI models selection keyboard with groups: ChatGPT, Deepseek, Gemini, Others."""
     builder = InlineKeyboardBuilder()
 
-    # ChatGPT
+    # ChatGPT — GPT-5.5 first (most powerful)
+    builder.row(
+        InlineKeyboardButton(text="🚀 GPT 5.5 — самая мощная", callback_data="bot.start_chatgpt_dialog_340")
+    )
     builder.row(
         InlineKeyboardButton(text="4️⃣ GPT 4.1 Mini", callback_data="bot.start_chatgpt_dialog_324"),
         InlineKeyboardButton(text="4️⃣ GPT 4o", callback_data="bot.start_chatgpt_dialog_325")
@@ -264,6 +267,9 @@ def create_photo_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
     builder.row(
+        InlineKeyboardButton(text="🖼 GPT Image 2", callback_data="bot.gpt_image_2")
+    )
+    builder.row(
         InlineKeyboardButton(text="🍌 Nano Banana", callback_data="bot.nano"),
         InlineKeyboardButton(text="🍌✨ Banana PRO", callback_data="bot.nano_pro")
     )
@@ -314,6 +320,64 @@ def create_video_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="⬅️ В главное меню", callback_data="bot.back")
     )
 
+    return builder.as_markup()
+
+
+def gpt_image_2_keyboard(size: str = "1024x1024", quality: str = "medium") -> InlineKeyboardMarkup:
+    """GPT Image 2 settings keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    size_labels = {
+        "1024x1024": "1:1",
+        "1536x1024": "3:2 (горизонт.)",
+        "1024x1536": "2:3 (вертикаль)",
+        "auto": "Авто",
+    }
+    quality_labels = {
+        "low": "Низкое",
+        "medium": "Среднее",
+        "high": "Высокое",
+        "auto": "Авто",
+    }
+
+    builder.row(
+        InlineKeyboardButton(
+            text=f"📐 Формат: {size_labels.get(size, size)}",
+            callback_data="bot.gi2:size_menu"
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text=f"✨ Качество: {quality_labels.get(quality, quality)}",
+            callback_data="bot.gi2:quality_menu"
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ В главное меню", callback_data="bot.back")
+    )
+
+    return builder.as_markup()
+
+
+def gpt_image_2_size_keyboard() -> InlineKeyboardMarkup:
+    """GPT Image 2 size selection keyboard."""
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="◾ 1:1 (1024×1024)", callback_data="bot.gi2:size:1024x1024"))
+    builder.row(InlineKeyboardButton(text="▬ 3:2 горизонталь (1536×1024)", callback_data="bot.gi2:size:1536x1024"))
+    builder.row(InlineKeyboardButton(text="▮ 2:3 вертикаль (1024×1536)", callback_data="bot.gi2:size:1024x1536"))
+    builder.row(InlineKeyboardButton(text="🔄 Авто", callback_data="bot.gi2:size:auto"))
+    builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="bot.gpt_image_2"))
+    return builder.as_markup()
+
+
+def gpt_image_2_quality_keyboard() -> InlineKeyboardMarkup:
+    """GPT Image 2 quality selection keyboard."""
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="⚡ Низкое (быстро, дешевле)", callback_data="bot.gi2:quality:low"))
+    builder.row(InlineKeyboardButton(text="⭐ Среднее (баланс)", callback_data="bot.gi2:quality:medium"))
+    builder.row(InlineKeyboardButton(text="💎 Высокое (лучшее качество)", callback_data="bot.gi2:quality:high"))
+    builder.row(InlineKeyboardButton(text="🔄 Авто", callback_data="bot.gi2:quality:auto"))
+    builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="bot.gpt_image_2"))
     return builder.as_markup()
 
 
