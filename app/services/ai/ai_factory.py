@@ -129,7 +129,7 @@ class AIServiceFactory:
                 "anthropic": settings.anthropic_api_key,
                 "google": settings.google_ai_api_key,
                 "deepseek": settings.deepseek_api_key,
-                "xai": settings.xai_api_key,
+                "xai": settings.grok_ai_api,
             }
             use_mock = not bool(api_keys.get(provider))
 

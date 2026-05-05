@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     google_ai_api_key: Optional[str] = Field(None, description="Google AI API key")
     deepseek_api_key: Optional[str] = Field(None, description="DeepSeek API key")
     perplexity_api_key: Optional[str] = Field(None, description="Perplexity API key")
-    xai_api_key: Optional[str] = Field(None, description="xAI API key for Grok models")
+    grok_ai_api: Optional[str] = Field(None, description="xAI API key for Grok models")
     stability_api_key: Optional[str] = Field(None, description="Stability AI API key")
     midjourney_api_key: Optional[str] = Field(None, description="Midjourney API key")
     replicate_api_key: Optional[str] = Field(None, description="Replicate API key")

@@ -28,7 +28,7 @@ class XAIService(BaseAIProvider):
     """xAI API integration for Grok models."""
 
     def __init__(self, api_key: Optional[str] = None):
-        super().__init__(api_key or settings.xai_api_key)
+        super().__init__(api_key or settings.grok_ai_api)
         self.client = AsyncOpenAI(
             api_key=self.api_key,
             base_url=XAI_BASE_URL,
