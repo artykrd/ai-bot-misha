@@ -85,9 +85,9 @@ def ai_models_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="💻 Sonar Pro", callback_data="bot.start_chatgpt_dialog_332")
     )
 
-    # AI Чат-Grok
+    # Grok (xAI)
     builder.row(
-        InlineKeyboardButton(text="⚡ AI Чат-Grok 4.3", callback_data="bot.start_chatgpt_dialog_341")
+        InlineKeyboardButton(text="🔮 Grok 4.3", callback_data="bot.start_chatgpt_dialog_341")
     )
 
     # Инструменты
