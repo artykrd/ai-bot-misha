@@ -80,6 +80,11 @@ MODEL_CONFIGS = {
         "description": "Продвинутая модель с поиском",
         "billing_id": "sonar-pro",
     },
+    "grok-4.3": {
+        "display_name": "Grok 4.3",
+        "description": "Самая truth-seeking модель от xAI — прямая, честная и мощная",
+        "billing_id": "grok-4.3",
+    },
     # Legacy model mappings
     "gpt-5.5": "gpt-5.5-2026-04-23",
     "gpt-4": "gpt-4o",

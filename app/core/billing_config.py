@@ -134,6 +134,14 @@ TEXT_MODELS: Dict[str, TextModelBilling] = {
         per_gpt_token=3.6,
         display_name="Claude 4"
     ),
+
+    # Grok Models (xAI)
+    # Input: $1.25/1M tokens, Output: $2.50/1M tokens — x4 margin
+    "grok-4.3": TextModelBilling(
+        base_tokens=160,
+        per_gpt_token=2.0,
+        display_name="Grok 4.3"
+    ),
 }
 
 
