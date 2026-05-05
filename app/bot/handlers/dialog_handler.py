@@ -415,6 +415,16 @@ async def process_dialog_message(
                 system_prompt=dialog.get("system_prompt"),
                 bot_instance=bot_instance
             )
+        elif provider == "xai":
+            response = await process_xai_message(
+                message_type=message_type,
+                content=content,
+                model_id=model_id,
+                caption=message.caption,
+                history_enabled=dialog["history_enabled"],
+                system_prompt=dialog.get("system_prompt"),
+                bot_instance=bot_instance
+            )
         else:
             response = {
                 "success": False,
@@ -845,4 +855,52 @@ async def process_perplexity_message(
         from app.core.error_handlers import format_user_error
         logger.error(f"Perplexity processing error: {e}", exc_info=True)
         user_error = format_user_error(e, provider="Perplexity", model=model_id)
+        return {"success": False, "error": user_error}
+
+
+async def process_xai_message(
+    message_type: str,
+    content: any,
+    model_id: str,
+    caption: str = None,
+    history_enabled: bool = False,
+    system_prompt: str = None,
+    bot_instance=None
+) -> dict:
+    """Process message with xAI Grok models."""
+    from app.services.ai.xai_service import XAIService
+
+    try:
+        service = XAIService()
+
+        if message_type == "text":
+            result = await service.generate_text(
+                model=model_id,
+                prompt=content,
+                system_prompt=system_prompt
+            )
+        elif message_type == "voice":
+            transcribed_text = await transcribe_voice(content, bot_instance)
+            result = await service.generate_text(
+                model=model_id,
+                prompt=transcribed_text,
+                system_prompt=system_prompt
+            )
+        elif message_type == "document":
+            return {"success": False, "error": "Обработка документов для Grok пока не реализована"}
+        else:
+            return {"success": False, "error": f"Тип сообщения {message_type} не поддерживается Grok"}
+
+        return {
+            "success": result.success,
+            "content": result.content if result.success else result.error,
+            "error": result.error if not result.success else None,
+            "prompt_tokens": result.prompt_tokens,
+            "completion_tokens": result.completion_tokens,
+            "mock": result.metadata.get("mock", False)
+        }
+    except Exception as e:
+        from app.core.error_handlers import format_user_error
+        logger.error(f"xAI Grok processing error: {e}", exc_info=True)
+        user_error = format_user_error(e, provider="xAI Grok", model=model_id)
         return {"success": False, "error": user_error}

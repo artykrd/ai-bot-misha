@@ -11,6 +11,7 @@ from app.services.ai.anthropic_service import AnthropicService
 from app.services.ai.google_service import GoogleService
 from app.services.ai.deepseek_service import DeepSeekService
 from app.services.ai.mock_service import MockAIService
+from app.services.ai.xai_service import XAIService
 
 logger = get_logger(__name__)
 
@@ -39,6 +40,7 @@ class AIServiceFactory:
         "google/gemini-2.5-pro-preview": "google",
         "deepseek": "deepseek",
         "deepseek-chat": "deepseek",
+        "grok-4.3": "xai",
     }
 
     # OpenAI model name mapping
@@ -74,6 +76,11 @@ class AIServiceFactory:
         "deepseek-chat": "deepseek-chat",
     }
 
+    # xAI model name mapping
+    XAI_MODEL_NAMES = {
+        "grok-4.3": "grok-4.3",
+    }
+
     @classmethod
     def get_provider_name(cls, model: str) -> str:
         """Get provider name for a given model."""
@@ -92,6 +99,8 @@ class AIServiceFactory:
             return cls.GOOGLE_MODEL_NAMES.get(model, model)
         elif provider == "deepseek":
             return cls.DEEPSEEK_MODEL_NAMES.get(model, model)
+        elif provider == "xai":
+            return cls.XAI_MODEL_NAMES.get(model, model)
 
         return model
 
@@ -120,6 +129,7 @@ class AIServiceFactory:
                 "anthropic": settings.anthropic_api_key,
                 "google": settings.google_ai_api_key,
                 "deepseek": settings.deepseek_api_key,
+                "xai": settings.xai_api_key,
             }
             use_mock = not bool(api_keys.get(provider))
 
@@ -143,6 +153,8 @@ class AIServiceFactory:
                 return GoogleService()
             elif provider == "deepseek":
                 return DeepSeekService()
+            elif provider == "xai":
+                return XAIService()
             else:
                 logger.warning(
                     "unknown_provider",

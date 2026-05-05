@@ -181,7 +181,9 @@ async def show_models(callback: CallbackQuery):
         "**Другие модели:**\n"
         f"• {format_text_model_pricing('claude-4')}\n"
         f"• {format_text_model_pricing('sonar')}\n"
-        f"• {format_text_model_pricing('sonar-pro')}"
+        f"• {format_text_model_pricing('sonar-pro')}\n\n"
+        "**AI Чат-Grok (xAI):**\n"
+        f"• {format_text_model_pricing('grok-4.3')}"
     )
 
     await safe_edit_or_send(callback, text, reply_markup=ai_models_keyboard())
@@ -209,7 +211,9 @@ async def show_models_message(message: Message, user: User, state: FSMContext):
         "**Другие модели:**\n"
         f"• {format_text_model_pricing('claude-4')}\n"
         f"• {format_text_model_pricing('sonar')}\n"
-        f"• {format_text_model_pricing('sonar-pro')}"
+        f"• {format_text_model_pricing('sonar-pro')}\n\n"
+        "**AI Чат-Grok (xAI):**\n"
+        f"• {format_text_model_pricing('grok-4.3')}"
     )
     await message.answer(text, reply_markup=ai_models_keyboard(), parse_mode=ParseMode.MARKDOWN)
 
@@ -254,11 +258,14 @@ async def start_dialog(callback: CallbackQuery, user: User):
         return
     model_name = model_config["name"]
     model_id = model_config["model_id"]
+    model_description = model_config.get("description")
 
     # Build history status text
     history_status = "сохраняется (📈)" if history_enabled else "не сохраняется"
 
-    text = f"""💬 **Диалог начался**
+    description_block = f"\n\n📋 **О модели:**\n{model_description}" if model_description else ""
+
+    text = f"""💬 **Диалог начался**{description_block}
 
 Для ввода используй:
 └ 📝 текст;

@@ -186,6 +186,23 @@ MODEL_MAPPINGS = {
         "supports_voice": True,
         "supports_files": True
     },
+    341: {
+        "name": "Grok 4.3",
+        "provider": "xai",
+        "model_id": "grok-4.3",
+        "billing_id": "grok-4.3",
+        "cost_per_request": 700,
+        "supports_vision": False,
+        "supports_voice": False,
+        "supports_files": True,
+        "description": (
+            "Самая truth-seeking языковая модель в мире от xAI.\n"
+            "• Контекст 1 млн токенов\n"
+            "• Прямые, честные и развёрнутые ответы\n"
+            "• Отлично справляется с анализом, кодом и сложными задачами\n"
+            "• Работает с текстом и документами"
+        ),
+    },
 }
 
 
