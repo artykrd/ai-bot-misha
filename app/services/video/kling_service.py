@@ -333,7 +333,7 @@ class KlingService(BaseVideoProvider):
 
         payload = {
             "model_name": model,
-            "prompt": prompt,
+            "prompt": prompt[:2500],
             "duration": str(duration),
             "aspect_ratio": aspect_ratio,
         }
@@ -371,7 +371,7 @@ class KlingService(BaseVideoProvider):
 
         payload = {
             "model_name": model,
-            "prompt": prompt,
+            "prompt": prompt[:2500],
             "image": image_base64,
             "duration": str(duration),
             "aspect_ratio": aspect_ratio,
@@ -414,7 +414,7 @@ class KlingService(BaseVideoProvider):
 
         payload = {
             "model_name": "kling-v2-6",
-            "prompt": prompt,
+            "prompt": prompt[:2500],
             "image": image_base64,
             "image_tail": image_tail_base64,
             "duration": str(duration),
