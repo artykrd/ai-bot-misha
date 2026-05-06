@@ -236,7 +236,7 @@ class GrokVideoService(BaseVideoProvider):
                     headers=headers,
                     timeout=aiohttp.ClientTimeout(total=30),
                 ) as response:
-                    if response.status != 200:
+                    if response.status not in (200, 202):
                         error_text = await response.text()
                         raise Exception(
                             f"Grok Video poll error {response.status}: {error_text}"
