@@ -181,4 +181,12 @@ MODEL_ACTIONS = {
         "text": "🎵 Создать новую музыку",
         "callback": "bot.suno"
     },
+    "grok_image": {
+        "text": "🤖 Создать новое изображение",
+        "callback": "bot.grok_image"
+    },
+    "grok_video": {
+        "text": "🤖 Создать новое видео",
+        "callback": "bot.grok_video"
+    },
 }

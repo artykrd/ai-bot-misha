@@ -12,6 +12,7 @@ from app.services.image.seedream_service import SeedreamService
 from app.services.image.seedream5_service import Seedream5Service
 from app.services.image.midjourney_service import MidjourneyService
 from app.services.image.nano_banana_2_service import NanoBanana2Service
+from app.services.image.grok_image_service import GrokImageService
 
 __all__ = [
     "RemoveBgService",
@@ -25,4 +26,5 @@ __all__ = [
     "Seedream5Service",
     "MidjourneyService",
     "NanoBanana2Service",
+    "GrokImageService",
 ]

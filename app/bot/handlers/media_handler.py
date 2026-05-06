@@ -57,9 +57,16 @@ from app.bot.keyboards.inline import (
     kling_mc_mode_keyboard,
     kling_mc_orientation_keyboard,
     kling_mc_sound_keyboard,
+    grok_image_keyboard,
+    grok_image_aspect_ratio_keyboard,
+    grok_image_resolution_keyboard,
+    grok_video_keyboard,
+    grok_video_resolution_keyboard,
+    grok_video_duration_keyboard,
+    grok_video_aspect_ratio_keyboard,
 )
 from app.bot.states import MediaState
-from app.bot.states.media import KlingSettings, KlingImageSettings, clear_state_preserve_settings
+from app.bot.states.media import KlingSettings, KlingImageSettings, GrokImageSettings, GrokVideoSettings, clear_state_preserve_settings
 from app.bot.utils.notifications import (
     format_generation_message,
     create_action_keyboard,
@@ -77,11 +84,12 @@ from app.core.billing_config import (
     format_token_amount,
     get_kling_tokens_cost,
     get_kling_api_model,
+    get_grok_video_tokens_cost,
 )
 from app.core.temp_files import get_temp_file_path, cleanup_temp_file
 from app.services.video import VeoService, LumaService, HailuoService, KlingService
 from app.services.video.kling_effects_service import KlingEffectsService
-from app.services.image import DalleService, GeminiImageService, StabilityService, RemoveBgService, NanoBananaService, KlingImageService, RecraftService, SeedreamService, MidjourneyService
+from app.services.image import DalleService, GeminiImageService, StabilityService, RemoveBgService, NanoBananaService, KlingImageService, RecraftService, SeedreamService, MidjourneyService, GrokImageService
 from app.services.image.seedream5_service import Seedream5Service
 from app.services.image.nano_banana_2_service import NanoBanana2Service
 from app.services.audio import SunoService, OpenAIAudioService
@@ -396,6 +404,434 @@ async def start_hailuo(callback: CallbackQuery, state: FSMContext, user: User):
     await state.update_data(service="hailuo", image_path=None, photo_caption_prompt=None)
 
     await callback.message.answer(text, reply_markup=back_to_main_keyboard())
+    await callback.answer()
+
+
+# ======================
+# GROK IMAGES HANDLERS
+# ======================
+
+@router.callback_query(F.data == "bot.grok_image")
+async def start_grok_image(callback: CallbackQuery, state: FSMContext, user: User):
+    """Show Grok Images menu with description and settings."""
+    total_tokens = await get_available_tokens(user.id)
+    billing = get_image_model_billing("grok-imagine-image")
+    images_available = int(total_tokens / billing.tokens_per_generation) if total_tokens > 0 else 0
+
+    data = await state.get_data()
+    settings_obj = GrokImageSettings.from_dict(data)
+
+    text = (
+        "🤖 **Grok Images · генерация изображений**\n\n"
+        "Grok Images от xAI создаёт высококачественные фотореалистичные изображения по вашему описанию. "
+        "Модель отличается точным следованием промпту и детальной проработкой деталей.\n\n"
+        "✏️ **Возможности:**\n"
+        "• Создание фотореалистичных изображений\n"
+        "• Стилизация: арт, аниме, живопись, 3D\n"
+        "• Разрешение до 2K\n"
+        "• Широкий выбор форматов\n\n"
+        "⚙️ **Текущие настройки:**\n"
+        f"{settings_obj.get_display_settings()}\n\n"
+        f"💰 **Стоимость:** {format_token_amount(billing.tokens_per_generation)} токенов за изображение\n"
+        f"🔹 Баланса хватит на {images_available} изображений\n\n"
+        "📝 **Отправьте описание изображения**"
+    )
+
+    await state.set_state(MediaState.grok_image_waiting_for_prompt)
+    await state.update_data(photo_caption_prompt=None)
+
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=grok_image_keyboard(
+                aspect_ratio=settings_obj.aspect_ratio,
+                resolution=settings_obj.resolution,
+            ),
+            parse_mode="Markdown",
+        )
+    except Exception:
+        await callback.message.answer(
+            text,
+            reply_markup=grok_image_keyboard(
+                aspect_ratio=settings_obj.aspect_ratio,
+                resolution=settings_obj.resolution,
+            ),
+            parse_mode="Markdown",
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "grok_image.settings.aspect_ratio")
+async def grok_image_settings_aspect_ratio(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    s = GrokImageSettings.from_dict(data)
+    await callback.message.edit_text(
+        "📐 Выберите формат изображения:",
+        reply_markup=grok_image_aspect_ratio_keyboard(s.aspect_ratio),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("grok_image.set.aspect_ratio:"))
+async def grok_image_set_aspect_ratio(callback: CallbackQuery, state: FSMContext):
+    ratio = callback.data.split(":", 1)[1]
+    data = await state.get_data()
+    s = GrokImageSettings.from_dict(data)
+    s.aspect_ratio = ratio
+    await state.update_data(**s.to_dict())
+    await callback.message.edit_text(
+        f"✅ Формат установлен: {ratio}\n\nОтправьте описание изображения.",
+        reply_markup=grok_image_keyboard(aspect_ratio=s.aspect_ratio, resolution=s.resolution),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "grok_image.settings.resolution")
+async def grok_image_settings_resolution(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    s = GrokImageSettings.from_dict(data)
+    await callback.message.edit_text(
+        "🖼 Выберите разрешение:",
+        reply_markup=grok_image_resolution_keyboard(s.resolution),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("grok_image.set.resolution:"))
+async def grok_image_set_resolution(callback: CallbackQuery, state: FSMContext):
+    resolution = callback.data.split(":", 1)[1]
+    data = await state.get_data()
+    s = GrokImageSettings.from_dict(data)
+    s.resolution = resolution
+    await state.update_data(**s.to_dict())
+    await callback.message.edit_text(
+        f"✅ Разрешение установлено: {resolution}\n\nОтправьте описание изображения.",
+        reply_markup=grok_image_keyboard(aspect_ratio=s.aspect_ratio, resolution=s.resolution),
+    )
+    await callback.answer()
+
+
+@router.message(MediaState.grok_image_waiting_for_prompt, F.text)
+async def process_grok_image_text(message: Message, state: FSMContext, user: User):
+    """Handle text prompt for Grok Images."""
+    if message.text and message.text.startswith("/"):
+        await clear_state_preserve_settings(state)
+        return
+    await _generate_grok_image(message, state, user, prompt=message.text)
+
+
+@router.message(MediaState.grok_image_waiting_for_prompt, F.photo)
+async def process_grok_image_photo(message: Message, state: FSMContext, user: User):
+    """Grok Images does not support image editing - prompt only."""
+    if message.caption:
+        await _generate_grok_image(message, state, user, prompt=message.caption)
+    else:
+        await message.answer(
+            "⚠️ Grok Images создаёт изображения только по текстовому описанию.\n"
+            "Пожалуйста, отправьте текстовый промпт."
+        )
+
+
+async def _generate_grok_image(message: Message, state: FSMContext, user: User, prompt: str):
+    """Core Grok image generation logic."""
+    data = await state.get_data()
+    settings_obj = GrokImageSettings.from_dict(data)
+
+    billing = get_image_model_billing("grok-imagine-image")
+    estimated_tokens = billing.tokens_per_generation
+
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+        try:
+            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+        except InsufficientTokensError as e:
+            await message.answer(
+                f"❌ Недостаточно токенов!\n\n"
+                f"Требуется: {format_token_amount(estimated_tokens)}\n"
+                f"Доступно: {format_token_amount(e.details['available'])}"
+            )
+            await clear_state_preserve_settings(state)
+            return
+
+    progress_msg = await message.answer("🤖 Генерирую изображение Grok Images...")
+
+    async def update_progress(text: str):
+        try:
+            await progress_msg.edit_text(text, parse_mode=None)
+        except Exception:
+            pass
+
+    service = GrokImageService()
+    result = await service.generate_image(
+        prompt=prompt,
+        progress_callback=update_progress,
+        aspect_ratio=settings_obj.aspect_ratio,
+        resolution=settings_obj.resolution,
+    )
+
+    if result.success:
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            user_tokens = await sub_service.get_available_tokens(user.id)
+
+        caption = format_generation_message(
+            content_type=CONTENT_TYPES.get("image", "изображение"),
+            model_name="Grok Images",
+            tokens_used=estimated_tokens,
+            user_tokens=user_tokens,
+            prompt=prompt,
+        )
+
+        builder = create_action_keyboard(
+            action_text=MODEL_ACTIONS["grok_image"]["text"],
+            action_callback=MODEL_ACTIONS["grok_image"]["callback"],
+            file_path=result.image_path,
+            file_type="image",
+            user_id=user.telegram_id,
+        )
+
+        # Send image with fallback (photo → document → download link)
+        await _send_image_safe(
+            message=message,
+            image_path=result.image_path,
+            caption=caption,
+            reply_markup=builder.as_markup(),
+        )
+
+        try:
+            await progress_msg.delete()
+        except Exception:
+            pass
+    else:
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            await sub_service.rollback_tokens(user.id, estimated_tokens)
+
+        try:
+            await progress_msg.edit_text(
+                f"❌ Ошибка генерации:\n{result.error}\n\nТокены возвращены.",
+                parse_mode=None,
+            )
+        except Exception:
+            pass
+
+    await clear_state_preserve_settings(state)
+
+
+async def _send_image_safe(
+    message: Message,
+    image_path: str,
+    caption: str = "",
+    reply_markup=None,
+) -> bool:
+    """
+    Send image with fallback strategy:
+    1. Try send as photo
+    2. If too large/failed — send as document
+    3. If >50MB — provide download link
+    """
+    max_photo_size = 5 * 1024 * 1024  # 5 MB (Telegram photo limit)
+    max_doc_size = 49 * 1024 * 1024   # 49 MB
+
+    try:
+        file_size = os.path.getsize(image_path)
+    except OSError:
+        return False
+
+    # Try as photo first
+    if file_size <= max_photo_size:
+        try:
+            image_file = FSInputFile(image_path)
+            await message.answer_photo(
+                photo=image_file,
+                caption=caption,
+                reply_markup=reply_markup,
+            )
+            return True
+        except Exception as e:
+            logger.warning("grok_image_send_as_photo_failed", error=str(e))
+
+    # Try as document
+    if file_size <= max_doc_size:
+        try:
+            image_file = FSInputFile(image_path)
+            await message.answer_document(
+                document=image_file,
+                caption=caption,
+                reply_markup=reply_markup,
+            )
+            return True
+        except Exception as e:
+            logger.warning("grok_image_send_as_document_failed", error=str(e))
+
+    # Last resort: download link
+    size_mb = file_size // (1024 * 1024)
+    try:
+        from app.api.file_download import create_download_token, get_download_url
+        token = create_download_token(image_path)
+        download_url = get_download_url(token)
+        await message.answer(
+            f"{caption}\n\n"
+            f"📥 Изображение ({size_mb} МБ) превышает лимит Telegram.\n"
+            f"Скачайте по ссылке (действует 1 час):\n{download_url}",
+            reply_markup=reply_markup,
+            parse_mode=None,
+        )
+        return True
+    except Exception as link_e:
+        logger.error("grok_image_download_link_failed", error=str(link_e))
+        await message.answer(
+            f"{caption}\n\n⚠️ Не удалось отправить изображение ({size_mb} МБ).",
+            reply_markup=reply_markup,
+            parse_mode=None,
+        )
+        return False
+
+
+# ======================
+# GROK VIDEO HANDLERS
+# ======================
+
+@router.callback_query(F.data == "bot.grok_video")
+async def start_grok_video(callback: CallbackQuery, state: FSMContext, user: User):
+    """Show Grok Video menu with description and settings."""
+    total_tokens = await get_available_tokens(user.id)
+
+    data = await state.get_data()
+    settings_obj = GrokVideoSettings.from_dict(data)
+
+    tokens_cost = get_grok_video_tokens_cost(settings_obj.resolution, settings_obj.duration)
+    videos_available = int(total_tokens / tokens_cost) if total_tokens > 0 else 0
+
+    text = (
+        "🤖 **Grok Video · генерация видео**\n\n"
+        "Grok Video от xAI создаёт реалистичные видео по текстовому описанию или изображению. "
+        "Асинхронная генерация — вы получите результат, когда видео будет готово.\n\n"
+        "✏️ **Возможности:**\n"
+        "• Text-to-Video: опишите сцену текстом\n"
+        "• Image-to-Video: прикрепите фото с описанием\n"
+        "• Длительность 1–15 секунд\n"
+        "• Качество 480p и 720p\n\n"
+        "💰 **Стоимость:**\n"
+        "• 480p — 28 000 токенов / сек\n"
+        "• 720p — 39 000 токенов / сек\n\n"
+        "⚙️ **Текущие настройки:**\n"
+        f"{settings_obj.get_display_settings()}\n"
+        f"Стоимость текущей генерации: {format_token_amount(tokens_cost)} токенов\n\n"
+        f"🔹 Баланса хватит на {videos_available} видео\n\n"
+        "📝 **Отправьте описание видео** ИЛИ **прикрепите фото с описанием**"
+    )
+
+    await state.set_state(MediaState.grok_video_waiting_for_prompt)
+    await state.update_data(photo_caption_prompt=None, grok_video_image_path=None)
+
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=grok_video_keyboard(
+                resolution=settings_obj.resolution,
+                duration=settings_obj.duration,
+                aspect_ratio=settings_obj.aspect_ratio,
+            ),
+            parse_mode="Markdown",
+        )
+    except Exception:
+        await callback.message.answer(
+            text,
+            reply_markup=grok_video_keyboard(
+                resolution=settings_obj.resolution,
+                duration=settings_obj.duration,
+                aspect_ratio=settings_obj.aspect_ratio,
+            ),
+            parse_mode="Markdown",
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "grok_video.settings.resolution")
+async def grok_video_settings_resolution(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    s = GrokVideoSettings.from_dict(data)
+    await callback.message.edit_text(
+        "🎞 Выберите качество видео:",
+        reply_markup=grok_video_resolution_keyboard(s.resolution),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("grok_video.set.resolution:"))
+async def grok_video_set_resolution(callback: CallbackQuery, state: FSMContext):
+    resolution = callback.data.split(":", 1)[1]
+    data = await state.get_data()
+    s = GrokVideoSettings.from_dict(data)
+    s.resolution = resolution
+    await state.update_data(**s.to_dict())
+    tokens_cost = get_grok_video_tokens_cost(s.resolution, s.duration)
+    await callback.message.edit_text(
+        f"✅ Качество: {resolution}\n"
+        f"Стоимость: {format_token_amount(tokens_cost)} токенов\n\n"
+        "Отправьте описание видео.",
+        reply_markup=grok_video_keyboard(
+            resolution=s.resolution, duration=s.duration, aspect_ratio=s.aspect_ratio
+        ),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "grok_video.settings.duration")
+async def grok_video_settings_duration(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    s = GrokVideoSettings.from_dict(data)
+    await callback.message.edit_text(
+        "⏱ Выберите длительность видео:",
+        reply_markup=grok_video_duration_keyboard(s.duration),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("grok_video.set.duration:"))
+async def grok_video_set_duration(callback: CallbackQuery, state: FSMContext):
+    duration = int(callback.data.split(":", 1)[1])
+    data = await state.get_data()
+    s = GrokVideoSettings.from_dict(data)
+    s.duration = duration
+    await state.update_data(**s.to_dict())
+    tokens_cost = get_grok_video_tokens_cost(s.resolution, s.duration)
+    await callback.message.edit_text(
+        f"✅ Длительность: {duration} сек\n"
+        f"Стоимость: {format_token_amount(tokens_cost)} токенов\n\n"
+        "Отправьте описание видео.",
+        reply_markup=grok_video_keyboard(
+            resolution=s.resolution, duration=s.duration, aspect_ratio=s.aspect_ratio
+        ),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "grok_video.settings.aspect_ratio")
+async def grok_video_settings_aspect_ratio(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    s = GrokVideoSettings.from_dict(data)
+    await callback.message.edit_text(
+        "📐 Выберите формат видео:",
+        reply_markup=grok_video_aspect_ratio_keyboard(s.aspect_ratio),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("grok_video.set.aspect_ratio:"))
+async def grok_video_set_aspect_ratio(callback: CallbackQuery, state: FSMContext):
+    ratio = callback.data.split(":", 1)[1]
+    data = await state.get_data()
+    s = GrokVideoSettings.from_dict(data)
+    s.aspect_ratio = ratio
+    await state.update_data(**s.to_dict())
+    await callback.message.edit_text(
+        f"✅ Формат: {ratio}\n\nОтправьте описание видео.",
+        reply_markup=grok_video_keyboard(
+            resolution=s.resolution, duration=s.duration, aspect_ratio=s.aspect_ratio
+        ),
+    )
     await callback.answer()
 
 

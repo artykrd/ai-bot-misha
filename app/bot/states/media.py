@@ -28,6 +28,10 @@ PERSISTENT_SETTINGS_KEYS = [
     "kling3_mode", "kling3_duration", "kling3_aspect_ratio", "kling3_auto_translate",
     # Kling O1 settings
     "kling_o1_mode", "kling_o1_duration", "kling_o1_aspect_ratio", "kling_o1_auto_translate",
+    # Grok Image settings
+    "grok_image_aspect_ratio", "grok_image_resolution",
+    # Grok Video settings
+    "grok_video_resolution", "grok_video_duration", "grok_video_aspect_ratio",
 ]
 
 
@@ -242,6 +246,62 @@ class NanoBanana2Settings:
         return "\n".join(parts)
 
 
+@dataclass
+class GrokImageSettings:
+    """Grok Images generation settings stored in FSM."""
+    aspect_ratio: str = "auto"  # "auto"|"1:1"|"16:9"|"9:16"|"4:3"|"3:4"|"3:2"|"2:3"
+    resolution: str = "1k"      # "1k" or "2k"
+
+    def to_dict(self) -> dict:
+        return {
+            "grok_image_aspect_ratio": self.aspect_ratio,
+            "grok_image_resolution": self.resolution,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "GrokImageSettings":
+        return cls(
+            aspect_ratio=data.get("grok_image_aspect_ratio", "auto"),
+            resolution=data.get("grok_image_resolution", "1k"),
+        )
+
+    def get_display_settings(self) -> str:
+        return "\n".join([
+            f"Формат: {self.aspect_ratio}",
+            f"Разрешение: {self.resolution}",
+        ])
+
+
+@dataclass
+class GrokVideoSettings:
+    """Grok Video generation settings stored in FSM."""
+    resolution: str = "480p"    # "480p" or "720p"
+    duration: int = 5           # 5, 10 or 15 seconds
+    aspect_ratio: str = "16:9"  # "16:9"|"9:16"|"1:1"|"4:3"|"3:4"|"3:2"|"2:3"
+
+    def to_dict(self) -> dict:
+        return {
+            "grok_video_resolution": self.resolution,
+            "grok_video_duration": self.duration,
+            "grok_video_aspect_ratio": self.aspect_ratio,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "GrokVideoSettings":
+        return cls(
+            resolution=data.get("grok_video_resolution", "480p"),
+            duration=data.get("grok_video_duration", 5),
+            aspect_ratio=data.get("grok_video_aspect_ratio", "16:9"),
+        )
+
+    def get_display_settings(self) -> str:
+        return "\n".join([
+            f"Качество: {self.resolution}",
+            f"Длительность: {self.duration} сек",
+            f"Формат: {self.aspect_ratio}",
+        ])
+
+
 class MediaState(StatesGroup):
     """States for media generation."""
     waiting_for_video_prompt = State()
@@ -274,6 +334,10 @@ class MediaState(StatesGroup):
     # Kling O1 video generation states
     kling_o1_waiting_for_input = State()   # Collecting video/images/text
     kling_o1_waiting_for_prompt = State()  # Media uploaded, waiting for text prompt
+    # Grok Image generation states
+    grok_image_waiting_for_prompt = State()
+    # Grok Video generation states
+    grok_video_waiting_for_prompt = State()
 
 
 class SunoState(StatesGroup):
