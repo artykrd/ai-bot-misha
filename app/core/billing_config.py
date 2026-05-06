@@ -245,6 +245,12 @@ IMAGE_MODELS: Dict[str, FixedModelBilling] = {
         description_suffix="Стоимость генерации (4K): 40 000 токенов за изображение",
         model_type=ModelType.IMAGE
     ),
+    "grok-imagine-image": FixedModelBilling(
+        tokens_per_generation=18500,
+        display_name="Grok Images",
+        description_suffix="Стоимость генерации: 18 500 токенов за изображение",
+        model_type=ModelType.IMAGE
+    ),
 }
 
 
@@ -420,6 +426,31 @@ VIDEO_MODELS: Dict[str, FixedModelBilling] = {
         model_type=ModelType.VIDEO
     ),
 }
+
+
+# ==============================================
+# GROK VIDEO BILLING CONSTANTS
+# ==============================================
+# Tokens per second by resolution
+GROK_VIDEO_TOKENS_PER_SECOND: Dict[str, int] = {
+    "480p": 28000,
+    "720p": 39000,
+}
+
+
+def get_grok_video_tokens_cost(resolution: str, duration: int) -> int:
+    """
+    Calculate token cost for Grok video generation.
+
+    Args:
+        resolution: '480p' or '720p'
+        duration: Duration in seconds (1-15)
+
+    Returns:
+        Total token cost
+    """
+    per_second = GROK_VIDEO_TOKENS_PER_SECOND.get(resolution, 28000)
+    return per_second * duration
 
 
 # Legacy video model mappings

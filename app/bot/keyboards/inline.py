@@ -289,6 +289,9 @@ def create_photo_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🌆 Midjourney", callback_data="bot.midjourney")
     )
     builder.row(
+        InlineKeyboardButton(text="🤖 Grok Images", callback_data="bot.grok_image")
+    )
+    builder.row(
         InlineKeyboardButton(text="👁 GPT Vision", callback_data="bot.gpt_vision")
     )
     builder.row(
@@ -320,6 +323,9 @@ def create_video_keyboard() -> InlineKeyboardMarkup:
     builder.row(
         InlineKeyboardButton(text="🌆 Midjourney", callback_data="bot.mjvideo"),
         InlineKeyboardButton(text="✨ Kling Эффекты", callback_data="bot.kling_effects")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🤖 Grok Video", callback_data="bot.grok_video")
     )
     builder.row(
         InlineKeyboardButton(text="⬅️ В главное меню", callback_data="bot.back")
@@ -2016,4 +2022,180 @@ def nano_banana_2_format_keyboard(current_ratio: str = "auto") -> InlineKeyboard
         InlineKeyboardButton(text="⬅️ Вернуться в меню", callback_data="bot.nano_banana_2")
     )
 
+    return builder.as_markup()
+
+
+# =====================================================
+# GROK IMAGES KEYBOARDS
+# =====================================================
+
+def grok_image_keyboard(
+    aspect_ratio: str = "auto",
+    resolution: str = "1k",
+) -> InlineKeyboardMarkup:
+    """Grok Images main settings keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    ratio_labels = {
+        "auto": "Авто",
+        "1:1": "1:1 Квадрат",
+        "16:9": "16:9 Горизонталь",
+        "9:16": "9:16 Вертикаль",
+        "4:3": "4:3",
+        "3:4": "3:4",
+        "3:2": "3:2",
+        "2:3": "2:3",
+    }
+    res_labels = {"1k": "1K", "2k": "2K (HD)"}
+
+    builder.row(
+        InlineKeyboardButton(
+            text=f"📐 Формат: {ratio_labels.get(aspect_ratio, aspect_ratio)}",
+            callback_data="grok_image.settings.aspect_ratio",
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text=f"🖼 Разрешение: {res_labels.get(resolution, resolution)}",
+            callback_data="grok_image.settings.resolution",
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ В главное меню", callback_data="bot.back")
+    )
+    return builder.as_markup()
+
+
+def grok_image_aspect_ratio_keyboard(current: str = "auto") -> InlineKeyboardMarkup:
+    """Aspect ratio selection for Grok Images."""
+    builder = InlineKeyboardBuilder()
+    ratios = ["auto", "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]
+    labels = {
+        "auto": "Авто", "1:1": "1:1", "16:9": "16:9",
+        "9:16": "9:16", "4:3": "4:3", "3:4": "3:4",
+        "3:2": "3:2", "2:3": "2:3",
+    }
+    for ratio in ratios:
+        mark = "✅ " if ratio == current else ""
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{mark}{labels[ratio]}",
+                callback_data=f"grok_image.set.aspect_ratio:{ratio}",
+            )
+        )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад", callback_data="bot.grok_image")
+    )
+    return builder.as_markup()
+
+
+def grok_image_resolution_keyboard(current: str = "1k") -> InlineKeyboardMarkup:
+    """Resolution selection for Grok Images."""
+    builder = InlineKeyboardBuilder()
+    options = [("1k", "1K — стандартное"), ("2k", "2K — HD (дольше)")]
+    for value, label in options:
+        mark = "✅ " if value == current else ""
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{mark}{label}",
+                callback_data=f"grok_image.set.resolution:{value}",
+            )
+        )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад", callback_data="bot.grok_image")
+    )
+    return builder.as_markup()
+
+
+# =====================================================
+# GROK VIDEO KEYBOARDS
+# =====================================================
+
+def grok_video_keyboard(
+    resolution: str = "480p",
+    duration: int = 5,
+    aspect_ratio: str = "16:9",
+) -> InlineKeyboardMarkup:
+    """Grok Video main settings keyboard."""
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(
+            text=f"🎞 Качество: {resolution}",
+            callback_data="grok_video.settings.resolution",
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text=f"⏱ Длительность: {duration} сек",
+            callback_data="grok_video.settings.duration",
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text=f"📐 Формат: {aspect_ratio}",
+            callback_data="grok_video.settings.aspect_ratio",
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ В главное меню", callback_data="bot.back")
+    )
+    return builder.as_markup()
+
+
+def grok_video_resolution_keyboard(current: str = "480p") -> InlineKeyboardMarkup:
+    """Resolution selection for Grok Video."""
+    builder = InlineKeyboardBuilder()
+    options = [
+        ("480p", "480p — стандартное (28 000 т/сек)"),
+        ("720p", "720p — HD (39 000 т/сек)"),
+    ]
+    for value, label in options:
+        mark = "✅ " if value == current else ""
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{mark}{label}",
+                callback_data=f"grok_video.set.resolution:{value}",
+            )
+        )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад", callback_data="bot.grok_video")
+    )
+    return builder.as_markup()
+
+
+def grok_video_duration_keyboard(current: int = 5) -> InlineKeyboardMarkup:
+    """Duration selection for Grok Video."""
+    builder = InlineKeyboardBuilder()
+    durations = [5, 10, 15]
+    builder.row(
+        *[
+            InlineKeyboardButton(
+                text=f"{'✅ ' if d == current else ''}{d} сек",
+                callback_data=f"grok_video.set.duration:{d}",
+            )
+            for d in durations
+        ]
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад", callback_data="bot.grok_video")
+    )
+    return builder.as_markup()
+
+
+def grok_video_aspect_ratio_keyboard(current: str = "16:9") -> InlineKeyboardMarkup:
+    """Aspect ratio selection for Grok Video."""
+    builder = InlineKeyboardBuilder()
+    ratios = ["16:9", "9:16", "1:1", "4:3", "3:4", "3:2", "2:3"]
+    for ratio in ratios:
+        mark = "✅ " if ratio == current else ""
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{mark}{ratio}",
+                callback_data=f"grok_video.set.aspect_ratio:{ratio}",
+            )
+        )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад", callback_data="bot.grok_video")
+    )
     return builder.as_markup()
