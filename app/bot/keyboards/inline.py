@@ -28,6 +28,7 @@ MENU_BUTTONS = [
     ("Замена лица на фото", "bot.faceswap"),
     ("Активировать промокод", "activate_promocode"),
     ("Помощь", "help"),
+    ("📄 Договор оферты", "bot.oferta"),
 ]
 
 
@@ -524,6 +525,9 @@ def profile_keyboard() -> InlineKeyboardMarkup:
     )
     builder.row(
         InlineKeyboardButton(text="🔢 Активировать промокод", callback_data="activate_promocode")
+    )
+    builder.row(
+        InlineKeyboardButton(text="📄 Договор оферты", callback_data="bot.oferta")
     )
     builder.row(
         InlineKeyboardButton(text="⬅️ В главное меню", callback_data="bot.back")

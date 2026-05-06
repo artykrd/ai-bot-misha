@@ -1182,6 +1182,26 @@ async def show_profile_payments(callback: CallbackQuery, user: User):
     await callback.answer()
 
 
+@router.callback_query(F.data == "bot.oferta")
+async def send_oferta(callback: CallbackQuery):
+    """Send offer agreement document."""
+    import os
+    from aiogram.types import FSInputFile
+
+    oferta_path = "/opt/bot/docs/oferta_231140574717.docx"
+
+    if not os.path.exists(oferta_path):
+        await callback.answer("⚠️ Файл договора временно недоступен.", show_alert=True)
+        return
+
+    file = FSInputFile(oferta_path, filename="Договор_оферты.docx")
+    await callback.message.answer_document(
+        document=file,
+        caption="📄 Договор оферты"
+    )
+    await callback.answer()
+
+
 @router.callback_query(F.data == "bot.change_language")
 async def profile_feature_not_implemented(callback: CallbackQuery):
     """Profile features not implemented."""
