@@ -60,6 +60,7 @@ from app.bot.keyboards.inline import (
     grok_image_keyboard,
     grok_image_aspect_ratio_keyboard,
     grok_image_resolution_keyboard,
+    grok_image_result_keyboard,
     grok_video_keyboard,
     grok_video_resolution_keyboard,
     grok_video_duration_keyboard,
@@ -97,6 +98,10 @@ from app.services.ai.vision_service import VisionService
 from app.services.subscription.subscription_service import SubscriptionService
 
 logger = get_logger(__name__)
+
+# In-memory store for Grok Image result metadata (image_path + prompt) for "similar photo"
+# key → (image_path, prompt, telegram_id)
+_grok_similar_meta: dict = {}
 
 router = Router(name="media")
 
@@ -422,23 +427,25 @@ async def start_grok_image(callback: CallbackQuery, state: FSMContext, user: Use
     settings_obj = GrokImageSettings.from_dict(data)
 
     text = (
-        "🤖 **Grok Images · генерация изображений**\n\n"
-        "Grok Images от xAI создаёт высококачественные фотореалистичные изображения по вашему описанию. "
-        "Модель отличается точным следованием промпту и детальной проработкой деталей.\n\n"
+        "🤖 **Grok Images · генерация и редактирование**\n\n"
+        "Grok Images от xAI создаёт фотореалистичные изображения по описанию, редактирует и объединяет фотографии.\n\n"
         "✏️ **Возможности:**\n"
-        "• Создание фотореалистичных изображений\n"
+        "• Генерация по тексту — опишите любую сцену\n"
+        "• Редактирование фото — отправьте фото + описание изменений\n"
+        "• Объединение 2–5 фото — отправьте несколько фото + описание\n"
+        "• 🎬 Анимирование — запуск Grok Video после генерации\n"
+        "• 🔄 Похожее фото — создать вариацию одним нажатием\n"
         "• Стилизация: арт, аниме, живопись, 3D\n"
-        "• Разрешение до 2K\n"
-        "• Широкий выбор форматов\n\n"
+        "• Разрешение до 2K\n\n"
         "⚙️ **Текущие настройки:**\n"
         f"{settings_obj.get_display_settings()}\n\n"
         f"💰 **Стоимость:** {format_token_amount(billing.tokens_per_generation)} токенов за изображение\n"
         f"🔹 Баланса хватит на {images_available} изображений\n\n"
-        "📝 **Отправьте описание изображения**"
+        "📝 **Отправьте текст, фото или несколько фото (до 5)**"
     )
 
     await state.set_state(MediaState.grok_image_waiting_for_prompt)
-    await state.update_data(photo_caption_prompt=None)
+    await state.update_data(photo_caption_prompt=None, grok_image_photos=[])
 
     try:
         await callback.message.edit_text(
@@ -522,20 +529,49 @@ async def process_grok_image_text(message: Message, state: FSMContext, user: Use
 
 @router.message(MediaState.grok_image_waiting_for_prompt, F.photo)
 async def process_grok_image_photo(message: Message, state: FSMContext, user: User):
-    """Grok Images does not support image editing - prompt only."""
-    if message.caption:
-        await _generate_grok_image(message, state, user, prompt=message.caption)
+    """Accumulate photos (up to 5) for Grok Image editing."""
+    from app.utils.file_utils import resize_image_if_needed
+
+    photo = message.photo[-1]
+    file = await message.bot.get_file(photo.file_id)
+    temp_path = get_temp_file_path(prefix="grok_img_edit", suffix=".jpg")
+    await message.bot.download_file(file.file_path, str(temp_path))
+    resize_image_if_needed(str(temp_path), max_size_mb=4.0, max_dimension=2048)
+
+    data = await state.get_data()
+    accumulated = data.get("grok_image_photos", [])
+
+    if len(accumulated) >= 5:
+        await message.answer("⚠️ Можно добавить максимум 5 фото. Отправьте текстовый промпт для редактирования.")
+        return
+
+    accumulated.append(str(temp_path))
+    await state.update_data(grok_image_photos=accumulated)
+
+    if message.caption and message.caption.strip():
+        await _generate_grok_image(message, state, user, prompt=message.caption.strip())
     else:
-        await message.answer(
-            "⚠️ Grok Images создаёт изображения только по текстовому описанию.\n"
-            "Пожалуйста, отправьте текстовый промпт."
-        )
+        count = len(accumulated)
+        if count < 5:
+            await message.answer(
+                f"✅ Фото {count} добавлено!\n\n"
+                f"📸 Можно добавить ещё {5 - count} фото или отправьте текстовый промпт для редактирования."
+            )
+        else:
+            await message.answer(
+                "✅ Добавлено 5 фото — это максимум!\n\n"
+                "📝 Теперь отправьте текстовое описание для редактирования/объединения."
+            )
 
 
 async def _generate_grok_image(message: Message, state: FSMContext, user: User, prompt: str):
-    """Core Grok image generation logic."""
+    """Core Grok image generation/editing logic."""
+    import uuid
+    from app.bot.utils.file_cache import file_cache
+
     data = await state.get_data()
     settings_obj = GrokImageSettings.from_dict(data)
+    image_paths = data.get("grok_image_photos", [])
 
     billing = get_image_model_billing("grok-imagine-image")
     estimated_tokens = billing.tokens_per_generation
@@ -553,7 +589,12 @@ async def _generate_grok_image(message: Message, state: FSMContext, user: User, 
             await clear_state_preserve_settings(state)
             return
 
-    progress_msg = await message.answer("🤖 Генерирую изображение Grok Images...")
+    if image_paths:
+        count = len(image_paths)
+        mode_str = "редактирую" if count == 1 else f"объединяю {count} фото"
+        progress_msg = await message.answer(f"🤖 Grok Images: {mode_str}...")
+    else:
+        progress_msg = await message.answer("🤖 Генерирую изображение Grok Images...")
 
     async def update_progress(text: str):
         try:
@@ -562,17 +603,31 @@ async def _generate_grok_image(message: Message, state: FSMContext, user: User, 
             pass
 
     service = GrokImageService()
-    result = await service.generate_image(
-        prompt=prompt,
-        progress_callback=update_progress,
-        aspect_ratio=settings_obj.aspect_ratio,
-        resolution=settings_obj.resolution,
-    )
+
+    if image_paths:
+        result = await service.edit_images(
+            image_paths=image_paths,
+            prompt=prompt,
+            progress_callback=update_progress,
+            aspect_ratio=settings_obj.aspect_ratio,
+            resolution=settings_obj.resolution,
+        )
+    else:
+        result = await service.generate_image(
+            prompt=prompt,
+            progress_callback=update_progress,
+            aspect_ratio=settings_obj.aspect_ratio,
+            resolution=settings_obj.resolution,
+        )
 
     if result.success:
         async with async_session_maker() as session:
             sub_service = SubscriptionService(session)
             user_tokens = await sub_service.get_available_tokens(user.id)
+
+        mode_label = None
+        if image_paths:
+            mode_label = "редактирование" if len(image_paths) == 1 else f"объединение {len(image_paths)} фото"
 
         caption = format_generation_message(
             content_type=CONTENT_TYPES.get("image", "изображение"),
@@ -580,28 +635,43 @@ async def _generate_grok_image(message: Message, state: FSMContext, user: User, 
             tokens_used=estimated_tokens,
             user_tokens=user_tokens,
             prompt=prompt,
+            mode=mode_label,
         )
 
-        builder = create_action_keyboard(
-            action_text=MODEL_ACTIONS["grok_image"]["text"],
-            action_callback=MODEL_ACTIONS["grok_image"]["callback"],
-            file_path=result.image_path,
-            file_type="image",
-            user_id=user.telegram_id,
+        # Build result keyboard with animate / similar / download buttons
+        short_key = uuid.uuid4().hex[:12]
+        animate_key = short_key
+        similar_key = short_key
+        download_key = f"image:{short_key}"
+
+        file_cache.store(f"grok_animate:{animate_key}", result.image_path, user_id=user.telegram_id)
+        file_cache.store(download_key, result.image_path, user_id=user.telegram_id)
+        _grok_similar_meta[similar_key] = (result.image_path, prompt, user.telegram_id)
+
+        keyboard = grok_image_result_keyboard(
+            animate_key=animate_key,
+            similar_key=similar_key,
+            download_key=download_key,
         )
 
-        # Send image with fallback (photo → document → download link)
         await _send_image_safe(
             message=message,
             image_path=result.image_path,
             caption=caption,
-            reply_markup=builder.as_markup(),
+            reply_markup=keyboard,
         )
 
         try:
             await progress_msg.delete()
         except Exception:
             pass
+
+        # Cleanup temp input photos
+        for p in image_paths:
+            try:
+                cleanup_temp_file(p)
+            except Exception:
+                pass
     else:
         async with async_session_maker() as session:
             sub_service = SubscriptionService(session)
@@ -614,6 +684,12 @@ async def _generate_grok_image(message: Message, state: FSMContext, user: User, 
             )
         except Exception:
             pass
+
+        for p in image_paths:
+            try:
+                cleanup_temp_file(p)
+            except Exception:
+                pass
 
     await clear_state_preserve_settings(state)
 
@@ -686,6 +762,162 @@ async def _send_image_safe(
             parse_mode=None,
         )
         return False
+
+
+# ======================
+# GROK IMAGE RESULT CALLBACKS
+# ======================
+
+@router.callback_query(F.data.startswith("grok_image.animate:"))
+async def grok_image_animate(callback: CallbackQuery, state: FSMContext, user: User):
+    """Start Grok Video generation using generated image as first frame."""
+    from app.bot.utils.file_cache import file_cache
+
+    key = callback.data.split(":", 1)[1]
+    image_path = file_cache.get(f"grok_animate:{key}", user_id=user.telegram_id)
+
+    if not image_path or not os.path.exists(image_path):
+        await callback.answer("❌ Фото недоступно — прошло больше часа. Сгенерируйте заново.", show_alert=True)
+        return
+
+    await callback.answer()
+
+    # Copy the file to a new temp path so video job can use it independently
+    import shutil
+    new_path = get_temp_file_path(prefix="grok_anim_src", suffix=".jpg")
+    shutil.copy2(image_path, str(new_path))
+
+    # Set up FSM for Grok Video with this image pre-loaded
+    await state.update_data(
+        grok_video_image_path=str(new_path),
+        photo_caption_prompt=None,
+    )
+    await state.set_state(MediaState.grok_video_waiting_for_prompt)
+
+    from app.bot.states.media import GrokVideoSettings
+    data = await state.get_data()
+    settings_obj = GrokVideoSettings.from_dict(data)
+
+    await callback.message.answer(
+        "🎬 *Анимирование фото через Grok Video*\n\n"
+        "Фото загружено как первый кадр видео.\n\n"
+        "📝 Опишите, что должно происходить в видео (движение, действие, эффект):",
+    )
+
+
+@router.callback_query(F.data.startswith("grok_image.similar:"))
+async def grok_image_similar(callback: CallbackQuery, state: FSMContext, user: User):
+    """Generate a similar photo by re-editing the source image with the same prompt."""
+    import uuid
+    from app.bot.utils.file_cache import file_cache
+
+    key = callback.data.split(":", 1)[1]
+    meta = _grok_similar_meta.get(key)
+
+    if not meta:
+        await callback.answer("❌ Данные недоступны — прошло больше часа. Сгенерируйте заново.", show_alert=True)
+        return
+
+    image_path, prompt, owner_id = meta
+
+    if user.telegram_id != owner_id:
+        await callback.answer("❌ Нет доступа.", show_alert=True)
+        return
+
+    if not os.path.exists(image_path):
+        await callback.answer("❌ Исходное фото недоступно. Сгенерируйте заново.", show_alert=True)
+        return
+
+    await callback.answer()
+
+    billing = get_image_model_billing("grok-imagine-image")
+    estimated_tokens = billing.tokens_per_generation
+
+    async with async_session_maker() as session:
+        sub_service = SubscriptionService(session)
+        try:
+            await sub_service.check_and_use_tokens(user.id, estimated_tokens)
+        except InsufficientTokensError as e:
+            await callback.message.answer(
+                f"❌ Недостаточно токенов!\n\n"
+                f"Требуется: {format_token_amount(estimated_tokens)}\n"
+                f"Доступно: {format_token_amount(e.details['available'])}"
+            )
+            return
+
+    progress_msg = await callback.message.answer("🔄 Создаю похожее фото...")
+
+    async def update_progress(text: str):
+        try:
+            await progress_msg.edit_text(text, parse_mode=None)
+        except Exception:
+            pass
+
+    service = GrokImageService()
+    data = await state.get_data()
+    from app.bot.states.media import GrokImageSettings
+    settings_obj = GrokImageSettings.from_dict(data)
+
+    result = await service.edit_images(
+        image_paths=[image_path],
+        prompt=prompt,
+        progress_callback=update_progress,
+        aspect_ratio=settings_obj.aspect_ratio,
+        resolution=settings_obj.resolution,
+    )
+
+    if result.success:
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            user_tokens = await sub_service.get_available_tokens(user.id)
+
+        caption = format_generation_message(
+            content_type=CONTENT_TYPES.get("image", "изображение"),
+            model_name="Grok Images",
+            tokens_used=estimated_tokens,
+            user_tokens=user_tokens,
+            prompt=prompt,
+            mode="похожее фото",
+        )
+
+        short_key = uuid.uuid4().hex[:12]
+        animate_key = short_key
+        similar_key = short_key
+        download_key = f"image:{short_key}"
+
+        file_cache.store(f"grok_animate:{animate_key}", result.image_path, user_id=user.telegram_id)
+        file_cache.store(download_key, result.image_path, user_id=user.telegram_id)
+        _grok_similar_meta[similar_key] = (result.image_path, prompt, user.telegram_id)
+
+        keyboard = grok_image_result_keyboard(
+            animate_key=animate_key,
+            similar_key=similar_key,
+            download_key=download_key,
+        )
+
+        await _send_image_safe(
+            message=callback.message,
+            image_path=result.image_path,
+            caption=caption,
+            reply_markup=keyboard,
+        )
+
+        try:
+            await progress_msg.delete()
+        except Exception:
+            pass
+    else:
+        async with async_session_maker() as session:
+            sub_service = SubscriptionService(session)
+            await sub_service.rollback_tokens(user.id, estimated_tokens)
+
+        try:
+            await progress_msg.edit_text(
+                f"❌ Ошибка:\n{result.error}\n\nТокены возвращены.",
+                parse_mode=None,
+            )
+        except Exception:
+            pass
 
 
 # ======================
