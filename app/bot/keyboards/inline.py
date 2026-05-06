@@ -2107,6 +2107,43 @@ def grok_image_resolution_keyboard(current: str = "1k") -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def grok_image_result_keyboard(
+    animate_key: str,
+    similar_key: str,
+    download_key: str,
+) -> InlineKeyboardMarkup:
+    """Result keyboard after Grok Image generation: animate, similar, download, new, home."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text="🎬 Анимировать это фото",
+            callback_data=f"grok_image.animate:{animate_key}",
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="🔄 Создать похожее фото",
+            callback_data=f"grok_image.similar:{similar_key}",
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="📥 Скачать оригинал",
+            callback_data=f"download:{download_key}",
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="🤖 Создать новое фото",
+            callback_data="bot.grok_image",
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(text="🏠 В главное меню", callback_data="main_menu")
+    )
+    return builder.as_markup()
+
+
 # =====================================================
 # GROK VIDEO KEYBOARDS
 # =====================================================

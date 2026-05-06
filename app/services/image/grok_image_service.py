@@ -146,6 +146,134 @@ class GrokImageService(BaseImageProvider):
                 processing_time=time.time() - start_time,
             )
 
+    async def edit_images(
+        self,
+        image_paths: list,
+        prompt: str,
+        progress_callback: Optional[Callable[[str], Awaitable[None]]] = None,
+        **kwargs,
+    ) -> ImageResponse:
+        """
+        Edit one or multiple images via /v1/images/edits.
+
+        Single image: use "image" field with base64 data URI.
+        Multiple images (2-5): use "images" array with base64 data URIs.
+        """
+        import base64
+        from pathlib import Path
+
+        start_time = time.time()
+
+        if not self.api_key:
+            return ImageResponse(
+                success=False,
+                error="Grok API ключ не настроен (GROK_AI_API).",
+                processing_time=time.time() - start_time,
+            )
+
+        aspect_ratio = kwargs.get("aspect_ratio", "auto")
+        resolution = kwargs.get("resolution", "1k")
+
+        if progress_callback:
+            count = len(image_paths)
+            action = "редактирую фото" if count == 1 else f"объединяю {count} фото"
+            await progress_callback(f"🤖 Grok Images: {action}...")
+
+        def encode_image(path: str) -> dict:
+            ext = Path(path).suffix.lower()
+            mime = {
+                ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg",
+                ".png": "image/png",
+                ".webp": "image/webp",
+            }.get(ext, "image/jpeg")
+            with open(path, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode()
+            return {"url": f"data:{mime};base64,{b64}", "type": "base64"}
+
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            }
+
+            payload: dict = {
+                "model": GROK_IMAGE_MODEL,
+                "prompt": prompt,
+            }
+
+            if len(image_paths) == 1:
+                payload["image"] = encode_image(image_paths[0])
+            else:
+                payload["images"] = [encode_image(p) for p in image_paths]
+                if aspect_ratio and aspect_ratio != "auto":
+                    payload["aspect_ratio"] = aspect_ratio
+
+            if resolution:
+                payload["resolution"] = resolution
+
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{XAI_BASE_URL}/images/edits",
+                    headers=headers,
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=180),
+                ) as response:
+                    if response.status not in (200, 201):
+                        error_text = await response.text()
+                        raise Exception(
+                            f"Grok API edits error {response.status}: {error_text}"
+                        )
+                    data = await response.json()
+
+            image_url = data["data"][0]["url"]
+
+            if progress_callback:
+                await progress_callback("💾 Сохраняю изображение...")
+
+            filename = self._generate_filename("jpg")
+            image_path = await self._download_file(image_url, filename)
+
+            processing_time = time.time() - start_time
+
+            billing = get_image_model_billing("grok-imagine-image")
+            tokens_used = billing.tokens_per_generation if billing else 18500
+
+            logger.info(
+                "grok_image_edited",
+                num_images=len(image_paths),
+                resolution=resolution,
+                prompt=prompt[:80],
+                time=processing_time,
+            )
+
+            return ImageResponse(
+                success=True,
+                image_path=image_path,
+                processing_time=processing_time,
+                metadata={
+                    "provider": "grok_image",
+                    "model": GROK_IMAGE_MODEL,
+                    "prompt": prompt,
+                    "tokens_used": tokens_used,
+                    "mode": "edit",
+                    "num_images": len(image_paths),
+                },
+            )
+
+        except Exception as e:
+            error_msg = str(e)
+            logger.error("grok_image_edit_failed", error=error_msg)
+
+            if progress_callback:
+                await progress_callback(f"❌ Ошибка: {error_msg}")
+
+            return ImageResponse(
+                success=False,
+                error=error_msg,
+                processing_time=time.time() - start_time,
+            )
+
     async def process_image(
         self,
         image_path: str,
