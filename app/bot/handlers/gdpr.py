@@ -39,16 +39,19 @@ async def cmd_export_me(message: Message, user: User):
         payload = await service.export_user_data_json(user.telegram_id)
 
     if not payload:
-        await message.answer("Не удалось собрать данные. Попробуйте позже.")
+        await message.answer("Не удалось собрать данные. Попробуйте позже.", parse_mode=None)
         return
 
     file = BufferedInputFile(payload.encode("utf-8"), filename="my_data.json")
+    # parse_mode=None — caption contains "/delete_me" which the default
+    # Markdown parser would mis-read as an italic marker.
     await message.answer_document(
         file,
         caption=(
             "📦 Это все данные, которые мы храним о вашем аккаунте.\n\n"
             "Если хотите удалить аккаунт и все связанные данные — отправьте /delete_me."
         ),
+        parse_mode=None,
     )
 
     logger.info(
@@ -90,7 +93,7 @@ async def cmd_delete_me(message: Message, user: User, state: FSMContext):
 @router.callback_query(F.data == "gdpr:delete:cancel")
 async def cb_delete_cancel(callback: CallbackQuery, state: FSMContext):
     await state.clear()
-    await callback.message.edit_text("Удаление отменено.")
+    await callback.message.edit_text("Удаление отменено.", parse_mode=None)
     await callback.answer()
 
 
@@ -102,7 +105,8 @@ async def cb_delete_confirm(callback: CallbackQuery, user: User, state: FSMConte
             deleted = await service.delete_user(user.telegram_id)
         except Exception:
             await callback.message.edit_text(
-                "Не удалось завершить удаление. Свяжитесь с поддержкой."
+                "Не удалось завершить удаление. Свяжитесь с поддержкой.",
+                parse_mode=None,
             )
             await callback.answer()
             return
@@ -110,7 +114,7 @@ async def cb_delete_confirm(callback: CallbackQuery, user: User, state: FSMConte
     await state.clear()
 
     if not deleted:
-        await callback.message.edit_text("Аккаунт не найден — удалять нечего.")
+        await callback.message.edit_text("Аккаунт не найден — удалять нечего.", parse_mode=None)
         await callback.answer()
         return
 
@@ -120,6 +124,7 @@ async def cb_delete_confirm(callback: CallbackQuery, user: User, state: FSMConte
     )
 
     await callback.message.edit_text(
-        "✅ Ваши данные удалены.\n\nЕсли хотите снова пользоваться ботом — отправьте /start."
+        "✅ Ваши данные удалены.\n\nЕсли хотите снова пользоваться ботом — отправьте /start.",
+        parse_mode=None,
     )
     await callback.answer()
