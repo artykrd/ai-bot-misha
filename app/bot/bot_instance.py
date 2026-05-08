@@ -60,6 +60,7 @@ async def setup_bot() -> Dispatcher:
     )
     from app.bot.handlers import dialog_handler
     from app.bot.handlers import channel_bonus
+    from app.bot.handlers import gdpr
 
     # Order matters! Commands should come before FSM handlers, dialog_handler should be last
     dp.include_router(stars_payment.router)  # Stars payment (pre_checkout must be early)
@@ -67,6 +68,7 @@ async def setup_bot() -> Dispatcher:
     dp.include_router(channel_bonus.router)  # Channel subscription bonus callbacks
     dp.include_router(subscription.router)  # Promocode & subscription callbacks
     dp.include_router(navigation.router)
+    dp.include_router(gdpr.router)  # GDPR / 152-ФЗ data export & delete commands
     dp.include_router(common.router)  # Commands BEFORE FSM handlers
     dp.include_router(download_handler.router)  # Download handler
     dp.include_router(suno_handler.router)  # Suno handlers

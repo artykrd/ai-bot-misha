@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, List, Optional
 import secrets
 
-from sqlalchemy import BigInteger, String, Integer, Boolean, DateTime, ForeignKey, Float
+from sqlalchemy import BigInteger, String, Integer, Boolean, DateTime, ForeignKey, Float, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.database import Base
@@ -112,6 +112,17 @@ class WelcomeBonusUse(Base, BaseModel, TimestampMixin):
     """Track usage of welcome bonus links by users."""
 
     __tablename__ = "welcome_bonus_uses"
+    __table_args__ = (
+        # Mirrors the DB-level unique index from migration 010 — declaring it
+        # on the model lets SQLAlchemy surface IntegrityError on duplicates so
+        # the service layer can react instead of relying on application
+        # checks (which races leave stale).
+        UniqueConstraint(
+            "user_id",
+            "welcome_bonus_id",
+            name="idx_welcome_bonus_uses_user_bonus",
+        ),
+    )
 
     # Primary key
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)

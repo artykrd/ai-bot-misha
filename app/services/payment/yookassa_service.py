@@ -1,6 +1,9 @@
 """
 YooKassa payment service for processing payments.
 """
+import hashlib
+import hmac
+import ipaddress
 import os
 import uuid
 from typing import Optional, Dict, Any
@@ -10,8 +13,78 @@ from yookassa import Configuration, Payment as YooKassaPayment
 
 from app.core.logger import get_logger
 from app.core.config import settings
+from app.core.log_safety import sanitise_body
 
 logger = get_logger(__name__)
+
+
+# Official YooKassa webhook source IPs (https://yookassa.ru/developers/using-api/webhooks).
+# Used as a default allow-list when the operator hasn't configured custom IPs.
+YOOKASSA_DEFAULT_NETWORKS = (
+    "185.71.76.0/27",
+    "185.71.77.0/27",
+    "77.75.153.0/25",
+    "77.75.156.11/32",
+    "77.75.156.35/32",
+    "77.75.154.128/25",
+    "2a02:5180::/32",
+)
+
+
+def _parse_networks(values):
+    """Parse a list of IPs/CIDRs into ip_network objects, ignoring invalid entries."""
+    nets = []
+    for raw in values:
+        try:
+            nets.append(ipaddress.ip_network(raw, strict=False))
+        except ValueError:
+            logger.warning("yookassa_invalid_allowed_ip", value=raw)
+    return nets
+
+
+def is_yookassa_source_ip(client_ip: Optional[str]) -> bool:
+    """
+    Check whether the given client IP belongs to YooKassa's webhook source range.
+
+    Operators can override the list via YUKASSA_WEBHOOK_ALLOWED_IPS in .env.
+    Returns True when the IP is missing only if the allow-list is empty
+    (so the check can be a no-op in dev environments).
+    """
+    allowed = settings.yukassa_webhook_allowed_ips or list(YOOKASSA_DEFAULT_NETWORKS)
+    networks = _parse_networks(allowed)
+    if not networks:
+        return True
+    if not client_ip:
+        return False
+    try:
+        ip = ipaddress.ip_address(client_ip)
+    except ValueError:
+        return False
+    return any(ip in net for net in networks)
+
+
+def verify_yookassa_signature(raw_body: bytes, signature_header: Optional[str]) -> bool:
+    """
+    Verify HMAC-SHA256 signature of a YooKassa webhook payload.
+
+    YooKassa supports an optional shared secret configured in the merchant
+    account. If `YUKASSA_WEBHOOK_SECRET` is empty, this returns True (the
+    operator opted out of cryptographic validation; IP allow-listing is then
+    the only protection).
+    """
+    secret = settings.yukassa_webhook_secret
+    if not secret:
+        return True
+    if not signature_header:
+        return False
+    expected = hmac.new(
+        secret.encode("utf-8"),
+        raw_body,
+        hashlib.sha256,
+    ).hexdigest()
+    # Accept both "sha256=<hex>" and bare hex for forward compatibility.
+    candidate = signature_header.split("=", 1)[-1].strip()
+    return hmac.compare_digest(expected, candidate)
 
 
 class YooKassaService:
@@ -192,8 +265,12 @@ class YooKassaService:
 
     def process_webhook(self, webhook_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
-        Parse YooKassa webhook WITHOUT SDK signature validation.
-        HTTPS + domain-level security is used instead.
+        Parse a YooKassa webhook payload that has already been authenticated.
+
+        Authentication (HMAC signature + IP allow-list) is performed by the
+        HTTP handler before this method is called. This method is responsible
+        only for normalising the payload into the dict the rest of the code
+        consumes.
 
         Args:
             webhook_data: Webhook data from YooKassa (already parsed JSON)
@@ -257,7 +334,7 @@ class YooKassaService:
             logger.error(
                 "yookassa_webhook_error",
                 error=str(e),
-                webhook_data=webhook_data
+                webhook_data=sanitise_body(webhook_data),
             )
             return None
 

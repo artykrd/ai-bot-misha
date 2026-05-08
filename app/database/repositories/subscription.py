@@ -20,9 +20,19 @@ class SubscriptionRepository(BaseRepository[Subscription]):
     async def get_user_subscriptions(
         self,
         user_id: int,
-        active_only: bool = False
+        active_only: bool = False,
+        for_update: bool = False,
     ) -> List[Subscription]:
-        """Get all subscriptions for a user."""
+        """
+        Get all subscriptions for a user.
+
+        Args:
+            user_id: Owner ID.
+            active_only: Restrict to non-expired active rows.
+            for_update: When True, take row-level locks on the returned rows.
+                Use this to serialise concurrent token-spending operations
+                inside an open transaction.
+        """
         query = select(Subscription).where(Subscription.user_id == user_id)
 
         if active_only:
@@ -31,6 +41,9 @@ class SubscriptionRepository(BaseRepository[Subscription]):
                 (Subscription.expires_at.is_(None)) |
                 (Subscription.expires_at > datetime.now(timezone.utc))
             )
+
+        if for_update:
+            query = query.with_for_update()
 
         result = await self.session.execute(query)
         return list(result.scalars().all())

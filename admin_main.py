@@ -61,7 +61,15 @@ admin_router = Router(name="admin")
 
 def is_admin(user_id: int) -> bool:
     """Check if user is admin."""
-    return user_id in settings.admin_user_ids
+    allowed = user_id in settings.admin_user_ids
+    if not allowed:
+        # Log denied access attempts so unauthorized probes are visible to
+        # operators (otherwise only successful admin actions appear in logs).
+        logger.warning(
+            "admin_access_denied",
+            telegram_id=user_id,
+        )
+    return allowed
 
 
 def safe_text(text: str) -> str:
@@ -5270,6 +5278,13 @@ async def main():
         # Create dispatcher with Redis storage
         storage = RedisStorage(redis=redis_client.fsm_client)
         admin_dp = Dispatcher(storage=storage)
+
+        # Anti-flood: prevent accidental broadcast storms or rapid-fire
+        # admin actions (mass-token grants, bans). Tighter than the user bot
+        # because admin actions tend to mutate shared state.
+        from app.bot.middlewares.throttling import ThrottlingMiddleware
+        admin_dp.message.middleware(ThrottlingMiddleware(rate_limit=0.5, max_burst=3))
+        admin_dp.callback_query.middleware(ThrottlingMiddleware(rate_limit=0.3, max_burst=5))
 
         # Register router
         admin_dp.include_router(admin_router)

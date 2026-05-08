@@ -51,21 +51,72 @@ class VideoJobService:
             expiration_hours=24
         )
 
-    async def get_job(self, job_id: int) -> Optional[VideoGenerationJob]:
-        """Get job by ID."""
-        return await self.repository.get_by_id(job_id)
+    async def get_job(
+        self,
+        job_id: int,
+        expected_user_id: Optional[int] = None,
+    ) -> Optional[VideoGenerationJob]:
+        """
+        Get job by ID, optionally verifying ownership.
 
-    async def get_job_by_task_id(self, task_id: str) -> Optional[VideoGenerationJob]:
-        """Get job by provider task ID."""
-        return await self.repository.get_by_task_id(task_id)
+        Pass ``expected_user_id`` whenever the lookup is triggered by a user
+        action (callback button, status check) so we don't accidentally serve
+        another user's job.
+        """
+        job = await self.repository.get_by_id(job_id)
+        if job and expected_user_id is not None and job.user_id != expected_user_id:
+            logger.warning(
+                "video_job_ownership_mismatch",
+                job_id=job_id,
+                actual_user_id=job.user_id,
+                expected_user_id=expected_user_id,
+            )
+            return None
+        return job
+
+    async def get_job_by_task_id(
+        self,
+        task_id: str,
+        expected_user_id: Optional[int] = None,
+    ) -> Optional[VideoGenerationJob]:
+        """
+        Get job by provider task ID, optionally verifying ownership.
+        """
+        job = await self.repository.get_by_task_id(task_id)
+        if job and expected_user_id is not None and job.user_id != expected_user_id:
+            logger.warning(
+                "video_job_ownership_mismatch",
+                task_id=task_id,
+                actual_user_id=job.user_id,
+                expected_user_id=expected_user_id,
+            )
+            return None
+        return job
 
     async def update_job_status(
         self,
         job_id: int,
         status: str,
-        **kwargs
+        expected_user_id: Optional[int] = None,
+        **kwargs,
     ) -> Optional[VideoGenerationJob]:
-        """Update job status."""
+        """
+        Update job status.
+
+        When ``expected_user_id`` is provided the update is refused if the
+        job belongs to a different user. Internal callers (workers, webhook
+        handlers that have already authenticated the provider) can pass None.
+        """
+        if expected_user_id is not None:
+            job = await self.repository.get_by_id(job_id)
+            if not job or job.user_id != expected_user_id:
+                logger.warning(
+                    "video_job_status_update_denied",
+                    job_id=job_id,
+                    expected_user_id=expected_user_id,
+                    actual_user_id=getattr(job, "user_id", None),
+                )
+                return None
         return await self.repository.update_job_status(job_id, status, **kwargs)
 
     def _get_video_service(self, provider: str):

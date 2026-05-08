@@ -82,7 +82,23 @@ class Settings(BaseSettings):
     # =====================================
     yukassa_shop_id: Optional[str] = Field(None, description="ЮKassa shop ID")
     yukassa_secret_key: Optional[str] = Field(None, description="ЮKassa secret key")
+    yukassa_webhook_secret: Optional[str] = Field(
+        None,
+        description="Optional shared secret for HMAC validation of YooKassa webhooks"
+    )
+    yukassa_webhook_allowed_ips: str = Field(
+        "",
+        description="Comma-separated list of allowed IPs/CIDR for YooKassa webhooks (empty = allow all)"
+    )
     payment_return_url: Optional[str] = Field(None, description="Payment return URL")
+
+    @field_validator("yukassa_webhook_allowed_ips")
+    @classmethod
+    def parse_allowed_ips(cls, v: str) -> List[str]:
+        """Parse comma-separated allowed IPs/CIDRs."""
+        if not v:
+            return []
+        return [ip.strip() for ip in v.split(",") if ip.strip()]
 
     # =====================================
     # APPLICATION SETTINGS
@@ -90,6 +106,11 @@ class Settings(BaseSettings):
     environment: str = Field("development", description="Environment (development/production)")
     debug: bool = Field(False, description="Debug mode")
     log_level: str = Field("INFO", description="Logging level")
+
+    @property
+    def effective_debug(self) -> bool:
+        """Debug is forced off in production regardless of the env value."""
+        return self.debug and self.environment != "production"
 
     app_host: str = Field("127.0.0.1", description="FastAPI host")
     port: Optional[int] = Field(None, description="FastAPI port (ENV: PORT)")

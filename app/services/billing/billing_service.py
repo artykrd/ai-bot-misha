@@ -111,9 +111,12 @@ class BillingService:
             "text_billing_charged",
             user_id=user_id,
             model=model_id,
+            request_type="text",
             tokens_cost=tokens_cost,
+            cost_rub=float(tokens_to_rub(tokens_cost)),
             ai_request_id=ai_request.id,
             subscription_id=subscription.id,
+            is_unlimited_subscription=subscription.is_unlimited,
         )
 
         return tokens_cost, ai_request
@@ -187,9 +190,12 @@ class BillingService:
             f"{model_type}_billing_charged",
             user_id=user_id,
             model=model_id,
+            request_type=getattr(model_type, "value", str(model_type)),
             tokens_cost=tokens_cost,
+            cost_rub=float(tokens_to_rub(tokens_cost)),
             ai_request_id=ai_request.id,
             subscription_id=subscription.id,
+            is_unlimited_subscription=subscription.is_unlimited,
         )
 
         return tokens_cost, ai_request
