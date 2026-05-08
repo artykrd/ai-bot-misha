@@ -12,6 +12,7 @@ from uvicorn import Config, Server
 
 from app.core.config import settings
 from app.core.logger import get_logger
+from app.core.log_safety import sanitise_body, sanitise_headers
 from app.core.redis_client import redis_client
 from app.core.scheduler import scheduler
 from app.database.database import init_db, close_db
@@ -36,16 +37,19 @@ app = FastAPI(
     title="AI Bot API",
     description="API for AI Telegram Bot with YooKassa webhooks",
     version="1.0.0",
-    debug=settings.debug
+    debug=settings.effective_debug,
 )
 
 # CORS middleware
+# Wildcard origins together with credentials would let any site make
+# authenticated calls — refuse credentials when the wildcard is in effect.
+_cors_allow_credentials = settings.cors_origins != ["*"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=_cors_allow_credentials,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 
@@ -79,23 +83,65 @@ async def yookassa_webhook(request: Request):
     """YooKassa payment webhook."""
     from app.database.database import async_session_maker
     from app.services.payment import PaymentService, YooKassaService
+    from app.services.payment.yookassa_service import (
+        is_yookassa_source_ip,
+        verify_yookassa_signature,
+    )
     from app.services.subscription import SubscriptionService
+    from app.api.rate_limit import enforce_rate_limit
     from app.bot.bot_instance import bot
     from app.database.models.user import User
     from datetime import datetime, timedelta
     from sqlalchemy import select
+    import json
 
     webhook_start = datetime.utcnow()
 
+    # Even though we trust YooKassa source IPs, throttle per-IP to defend
+    # against accidental retry storms or spoofed-source flooding.
+    await enforce_rate_limit(
+        request,
+        scope="yookassa_webhook",
+        max_requests=120,
+        window_seconds=60,
+    )
+
+    # Authenticate the webhook source before reading the body.
+    client_ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "")
+    client_ip = client_ip.split(",")[0].strip() if client_ip else ""
+
+    if not is_yookassa_source_ip(client_ip):
+        logger.warning(
+            "yukassa_webhook_blocked_ip",
+            client_ip=client_ip,
+        )
+        raise HTTPException(status_code=403, detail="Forbidden")
+
     try:
-        body = await request.json()
+        raw_body = await request.body()
+
+        signature_header = request.headers.get("x-yookassa-signature") or request.headers.get(
+            "X-Yookassa-Signature"
+        )
+        if not verify_yookassa_signature(raw_body, signature_header):
+            logger.warning(
+                "yukassa_webhook_bad_signature",
+                client_ip=client_ip,
+                has_signature=bool(signature_header),
+            )
+            raise HTTPException(status_code=401, detail="Bad signature")
+
+        try:
+            body = json.loads(raw_body or b"{}")
+        except json.JSONDecodeError:
+            logger.warning("yukassa_webhook_bad_json", client_ip=client_ip)
+            raise HTTPException(status_code=400, detail="Invalid JSON")
 
         logger.info(
-            "yukassa_webhook_received_raw",
+            "yukassa_webhook_received",
             timestamp=webhook_start.isoformat(),
             content_type=request.headers.get("content-type"),
             body_keys=list(body.keys()) if body else [],
-            full_body=body
         )
 
         # Process webhook
@@ -105,7 +151,7 @@ async def yookassa_webhook(request: Request):
         if not webhook_data:
             logger.error(
                 "yukassa_webhook_invalid",
-                body=body,
+                body_keys=list(body.keys()) if isinstance(body, dict) else None,
                 reason="process_webhook returned None"
             )
             raise HTTPException(status_code=400, detail="Invalid webhook data")
@@ -141,7 +187,11 @@ async def yookassa_webhook(request: Request):
             payment_id = webhook_data.get("payment_id")
 
             if not payment_id:
-                logger.error("yukassa_no_payment_id", webhook_data=webhook_data)
+                logger.error(
+                    "yukassa_no_payment_id",
+                    webhook_event=event_type,
+                    webhook_keys=list(webhook_data.keys()),
+                )
                 raise HTTPException(status_code=400, detail="No payment_id in webhook")
 
             logger.info(
@@ -149,7 +199,12 @@ async def yookassa_webhook(request: Request):
                 yukassa_payment_id=payment_id
             )
 
-            payment = await payment_service.get_payment_by_yukassa_id(payment_id)
+            # Lock the row for the duration of this transaction so that
+            # concurrent webhook deliveries (YooKassa retries are not rare)
+            # cannot both observe `pending` and credit tokens twice.
+            payment = await payment_service.get_payment_by_yukassa_id(
+                payment_id, lock_for_update=True
+            )
 
             if not payment:
                 logger.error(
@@ -449,13 +504,15 @@ async def yookassa_webhook(request: Request):
         # Re-raise HTTP exceptions
         raise
     except Exception as e:
+        import traceback
         logger.error(
             "yukassa_webhook_error",
             error=str(e),
             error_type=type(e).__name__,
-            traceback=str(e.__traceback__) if hasattr(e, '__traceback__') else None
+            traceback=traceback.format_exc(),
         )
-        raise HTTPException(status_code=500, detail=str(e))
+        # Don't leak internal error details to the caller — log them, return generic.
+        raise HTTPException(status_code=500, detail="Internal error")
 
 
 # =====================================
@@ -669,6 +726,18 @@ async def main() -> None:
 
         # Run every hour
         scheduler.add_interval_job(send_expiry_notifications, hours=1)
+
+        # Background task: prune old temporary files. The TempFileManager
+        # creates per-user storage with no built-in retention; without this
+        # cron the disk slowly fills up.
+        async def cleanup_temp_files_task():
+            try:
+                from app.core.temp_files import temp_file_manager
+                temp_file_manager.cleanup_old_files(max_age_hours=24)
+            except Exception as e:
+                logger.error("temp_files_cleanup_task_failed", error=str(e))
+
+        scheduler.add_interval_job(cleanup_temp_files_task, hours=6)
 
         # Start system monitoring (if available)
         if MONITORING_AVAILABLE:

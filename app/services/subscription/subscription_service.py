@@ -97,9 +97,13 @@ class SubscriptionService:
         Raises:
             InsufficientTokensError: If user doesn't have enough tokens or limits exceeded
         """
+        # Take row-level locks on the user's active subscriptions for the
+        # rest of this transaction so concurrent spend attempts cannot both
+        # observe the same available balance and overspend it.
         subscriptions = await self.repository.get_user_subscriptions(
             user_id,
-            active_only=True
+            active_only=True,
+            for_update=True,
         )
         subscriptions = [sub for sub in subscriptions if not sub.is_expired]
 

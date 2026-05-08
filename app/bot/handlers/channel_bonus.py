@@ -68,10 +68,15 @@ async def check_channel_subscription(callback: CallbackQuery, user: User):
             )
             return
 
-        # Award the bonus
+        # Award the bonus. Pass the bot and telegram id so the service can
+        # re-verify channel membership immediately before crediting tokens —
+        # this closes the race where a user briefly subscribes only to pass
+        # the UI check.
         tokens_awarded = await service.claim_bonus(
             user_id=user.id,
             bonus_id=bonus_id,
+            bot=bot,
+            user_telegram_id=user.telegram_id,
         )
 
         if tokens_awarded is None:

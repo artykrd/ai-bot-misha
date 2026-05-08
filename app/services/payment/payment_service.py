@@ -116,19 +116,27 @@ class PaymentService:
         )
         return result.scalar_one_or_none()
 
-    async def get_payment_by_yukassa_id(self, yukassa_payment_id: str) -> Optional[Payment]:
+    async def get_payment_by_yukassa_id(
+        self,
+        yukassa_payment_id: str,
+        lock_for_update: bool = False,
+    ) -> Optional[Payment]:
         """
         Get payment by YooKassa payment ID.
 
         Args:
             yukassa_payment_id: YooKassa payment ID
+            lock_for_update: When True, take a row-level lock so concurrent
+                webhook deliveries for the same payment serialise. Must be
+                called inside an open transaction.
 
         Returns:
             Payment object or None
         """
-        result = await self.session.execute(
-            select(Payment).where(Payment.yukassa_payment_id == yukassa_payment_id)
-        )
+        query = select(Payment).where(Payment.yukassa_payment_id == yukassa_payment_id)
+        if lock_for_update:
+            query = query.with_for_update()
+        result = await self.session.execute(query)
         return result.scalar_one_or_none()
 
     async def update_payment_status(
@@ -172,6 +180,49 @@ class PaymentService:
 
         return payment
 
+    @staticmethod
+    def _validate_metadata_amount(payment: Payment, metadata: Dict[str, Any]) -> None:
+        """
+        Sanity-check the payment metadata against known plans.
+
+        Logs (but does not raise) when the paid amount looks unreasonable for
+        the requested plan. We use a wide tolerance because promo discounts
+        are applied client-side and the goal here is to catch tampering, not
+        legitimate pricing variations.
+        """
+        from app.core.subscription_plans import ETERNAL_PLANS, SUBSCRIPTION_PLANS
+
+        try:
+            paid = Decimal(str(payment.amount))
+        except Exception:
+            return
+
+        subscription_type = metadata.get("subscription_type") or metadata.get("type", "")
+        tariff_id = metadata.get("tariff_id")
+
+        plan_price: Optional[Decimal] = None
+        if subscription_type in ETERNAL_PLANS:
+            plan_price = ETERNAL_PLANS[subscription_type].price
+        elif tariff_id and tariff_id in SUBSCRIPTION_PLANS:
+            plan_price = SUBSCRIPTION_PLANS[tariff_id].price
+
+        if plan_price is None:
+            return
+
+        # Allow up to ~80% off to cover stacked discounts; flag overpayment too.
+        floor = plan_price * Decimal("0.2")
+        ceiling = plan_price * Decimal("1.05")
+        if paid < floor or paid > ceiling:
+            logger.warning(
+                "payment_amount_mismatch",
+                payment_id=payment.payment_id,
+                user_id=payment.user_id,
+                paid=float(paid),
+                plan_price=float(plan_price),
+                subscription_type=subscription_type,
+                tariff_id=tariff_id,
+            )
+
     async def process_successful_payment(self, payment: Payment) -> bool:
         """
         Process successful payment - activate subscription or add tokens.
@@ -184,6 +235,7 @@ class PaymentService:
         """
         try:
             from app.services.subscription import SubscriptionService
+            from app.core.subscription_plans import ETERNAL_PLANS, SUBSCRIPTION_PLANS
 
             logger.info(
                 "process_successful_payment_started",
@@ -193,7 +245,10 @@ class PaymentService:
                 amount=float(payment.amount)
             )
 
-            # Check if payment already processed (idempotency)
+            # Idempotency: if the payment is already marked succeeded we are
+            # processing a retry from YooKassa — no-op. The caller is expected
+            # to hold a row-level lock on the payment so a parallel delivery
+            # cannot observe `pending` here at the same time.
             if payment.status == "success":
                 logger.info(
                     "payment_already_processed",
@@ -208,6 +263,11 @@ class PaymentService:
             metadata = payment.yukassa_response.get("metadata") or {} if payment.yukassa_response else {}
             payment_type = metadata.get("type", "eternal_tokens")
             tokens_added = 0
+
+            # Server-side validation: the metadata must agree with one of the
+            # known plans. We accept both a small tolerance (in case YooKassa
+            # rounds) and the post-discount price the bot may have computed.
+            self._validate_metadata_amount(payment, metadata)
 
             logger.info(
                 "process_payment_metadata_parsed",
@@ -238,10 +298,12 @@ class PaymentService:
                     subscription = await subscription_service.add_eternal_tokens(payment.user_id, tokens)
                     tokens_added = tokens
 
-                    # Link payment to subscription and store price for refund
+                    # Link payment to subscription and store price for refund.
+                    # The final commit below persists these together with
+                    # `payment.status = "success"` to keep the operation
+                    # atomic from the caller's perspective.
                     payment.subscription_id = subscription.id
                     subscription.price = payment.amount
-                    await self.session.commit()
 
                     logger.info(
                         "eternal_tokens_added_to_db",
@@ -302,10 +364,10 @@ class PaymentService:
                     )
                     tokens_added = tokens
 
-                    # Link payment to subscription and store price for refund
+                    # Link payment to subscription and store price for refund.
+                    # Persisted together with status update in the final commit.
                     payment.subscription_id = subscription.id
                     subscription.price = payment.amount
-                    await self.session.commit()
 
                     logger.info(
                         "subscription_tokens_added_to_db",

@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import select, and_, func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logger import get_logger
@@ -101,6 +102,9 @@ class WelcomeBonusService:
         if not bonus.is_valid:
             return None
 
+        # Pre-check is a fast path; the real guarantee against double-claims
+        # is the unique index on (user_id, welcome_bonus_id) which surfaces as
+        # IntegrityError below.
         if await self.has_used_bonus(user_id, bonus.id):
             return None
 
@@ -125,7 +129,32 @@ class WelcomeBonusService:
         # Increment counter
         bonus.current_uses += 1
 
-        await self.session.commit()
+        try:
+            await self.session.commit()
+        except IntegrityError:
+            # Another request crossed us between has_used_bonus() and commit.
+            # Roll back and return the bonus tokens we already created so the
+            # user doesn't end up with an extra eternal subscription.
+            await self.session.rollback()
+            try:
+                await sub_service.rollback_tokens(
+                    user_id=user_id,
+                    tokens=bonus.bonus_tokens,
+                    subscription_id=subscription.id,
+                )
+            except Exception:
+                logger.error(
+                    "welcome_bonus_rollback_tokens_failed",
+                    user_id=user_id,
+                    bonus_id=bonus.id,
+                    tokens=bonus.bonus_tokens,
+                )
+            logger.warning(
+                "welcome_bonus_duplicate_activation_blocked",
+                user_id=user_id,
+                bonus_id=bonus.id,
+            )
+            return None
 
         logger.info(
             "welcome_bonus_activated",

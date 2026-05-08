@@ -7,6 +7,7 @@ from typing import Optional
 from aiogram import Bot
 from aiogram.enums import ChatMemberStatus
 from sqlalchemy import select, and_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logger import get_logger
@@ -174,13 +175,23 @@ class ChannelBonusService:
         self,
         user_id: int,
         bonus_id: int,
+        bot: Optional[Bot] = None,
+        user_telegram_id: Optional[int] = None,
     ) -> Optional[int]:
         """
         Award channel subscription bonus tokens to user.
 
+        When ``bot`` and ``user_telegram_id`` are provided, channel membership
+        is re-verified immediately before crediting tokens. This closes the
+        window where a user could pass an earlier check, leave the channel,
+        and still receive the bonus. Callers without a bot reference (e.g.
+        an admin granting the claim) can omit these arguments.
+
         Args:
             user_id: Internal user ID
             bonus_id: Bonus configuration ID
+            bot: Optional bot for re-verifying channel membership
+            user_telegram_id: Telegram numeric ID required when ``bot`` is set
 
         Returns:
             Number of tokens awarded, or None if claim failed
@@ -193,22 +204,61 @@ class ChannelBonusService:
         if await self.has_claimed(user_id, bonus_id):
             return None
 
+        # Re-verify membership right before crediting tokens. This narrows
+        # the window where a user could leave the channel between the UI
+        # check and this call.
+        if bot is not None and user_telegram_id is not None:
+            still_member = await self.check_channel_membership(
+                bot=bot,
+                user_telegram_id=user_telegram_id,
+                channel_id=bonus.channel_id,
+            )
+            if not still_member:
+                logger.info(
+                    "channel_bonus_claim_rejected_not_member",
+                    user_id=user_id,
+                    bonus_id=bonus_id,
+                )
+                return None
+
         # Award tokens
         sub_service = SubscriptionService(self.session)
-        await sub_service.add_eternal_tokens(
+        subscription = await sub_service.add_eternal_tokens(
             user_id=user_id,
             tokens=bonus.bonus_tokens,
             subscription_type=f"channel_bonus_{bonus_id}",
         )
 
-        # Record the claim
+        # Record the claim — DB-level unique index protects against races.
         claim = ChannelBonusClaim(
             user_id=user_id,
             bonus_id=bonus_id,
             tokens_awarded=bonus.bonus_tokens,
         )
         self.session.add(claim)
-        await self.session.commit()
+        try:
+            await self.session.commit()
+        except IntegrityError:
+            await self.session.rollback()
+            try:
+                await sub_service.rollback_tokens(
+                    user_id=user_id,
+                    tokens=bonus.bonus_tokens,
+                    subscription_id=subscription.id,
+                )
+            except Exception:
+                logger.error(
+                    "channel_bonus_rollback_tokens_failed",
+                    user_id=user_id,
+                    bonus_id=bonus_id,
+                    tokens=bonus.bonus_tokens,
+                )
+            logger.warning(
+                "channel_bonus_duplicate_claim_blocked",
+                user_id=user_id,
+                bonus_id=bonus_id,
+            )
+            return None
 
         logger.info(
             "channel_bonus_claimed",

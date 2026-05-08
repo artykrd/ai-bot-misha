@@ -1,15 +1,18 @@
 # Core
-python-dotenv==1.0.0
+python-dotenv==1.2.2  # CVE-2026-28684
 pydantic==2.5.0
 pydantic-settings==2.1.0
 
 # Telegram Bot
-aiogram==3.4.1
+# Bumped from 3.4.1 to a version that allows aiohttp>=3.13 (closes the bulk
+# of CVE-2025/2026 in aiohttp). Public Dispatcher/Router/Filter/FSM APIs
+# are unchanged from 3.4 onwards.
+aiogram==3.27.0
 
 # FastAPI
-fastapi==0.109.0
+fastapi==0.118.0  # PYSEC-2024-38, brings starlette>=0.47 (CVE-2024-47874, CVE-2025-54121, CVE-2025-62727)
 uvicorn[standard]==0.27.0
-python-multipart==0.0.6
+python-multipart==0.0.27  # PYSEC-2024-38, CVE-2024-53981, CVE-2026-24486/40347/42561
 
 # Database
 SQLAlchemy==2.0.25
@@ -23,13 +26,13 @@ hiredis==2.3.2
 
 # HTTP Client
 httpx==0.26.0
-aiohttp==3.9.1
+aiohttp==3.13.4  # PYSEC-2024-24/26, CVE-2024-27306/30251/52304, CVE-2025-53643/69223-69230/69225-69227, CVE-2026-22815/34513-34520/34525
 
 # AI APIs
 openai==1.10.0
 anthropic==0.40.0
 google-generativeai>=1.0.0  # New SDK with google.genai.Client()
-PyJWT==2.8.0  # JWT for Kling API authentication
+PyJWT==2.12.0  # CVE-2026-32597 fix
 
 # Payment
 yookassa==3.0.0
@@ -38,7 +41,7 @@ yookassa==3.0.0
 APScheduler==3.10.4
 
 # File Processing
-Pillow==10.2.0
+Pillow==12.2.0  # CVE-2024-28219, CVE-2026-25990/40192/42308/42309/42310/42311
 python-magic==0.4.27
 
 # Logging
@@ -53,7 +56,7 @@ pytz==2023.3
 psutil==5.9.8
 
 # Testing
-pytest==7.4.4
+pytest==9.0.3  # CVE-2025-71176
 pytest-asyncio==0.23.3
 pytest-cov==4.1.0
 httpx==0.26.0
