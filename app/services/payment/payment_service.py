@@ -61,8 +61,9 @@ class PaymentService:
             logger.error("payment_create_failed", error="User not found", user_id=user_id)
             return None
 
-        # Create payment in YooKassa
-        yookassa_data = self.yookassa.create_payment(
+        # Create payment in YooKassa (network call is run in a thread with a
+        # hard timeout so a stuck TLS handshake won't freeze the bot loop).
+        yookassa_data = await self.yookassa.create_payment(
             amount=amount,
             description=description,
             user_telegram_id=user.telegram_id,
@@ -617,7 +618,7 @@ class PaymentService:
 
             # Process refund if amount > 0
             if refund_amount > Decimal("0"):
-                refund_result = self.yookassa.refund_payment(
+                refund_result = await self.yookassa.refund_payment(
                     payment_id=payment.yukassa_payment_id,
                     amount=refund_amount,
                     reason=f"Отмена подписки. Использовано {used_tokens} из {total_tokens} токенов."

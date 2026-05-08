@@ -1,6 +1,7 @@
 """
 YooKassa payment service for processing payments.
 """
+import asyncio
 import hashlib
 import hmac
 import ipaddress
@@ -16,6 +17,13 @@ from app.core.config import settings
 from app.core.log_safety import sanitise_body
 
 logger = get_logger(__name__)
+
+
+# YooKassa SDK uses synchronous `requests` with no built-in timeout. Calling it
+# from an async handler blocks the entire event loop on network hiccups (e.g.
+# stalled TLS handshake). We hard-cap every SDK call with this timeout and run
+# it in a worker thread so a slow upstream can't freeze the bot.
+YOOKASSA_CALL_TIMEOUT_SECONDS = 30
 
 
 # Official YooKassa webhook source IPs (https://yookassa.ru/developers/using-api/webhooks).
@@ -109,7 +117,7 @@ class YooKassaService:
             self.configured = True
             logger.info("yookassa_configured", shop_id=self.shop_id[:6] + "...")
 
-    def create_payment(
+    async def create_payment(
         self,
         amount: Decimal,
         description: str,
@@ -118,6 +126,10 @@ class YooKassaService:
     ) -> Optional[Dict[str, Any]]:
         """
         Create a payment in YooKassa.
+
+        The YooKassa SDK is synchronous; we dispatch the call to a worker
+        thread and bound it with a hard timeout so a stuck TLS handshake
+        cannot freeze the bot's event loop.
 
         Args:
             amount: Payment amount in RUB
@@ -166,8 +178,7 @@ class YooKassaService:
                 ]
             }
 
-            # Create payment
-            payment = YooKassaPayment.create({
+            payload = {
                 "amount": {
                     "value": str(amount),
                     "currency": "RUB"
@@ -180,7 +191,12 @@ class YooKassaService:
                 "description": truncated_description,
                 "receipt": receipt,  # Required for 54-FZ compliance
                 "metadata": payment_metadata
-            }, idempotency_key)
+            }
+
+            payment = await asyncio.wait_for(
+                asyncio.to_thread(YooKassaPayment.create, payload, idempotency_key),
+                timeout=YOOKASSA_CALL_TIMEOUT_SECONDS,
+            )
 
             logger.info(
                 "yookassa_payment_created",
@@ -199,6 +215,14 @@ class YooKassaService:
                 "metadata": payment_metadata
             }
 
+        except asyncio.TimeoutError:
+            logger.error(
+                "yookassa_create_payment_timeout",
+                amount=float(amount),
+                user_id=user_telegram_id,
+                timeout_seconds=YOOKASSA_CALL_TIMEOUT_SECONDS,
+            )
+            return None
         except Exception as e:
             # Get detailed error information
             error_detail = str(e)
@@ -223,7 +247,7 @@ class YooKassaService:
             )
             return None
 
-    def get_payment_info(self, payment_id: str) -> Optional[Dict[str, Any]]:
+    async def get_payment_info(self, payment_id: str) -> Optional[Dict[str, Any]]:
         """
         Get payment information from YooKassa.
 
@@ -238,7 +262,10 @@ class YooKassaService:
             return None
 
         try:
-            payment = YooKassaPayment.find_one(payment_id)
+            payment = await asyncio.wait_for(
+                asyncio.to_thread(YooKassaPayment.find_one, payment_id),
+                timeout=YOOKASSA_CALL_TIMEOUT_SECONDS,
+            )
 
             if not payment:
                 logger.warning("yookassa_payment_not_found", payment_id=payment_id)
@@ -255,6 +282,13 @@ class YooKassaService:
                 "metadata": payment.metadata if payment.metadata else {}
             }
 
+        except asyncio.TimeoutError:
+            logger.error(
+                "yookassa_get_payment_timeout",
+                payment_id=payment_id,
+                timeout_seconds=YOOKASSA_CALL_TIMEOUT_SECONDS,
+            )
+            return None
         except Exception as e:
             logger.error(
                 "yookassa_get_payment_error",
@@ -338,7 +372,7 @@ class YooKassaService:
             )
             return None
 
-    def refund_payment(
+    async def refund_payment(
         self,
         payment_id: str,
         amount: Optional[Decimal] = None,
@@ -363,7 +397,7 @@ class YooKassaService:
             from yookassa import Refund
 
             # Get payment info first
-            payment_info = self.get_payment_info(payment_id)
+            payment_info = await self.get_payment_info(payment_id)
             if not payment_info:
                 logger.error("yookassa_refund_failed", error="Payment not found")
                 return None
@@ -373,14 +407,18 @@ class YooKassaService:
 
             # Create refund
             idempotency_key = str(uuid.uuid4())
-            refund = Refund.create({
+            payload = {
                 "amount": {
                     "value": str(refund_amount),
                     "currency": payment_info["currency"]
                 },
                 "payment_id": payment_id,
                 "description": reason or "Refund requested"
-            }, idempotency_key)
+            }
+            refund = await asyncio.wait_for(
+                asyncio.to_thread(Refund.create, payload, idempotency_key),
+                timeout=YOOKASSA_CALL_TIMEOUT_SECONDS,
+            )
 
             logger.info(
                 "yookassa_refund_created",
@@ -396,6 +434,13 @@ class YooKassaService:
                 "payment_id": payment_id
             }
 
+        except asyncio.TimeoutError:
+            logger.error(
+                "yookassa_refund_timeout",
+                payment_id=payment_id,
+                timeout_seconds=YOOKASSA_CALL_TIMEOUT_SECONDS,
+            )
+            return None
         except Exception as e:
             logger.error(
                 "yookassa_refund_error",
