@@ -207,12 +207,54 @@ async def yookassa_webhook(request: Request):
             )
 
             if not payment:
-                logger.error(
-                    "yukassa_payment_not_found_in_db",
-                    yukassa_payment_id=payment_id,
-                    searched_field="yukassa_payment_id"
-                )
-                raise HTTPException(status_code=404, detail="Payment not found")
+                # Payment may have been created on YooKassa's side but never
+                # saved locally because the creation request timed out before
+                # the bot received the response. Attempt recovery using the
+                # user_telegram_id embedded in the webhook metadata.
+                recovery_metadata = webhook_data.get("metadata") or {}
+                tg_id_str = recovery_metadata.get("user_telegram_id")
+                if tg_id_str and webhook_data.get("amount"):
+                    try:
+                        from decimal import Decimal as _Decimal
+                        import uuid as _uuid
+                        from app.database.models.payment import Payment as _Payment
+
+                        user_result = await session.execute(
+                            select(User).where(User.telegram_id == int(tg_id_str))
+                        )
+                        db_user = user_result.scalar_one_or_none()
+                        if db_user:
+                            payment = _Payment(
+                                payment_id=f"PAY-{_uuid.uuid4().hex[:16].upper()}",
+                                user_id=db_user.id,
+                                amount=_Decimal(str(webhook_data["amount"])),
+                                currency="RUB",
+                                status="pending",
+                                yukassa_payment_id=payment_id,
+                                yukassa_response=None,
+                            )
+                            session.add(payment)
+                            await session.flush()
+                            logger.warning(
+                                "yukassa_payment_recovered_from_webhook",
+                                yukassa_payment_id=payment_id,
+                                user_id=db_user.id,
+                                payment_id=payment.payment_id,
+                            )
+                    except (ValueError, TypeError, Exception) as _rec_err:
+                        logger.error(
+                            "yukassa_payment_recovery_failed",
+                            yukassa_payment_id=payment_id,
+                            error=str(_rec_err),
+                        )
+
+                if not payment:
+                    logger.error(
+                        "yukassa_payment_not_found_in_db",
+                        yukassa_payment_id=payment_id,
+                        searched_field="yukassa_payment_id"
+                    )
+                    raise HTTPException(status_code=404, detail="Payment not found")
 
             logger.info(
                 "yukassa_payment_found",
