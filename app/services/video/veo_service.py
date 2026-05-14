@@ -251,12 +251,10 @@ class VeoService(BaseVideoProvider):
 
                     mime_type = mimetypes.guess_type(image_path)[0] or 'image/jpeg'
 
-                    blob = types.Blob(
+                    image_obj = types.Image(
+                        image_bytes=image_bytes,
                         mime_type=mime_type,
-                        data=image_bytes
                     )
-                    part = types.Part(inline_data=blob)
-                    image_obj = part.as_image()
 
                     logger.info("veo_image_prepared",
                               path=image_path,
@@ -279,12 +277,10 @@ class VeoService(BaseVideoProvider):
 
                         ref_mime_type = mimetypes.guess_type(ref_img_path)[0] or 'image/jpeg'
 
-                        ref_blob = types.Blob(
+                        ref_image_obj = types.Image(
+                            image_bytes=ref_img_bytes,
                             mime_type=ref_mime_type,
-                            data=ref_img_bytes
                         )
-                        ref_part = types.Part(inline_data=ref_blob)
-                        ref_image_obj = ref_part.as_image()
 
                         ref_img = types.VideoGenerationReferenceImage(
                             image=ref_image_obj,
@@ -312,12 +308,10 @@ class VeoService(BaseVideoProvider):
 
                     last_frame_mime = mimetypes.guess_type(last_frame_path)[0] or 'image/jpeg'
 
-                    last_blob = types.Blob(
+                    last_frame_obj = types.Image(
+                        image_bytes=last_frame_bytes,
                         mime_type=last_frame_mime,
-                        data=last_frame_bytes
                     )
-                    last_part = types.Part(inline_data=last_blob)
-                    last_frame_obj = last_part.as_image()
                     config_params["last_frame"] = last_frame_obj
 
                     logger.info("veo_last_frame_prepared",
