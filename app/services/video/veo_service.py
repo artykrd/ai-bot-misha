@@ -237,7 +237,7 @@ class VeoService(BaseVideoProvider):
             if resolution:
                 config_params["resolution"] = resolution
             if duration:
-                config_params["duration_seconds"] = str(duration)
+                config_params["duration_seconds"] = int(duration)
 
             # Prepare image parameter if provided
             image_obj = None
