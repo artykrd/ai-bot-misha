@@ -4,11 +4,14 @@ Sends error notifications to administrators when critical errors occur.
 """
 import logging
 import asyncio
+import socket
 from typing import Optional
 from datetime import datetime, timedelta
 from collections import defaultdict
 
+import aiohttp
 from aiogram import Bot
+from aiogram.client.session.aiohttp import AiohttpSession
 
 from app.core.config import settings
 
@@ -31,7 +34,10 @@ class ErrorNotifier:
         """Initialize admin bot using admin bot token from settings."""
         try:
             if settings.telegram_admin_bot_token:
-                self.bot = Bot(token=settings.telegram_admin_bot_token)
+                # Force IPv4 to avoid broken IPv6 routing to api.telegram.org
+                connector = aiohttp.TCPConnector(family=socket.AF_INET)
+                session = AiohttpSession(connector=connector)
+                self.bot = Bot(token=settings.telegram_admin_bot_token, session=session)
                 logging.info("Error notifier initialized with admin bot")
         except Exception as e:
             logging.warning(f"Failed to initialize admin bot for error notifications: {e}")

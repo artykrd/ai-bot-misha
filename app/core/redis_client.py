@@ -6,11 +6,21 @@ import json
 
 import redis.asyncio as redis
 from redis.asyncio.client import Redis
+from redis.asyncio import BlockingConnectionPool
 
 from app.core.config import settings
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
+
+_POOL_KWARGS = dict(
+    socket_keepalive=True,
+    socket_connect_timeout=5,
+    retry_on_timeout=True,
+    health_check_interval=30,
+    encoding="utf-8",
+    decode_responses=True,
+)
 
 
 class RedisClient:
@@ -23,28 +33,25 @@ class RedisClient:
     async def connect(self) -> None:
         """Establish connection to Redis."""
         try:
-            # Main Redis client for caching (with connection pool limit)
-            self._client = await redis.from_url(
+            # BlockingConnectionPool waits up to `timeout` seconds for a free
+            # slot instead of raising "Too many connections" immediately.
+            main_pool = BlockingConnectionPool.from_url(
                 settings.redis_url,
-                encoding="utf-8",
-                decode_responses=True,
-                max_connections=50,
-                socket_keepalive=True,
-                socket_connect_timeout=5,
-                retry_on_timeout=True,
+                max_connections=20,
+                timeout=5,
+                **_POOL_KWARGS,
             )
+            self._client = redis.Redis(connection_pool=main_pool)
 
             # FSM client for aiogram states (separate database)
             fsm_url = settings.redis_url.rsplit("/", 1)[0] + f"/{settings.redis_fsm_db}"
-            self._fsm_client = await redis.from_url(
+            fsm_pool = BlockingConnectionPool.from_url(
                 fsm_url,
-                encoding="utf-8",
-                decode_responses=True,
-                max_connections=20,
-                socket_keepalive=True,
-                socket_connect_timeout=5,
-                retry_on_timeout=True,
+                max_connections=10,
+                timeout=5,
+                **_POOL_KWARGS,
             )
+            self._fsm_client = redis.Redis(connection_pool=fsm_pool)
 
             # Test connection
             await self._client.ping()

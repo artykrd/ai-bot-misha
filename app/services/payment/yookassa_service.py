@@ -23,7 +23,7 @@ logger = get_logger(__name__)
 # from an async handler blocks the entire event loop on network hiccups (e.g.
 # stalled TLS handshake). We hard-cap every SDK call with this timeout and run
 # it in a worker thread so a slow upstream can't freeze the bot.
-YOOKASSA_CALL_TIMEOUT_SECONDS = 30
+YOOKASSA_CALL_TIMEOUT_SECONDS = 60
 
 
 # Official YooKassa webhook source IPs (https://yookassa.ru/developers/using-api/webhooks).
