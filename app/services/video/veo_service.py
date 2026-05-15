@@ -334,6 +334,14 @@ class VeoService(BaseVideoProvider):
                     logger.error("veo_input_video_upload_failed", error=str(vid_error))
                     raise Exception(f"Failed to upload input video: {vid_error}")
 
+            # generate_videos was added in google-genai 1.3.0.
+            if not hasattr(self.client.models, "generate_videos"):
+                raise RuntimeError(
+                    "google-genai>=1.3.0 is required for Veo video generation "
+                    "(installed version is too old). "
+                    "Run: pip install 'google-genai>=1.3.0'"
+                )
+
             # Call Gemini API through the centralized execution layer
             if video_obj:
                 async def _request_fn():

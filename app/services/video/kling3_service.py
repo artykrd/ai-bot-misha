@@ -210,7 +210,7 @@ class Kling3Service(BaseVideoProvider):
             )
 
         except Exception as e:
-            error_msg = str(e)
+            error_msg = str(e) or type(e).__name__
             logger.error("kling3_generation_failed", error=error_msg)
 
             if progress_callback:
