@@ -172,6 +172,22 @@ async def process_successful_stars_payment(message: Message, user: User):
 
     try:
         async with async_session_maker() as session:
+            from sqlalchemy import select as _select
+
+            # Idempotency: Telegram can redeliver successful_payment (e.g. after
+            # a restart on long-polling). Never credit the same charge twice.
+            charge_id = payment_info.telegram_payment_charge_id
+            existing = await session.execute(
+                _select(Payment).where(Payment.yukassa_payment_id == charge_id)
+            )
+            if existing.scalar_one_or_none() is not None:
+                logger.info(
+                    "stars_payment_duplicate_ignored",
+                    user_id=user.id,
+                    telegram_payment_charge_id=charge_id,
+                )
+                return
+
             sub_service = SubscriptionService(session)
 
             # Record payment in database

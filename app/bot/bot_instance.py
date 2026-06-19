@@ -31,6 +31,7 @@ async def setup_bot() -> Dispatcher:
     from app.bot.middlewares.auth import AuthMiddleware
     from app.bot.middlewares.logging import LoggingMiddleware
     from app.bot.middlewares.broadcast_tracking import BroadcastTrackingMiddleware
+    from app.bot.middlewares.token_refund import TokenAutoRefundMiddleware
 
     # Register middlewares (order matters: throttling first to drop spam early)
     dp.message.middleware(ThrottlingMiddleware(rate_limit=0.5, max_burst=5))
@@ -40,6 +41,10 @@ async def setup_bot() -> Dispatcher:
     dp.message.middleware(LoggingMiddleware())
     dp.callback_query.middleware(LoggingMiddleware())
     dp.callback_query.middleware(BroadcastTrackingMiddleware())
+    # Auto-refund reserved tokens if a handler crashes after deducting them.
+    # Registered last so it wraps the actual handler execution most closely.
+    dp.message.middleware(TokenAutoRefundMiddleware())
+    dp.callback_query.middleware(TokenAutoRefundMiddleware())
 
     # Register handlers
     from app.bot.handlers import (
@@ -88,9 +93,12 @@ async def setup_bot() -> Dispatcher:
     from app.core.error_notifier import setup_error_notifications
     setup_error_notifications(bot)
 
-    # Start video worker for async video generation
+    # Start video worker for async video generation.
+    # poll_interval lowered 30s->8s so queued jobs start (and finished jobs are
+    # delivered) much sooner. Safe now that each job runs in its own DB session
+    # (see VideoWorker._process_job_isolated).
     from app.workers.video_worker import VideoWorker
-    video_worker = VideoWorker(bot, poll_interval=30)
+    video_worker = VideoWorker(bot, poll_interval=8)
     video_worker.start()
     logger.info("video_worker_started")
 

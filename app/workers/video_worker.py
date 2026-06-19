@@ -26,16 +26,19 @@ logger = get_logger(__name__)
 class VideoWorker:
     """Background worker for async video generation."""
 
-    def __init__(self, bot: Bot, poll_interval: int = 30):
+    def __init__(self, bot: Bot, poll_interval: int = 8, max_concurrent: int = 8):
         """
         Initialize video worker.
 
         Args:
             bot: Telegram bot instance
             poll_interval: Seconds between polling cycles
+            max_concurrent: Max jobs processed simultaneously per cycle. Safe to
+                raise now that each job uses its own DB session.
         """
         self.bot = bot
         self.poll_interval = poll_interval
+        self.max_concurrent = max_concurrent
         self._running = False
         self._task: Optional[asyncio.Task] = None
 
@@ -83,8 +86,8 @@ class VideoWorker:
             # spawning per-job tasks so each task gets an isolated session.
             async with async_session_maker() as session:
                 service = VideoJobService(session)
-                pending_jobs = await service.get_pending_jobs(limit=10)
-                job_ids = [job.id for job in pending_jobs[:5]]  # Process max 5 simultaneously
+                pending_jobs = await service.get_pending_jobs(limit=max(10, self.max_concurrent))
+                job_ids = [job.id for job in pending_jobs[:self.max_concurrent]]
 
             if not job_ids:
                 logger.debug("no_pending_video_jobs")

@@ -5,7 +5,7 @@ import asyncio
 import sys
 import html as html_module
 
-from aiogram import Bot, Dispatcher, Router, F
+from aiogram import Bot, Dispatcher, Router, F, BaseMiddleware
 from aiogram.filters import Command, StateFilter
 from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.fsm.storage.redis import RedisStorage
@@ -70,6 +70,27 @@ def is_admin(user_id: int) -> bool:
             telegram_id=user_id,
         )
     return allowed
+
+
+class AdminAccessMiddleware(BaseMiddleware):
+    """
+    Single chokepoint that blocks non-admins for every handler on the admin
+    router. Previously each handler repeated `if not is_admin(...)`: one missed
+    check meant privilege escalation. This middleware enforces it centrally;
+    the per-handler checks remain as defence-in-depth.
+    """
+
+    async def __call__(self, handler, event, data):
+        user = getattr(event, "from_user", None)
+        if user is None or not is_admin(user.id):
+            # Silently refuse. For callbacks, close the spinner.
+            if isinstance(event, CallbackQuery):
+                try:
+                    await event.answer("⛔ Доступ только для администраторов", show_alert=True)
+                except Exception:
+                    pass
+            return None
+        return await handler(event, data)
 
 
 def safe_text(text: str) -> str:
@@ -5285,6 +5306,11 @@ async def main():
         from app.bot.middlewares.throttling import ThrottlingMiddleware
         admin_dp.message.middleware(ThrottlingMiddleware(rate_limit=0.5, max_burst=3))
         admin_dp.callback_query.middleware(ThrottlingMiddleware(rate_limit=0.3, max_burst=5))
+
+        # Central admin-access enforcement for ALL admin handlers (defence in
+        # depth on top of the per-handler is_admin checks).
+        admin_router.message.middleware(AdminAccessMiddleware())
+        admin_router.callback_query.middleware(AdminAccessMiddleware())
 
         # Register router
         admin_dp.include_router(admin_router)

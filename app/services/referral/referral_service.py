@@ -26,10 +26,21 @@ class ReferralService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def _get_or_create_balance(self, user_id: int) -> ReferralBalance:
-        result = await self.session.execute(
-            select(ReferralBalance).where(ReferralBalance.user_id == user_id)
-        )
+    async def _get_or_create_balance(
+        self, user_id: int, for_update: bool = False
+    ) -> ReferralBalance:
+        """
+        Fetch (or create) the user's referral balance row.
+
+        Pass ``for_update=True`` for any operation that spends the balance
+        (e.g. money→tokens exchange, payouts) so concurrent spends serialise
+        on a row-level lock and cannot both observe the same balance and
+        double-spend it.
+        """
+        query = select(ReferralBalance).where(ReferralBalance.user_id == user_id)
+        if for_update:
+            query = query.with_for_update()
+        result = await self.session.execute(query)
         balance = result.scalar_one_or_none()
         if balance:
             return balance
@@ -50,7 +61,9 @@ class ReferralService:
     ) -> Optional[int]:
         """Exchange referral money balance to tokens."""
         try:
-            balance = await self._get_or_create_balance(user_id)
+            # Row-level lock: prevents two concurrent exchanges from both
+            # passing the balance check and double-spending the same money.
+            balance = await self._get_or_create_balance(user_id, for_update=True)
             if money_amount <= 0 or balance.money_balance < money_amount:
                 return None
 

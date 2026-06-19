@@ -64,12 +64,17 @@ class Payment(Base, BaseModel, TimestampMixin):
         comment="Payment method used"
     )
 
-    # YooKassa integration
+    # YooKassa integration.
+    # unique=True is defence-in-depth against double-crediting the same payment
+    # (YooKassa webhook retries / Telegram Stars redelivery). The handler also
+    # checks idempotency in code. Postgres treats NULLs as distinct, so legacy
+    # rows without an external id are unaffected.
     yukassa_payment_id: Mapped[Optional[str]] = mapped_column(
         String(255),
         nullable=True,
+        unique=True,
         index=True,
-        comment="YooKassa payment ID"
+        comment="YooKassa payment ID (also Telegram Stars charge id)"
     )
 
     yukassa_response: Mapped[Optional[dict]] = mapped_column(

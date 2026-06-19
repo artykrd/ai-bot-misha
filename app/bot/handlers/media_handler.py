@@ -6380,7 +6380,7 @@ async def kling_mc_receive_prompt(message: Message, state: FSMContext, user: Use
         # Refund tokens
         async with async_session_maker() as session:
             sub_service = SubscriptionService(session)
-            await sub_service.add_eternal_tokens(user.id, estimated_tokens, "refund")
+            await sub_service.rollback_tokens(user.id, estimated_tokens)
 
         await progress_msg.edit_text(
             f"❌ Ошибка Motion Control:\n\n{result.error}\n\n"
@@ -7700,8 +7700,10 @@ async def process_nano_banana_2_image(message: Message, user: User, state: FSMCo
     nb2_service = NanoBanana2Service()
 
     # Enhance prompt for clothing try-on scenarios with multiple images
+    # nb2_image_urls and image_paths represent the same images (URL + local path),
+    # so count only nb2_image_urls to avoid double-counting.
     enhanced_prompt = prompt
-    total_images = len(image_paths) + len(nb2_image_urls)
+    total_images = len(nb2_image_urls)
     if total_images >= 2 and prompt:
         tryon_keywords = ["пример", "одень", "надень", "одежд", "платье", "костюм", "наряд",
                           "футболк", "рубашк", "try on", "wear", "dress", "outfit"]
@@ -7972,7 +7974,7 @@ async def process_seedream_image(message: Message, user: User, state: FSMContext
         # Refund tokens on error
         async with async_session_maker() as session:
             sub_service = SubscriptionService(session)
-            await sub_service.add_eternal_tokens(user.id, estimated_tokens, "refund")
+            await sub_service.rollback_tokens(user.id, estimated_tokens)
 
         await progress_msg.edit_text(
             f"❌ Ошибка генерации Seedream 4.5:\n\n{result.error}\n\n"
@@ -8104,7 +8106,7 @@ async def _midjourney_generation_task(
             # Refund tokens
             async with async_session_maker() as session:
                 sub_service = SubscriptionService(session)
-                await sub_service.add_eternal_tokens(user_id, estimated_tokens, "refund")
+                await sub_service.rollback_tokens(user_id, estimated_tokens)
 
             try:
                 await bot.edit_message_text(
@@ -8122,7 +8124,7 @@ async def _midjourney_generation_task(
         try:
             async with async_session_maker() as session:
                 sub_service = SubscriptionService(session)
-                await sub_service.add_eternal_tokens(user_id, estimated_tokens, "refund")
+                await sub_service.rollback_tokens(user_id, estimated_tokens)
         except Exception:
             pass
 
@@ -8195,6 +8197,6 @@ async def process_midjourney_video(message: Message, user: User, state: FSMConte
     # Refund tokens
     async with async_session_maker() as session:
         sub_service = SubscriptionService(session)
-        await sub_service.add_eternal_tokens(user.id, estimated_tokens, "refund")
+        await sub_service.rollback_tokens(user.id, estimated_tokens)
 
     await state.update_data(image_path=None, photo_caption_prompt=None)

@@ -178,6 +178,15 @@ class SubscriptionService:
 
         await self.session.commit()
 
+        # Register this deduction with the per-update auto-refund safety net so
+        # tokens are returned automatically if the handler later raises before
+        # completing (see app.core.token_guard).
+        try:
+            from app.core.token_guard import track_reservation
+            track_reservation(user_id, tokens_required)
+        except Exception:
+            pass
+
         logger.info(
             "tokens_used",
             user_id=user_id,
