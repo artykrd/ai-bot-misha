@@ -600,6 +600,20 @@ async def main() -> None:
     try:
         logger.info("bot_starting", environment=settings.environment)
 
+        # Fail-fast dependency self-check: Veo video generation needs
+        # google-genai>=1.3.0 (generate_videos). A too-old SDK silently breaks
+        # every Veo job at call time, so surface it loudly at startup instead.
+        try:
+            from google.genai import models as _genai_models
+            if not hasattr(_genai_models.Models, "generate_videos"):
+                logger.error(
+                    "dependency_check_failed",
+                    package="google-genai",
+                    reason="generate_videos missing — Veo will not work. Need google-genai>=1.3.0.",
+                )
+        except Exception as _dep_err:  # pragma: no cover - defensive
+            logger.warning("google_genai_import_check_failed", error=str(_dep_err))
+
         # Initialize database
         await init_db()
 

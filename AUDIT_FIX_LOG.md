@@ -1,0 +1,122 @@
+# Журнал исправлений по аудиту (2026-06-19)
+
+Этот файл — единый источник правды по устранению проблем, найденных в аудите.
+Каждое исправление отмечается статусом: ⬜ TODO · 🔄 В работе · ✅ Сделано · ⏸ Отложено.
+
+Ветка разработки: `fix/audit-sprint-1` (далее по спринту).
+
+---
+
+## СПРИНТ 1 — КРИТИЧЕСКОЕ (немедленно)
+
+### #1 Гонка async-сессий БД в видео-воркере (8358 ошибок в логах)
+**Файлы:** `app/workers/video_worker.py`, `app/services/video_job_service.py`
+**Проблема:** одна `AsyncSession` шарится 5 конкурентными задачами `asyncio.gather` →
+`This transaction is closed`, `commit() can't be called here / _prepare_impl in progress`.
+**Шаги:**
+- [x] 1.1 В `process_pending_jobs`: открывать отдельную сессию на каждую задачу (новый `_process_job_isolated`).
+- [x] 1.2 В `retry_timeout_waiting_jobs`: то же + вынесен блок «max attempts exceeded» в `_fail_timeout_job_isolated`.
+- [x] 1.3 `_refund_tokens`/`update_job_status` теперь работают в собственной сессии каждой задачи.
+- [x] 1.4 Smoke-тест: 5 конкурентных задач → 5 различных сессий (PASS).
+**Статус:** ✅ Сделано
+
+### #2 Veo сломан — `google-genai 1.2.0 < 1.3.0`
+**Файлы:** `requirements.txt`, окружение, `app/services/video/veo_service.py`
+**Проблема:** установлен SDK без `generate_videos` → каждая генерация Veo падает.
+**Шаги:**
+- [x] 2.1 Зафиксирован `google-genai==1.3.0` в `requirements.txt` (минимум с `generate_videos`, совместим с pydantic 2.5.0 / aiogram). Поднят `httpx==0.28.1` (требование genai 1.3.0), убран дубль httpx в test-группе.
+- [x] 2.2 Установлено в venv: `google-genai 1.3.0`, `httpx 0.28.1`, `pydantic 2.5.0`.
+- [x] 2.3 Подтверждено: `google.genai.models.Models.generate_videos` присутствует.
+- [x] 2.4 Добавлен fail-fast self-check в `main.py` (startup) + удалён orphan `google-cloud-aiplatform` → `pip check` чист.
+**Статус:** ✅ Сделано
+
+---
+
+## СПРИНТ 2 — ВЫСОКИЙ (эта неделя)
+
+### #3 Потеря токенов при исключении внутри генерации
+**Файлы:** `app/bot/handlers/media_handler.py`, `async_*_handler.py`
+**Шаги:**
+- [ ] 3.1 Ввести единый помощник «reserve → run → commit/rollback».
+- [ ] 3.2 Обернуть все вызовы генерации в try/except с гарантированным возвратом.
+- [ ] 3.3 Тесты на путь исключения.
+**Статус:** ⬜ TODO
+
+### #4 Несогласованный механизм возврата токенов
+- [ ] 4.1 Заменить `add_eternal_tokens(..., "refund")` на `rollback_tokens()`.
+- [ ] 4.2 Передавать `subscription_id` для возврата в исходную подписку.
+**Статус:** ⬜ TODO
+
+### #5 Stars-платежи без идемпотентности
+**Файл:** `app/bot/handlers/stars_payment.py`, модель `Payment`
+- [ ] 5.1 Проверка существующего `telegram_payment_charge_id` перед начислением.
+- [ ] 5.2 Unique-constraint на `yukassa_payment_id` (+ миграция) и обработка конфликта.
+**Статус:** ⬜ TODO
+
+### #6 Админ-доступ проверяется вручную в каждом хендлере
+**Файл:** `admin_main.py`
+- [ ] 6.1 Централизованный `AdminFilter`/middleware на роутер админ-бота.
+- [ ] 6.2 Оставить точечные проверки как защиту в глубину.
+**Статус:** ⬜ TODO
+
+### #7 Реферальные выплаты без блокировок строк
+**Файл:** `app/services/referral/referral_service.py`
+- [ ] 7.1 Row-lock (`with_for_update`) на баланс при списании/выплате.
+**Статус:** ⬜ TODO
+
+---
+
+## СПРИНТ 3 — СРЕДНИЙ (2 недели)
+
+### #8 Соотношение сторон (9:16/16:9)
+- [ ] 8.1 Регресс-тесты callback→сохранённое значение→галочка для всех моделей.
+- [ ] 8.2 Унифицировать дефолты формата.
+**Статус:** ⬜ TODO
+
+### #9 Сверка суммы платежа — алерт
+- [ ] 9.1 Алерт (не только warning) при расхождении суммы.
+**Статус:** ⬜ TODO
+
+### #10 Контент-модерация ≠ «ошибка»
+- [ ] 10.1 Различать 4xx-модерацию и сбой; гарантированный возврат при модерации.
+- [ ] 10.2 Ретраи 429/5xx с backoff.
+**Статус:** ⬜ TODO
+
+### #11 Webhook-секрет ЮKassa обязателен в проде
+- [ ] 11.1 Требовать `YUKASSA_WEBHOOK_SECRET` при `ENVIRONMENT=production`.
+**Статус:** ⬜ TODO
+
+### #12 CORS по умолчанию `*`
+- [ ] 12.1 Явный список origins для прод-API.
+**Статус:** ⬜ TODO
+
+---
+
+## БЭКЛОГ — НИЗКИЙ
+
+- [ ] 13.1 Чистка репозитория: файл `=`, дубли `*.md`, логи из рабочей копии.
+- [ ] 13.2 Один путь Google-SDK (убрать легаси `google-generativeai`, где можно).
+- [ ] 13.3 Рассмотреть webhook вместо polling.
+- [ ] 13.4 Обновить pin'ы `openai`/`anthropic`.
+- [ ] 13.5 **Сломан тест-раннер** (обнаружено в Спринте 1): `pytest==9.0.3` несовместим
+  с `pytest-asyncio==0.23.3` → `INTERNALERROR ... 'Package' object has no attribute 'obj'`.
+  Нужно поднять `pytest-asyncio` (>=0.24/1.x) или согласовать версию pytest. Блокирует
+  автотесты — пока проверка через целевые smoke-скрипты.
+
+---
+
+## ЛОГ ВЫПОЛНЕНИЯ
+
+> Здесь фиксируются фактические изменения по датам/коммитам.
+
+### 2026-06-19
+- Создана ветка `fix/audit-sprint-1`.
+- Создан журнал `AUDIT_FIX_LOG.md` с полным планом.
+- **Спринт 1 завершён:**
+  - #1: `app/workers/video_worker.py` — каждая видео-задача обрабатывается в собственной
+    `AsyncSession` (`_process_job_isolated`, `_fail_timeout_job_isolated`). Устранена причина
+    8358 ошибок `This transaction is closed`. Smoke-тест изоляции сессий — PASS.
+  - #2: `requirements.txt` — `google-genai==1.3.0`, `httpx==0.28.1`; venv обновлён;
+    `main.py` — fail-fast проверка наличия `generate_videos` при старте; удалён orphan
+    `google-cloud-aiplatform`; `pip check` чист. Veo восстановлен.
+  - Обнаружено: сломан тест-раннер (pytest/pytest-asyncio) → внесено в бэклог (#13.5).

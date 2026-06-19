@@ -54,105 +54,142 @@ class VideoWorker:
             logger.warning("failed_to_check_async_video_flag", error=str(e))
             return True  # Default to enabled
 
-    async def process_pending_jobs(self):
-        """Process pending video jobs."""
+    async def _process_job_isolated(self, job_id: int) -> bool:
+        """
+        Process a single job inside its OWN database session.
+
+        SQLAlchemy ``AsyncSession`` is not safe for concurrent use, so each
+        job processed via ``asyncio.gather`` must own its session. Sharing one
+        session across gathered tasks is what produced the recurring
+        "This transaction is closed" / "_prepare_impl is already in progress"
+        failures in production.
+        """
         try:
             async with async_session_maker() as session:
                 service = VideoJobService(session)
+                job = await service.repository.get_by_id(job_id)
+                if not job:
+                    logger.warning("video_job_disappeared_before_processing", job_id=job_id)
+                    return False
+                return await service.process_job(job, self.bot)
+        except Exception as e:
+            logger.error("video_job_isolated_processing_failed", job_id=job_id, error=str(e))
+            return False
 
-                # Get pending jobs
+    async def process_pending_jobs(self):
+        """Process pending video jobs."""
+        try:
+            # Fetch the batch in a short-lived session, then release it before
+            # spawning per-job tasks so each task gets an isolated session.
+            async with async_session_maker() as session:
+                service = VideoJobService(session)
                 pending_jobs = await service.get_pending_jobs(limit=10)
+                job_ids = [job.id for job in pending_jobs[:5]]  # Process max 5 simultaneously
 
-                if not pending_jobs:
-                    logger.debug("no_pending_video_jobs")
-                    return
+            if not job_ids:
+                logger.debug("no_pending_video_jobs")
+                return
 
-                logger.info("processing_pending_video_jobs", count=len(pending_jobs))
+            logger.info("processing_pending_video_jobs", count=len(job_ids))
 
-                # Process jobs concurrently (max 5 at a time to avoid overload)
-                tasks = []
-                for job in pending_jobs[:5]:  # Process max 5 simultaneously
-                    task = asyncio.create_task(service.process_job(job, self.bot))
-                    tasks.append(task)
+            # Each job runs in its own DB session (sessions are not concurrency-safe).
+            tasks = [
+                asyncio.create_task(self._process_job_isolated(job_id))
+                for job_id in job_ids
+            ]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
 
-                # Wait for all to complete
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-
-                success_count = sum(1 for r in results if r is True)
-                logger.info("video_jobs_processed", total=len(tasks), success=success_count)
+            success_count = sum(1 for r in results if r is True)
+            logger.info("video_jobs_processed", total=len(tasks), success=success_count)
 
         except Exception as e:
             logger.error("process_pending_jobs_failed", error=str(e))
 
-    async def retry_timeout_waiting_jobs(self):
-        """Retry jobs that timed out initially."""
+    async def _fail_timeout_job_isolated(self, job_id: int) -> None:
+        """Mark a retry-exhausted job as failed, refund and notify — own session."""
         try:
             async with async_session_maker() as session:
                 service = VideoJobService(session)
-
-                # Get timeout_waiting jobs
-                timeout_jobs = await service.get_timeout_waiting_jobs(limit=10)
-
-                if not timeout_jobs:
+                job = await service.repository.get_by_id(job_id)
+                if not job:
                     return
 
-                logger.info("retrying_timeout_waiting_jobs", count=len(timeout_jobs))
+                await service.update_job_status(
+                    job.id,
+                    "failed",
+                    error_message="Maximum retry attempts exceeded"
+                )
 
-                # Process jobs (fewer concurrently since these already took long)
-                tasks = []
-                for job in timeout_jobs[:3]:  # Max 3 retries simultaneously
-                    # Only retry if not exceeded max attempts
-                    if job.can_retry:
-                        task = asyncio.create_task(service.process_job(job, self.bot))
-                        tasks.append(task)
-                    else:
-                        # Mark as failed if max attempts exceeded
-                        await service.update_job_status(
-                            job.id,
-                            "failed",
-                            error_message="Maximum retry attempts exceeded"
+                refund_note = ""
+                if job.tokens_cost > 0:
+                    try:
+                        sub_service = SubscriptionService(session)
+                        await sub_service.rollback_tokens(job.user_id, job.tokens_cost)
+                        logger.info(
+                            "timeout_job_tokens_refunded",
+                            job_id=job.id,
+                            user_id=job.user_id,
+                            tokens=job.tokens_cost,
+                        )
+                        refund_note = "\n\nТокены возвращены на ваш счёт."
+                    except Exception as refund_err:
+                        logger.error(
+                            "timeout_job_token_refund_failed",
+                            job_id=job.id,
+                            user_id=job.user_id,
+                            error=str(refund_err),
                         )
 
-                        # Refund tokens
-                        refund_note = ""
-                        if job.tokens_cost > 0:
-                            try:
-                                sub_service = SubscriptionService(session)
-                                await sub_service.rollback_tokens(job.user_id, job.tokens_cost)
-                                logger.info(
-                                    "timeout_job_tokens_refunded",
-                                    job_id=job.id,
-                                    user_id=job.user_id,
-                                    tokens=job.tokens_cost,
-                                )
-                                refund_note = "\n\nТокены возвращены на ваш счёт."
-                            except Exception as refund_err:
-                                logger.error(
-                                    "timeout_job_token_refund_failed",
-                                    job_id=job.id,
-                                    user_id=job.user_id,
-                                    error=str(refund_err),
-                                )
+                if job.progress_message_id:
+                    try:
+                        await self.bot.edit_message_text(
+                            chat_id=job.chat_id,
+                            message_id=job.progress_message_id,
+                            text=f"❌ Не удалось сгенерировать видео после нескольких попыток.{refund_note}"
+                        )
+                    except Exception:
+                        try:
+                            await self.bot.send_message(
+                                chat_id=job.chat_id,
+                                text=f"❌ Не удалось сгенерировать видео после нескольких попыток.{refund_note}"
+                            )
+                        except Exception:
+                            pass
+        except Exception as e:
+            logger.error("fail_timeout_job_isolated_failed", job_id=job_id, error=str(e))
 
-                        # Notify user
-                        if job.progress_message_id:
-                            try:
-                                await self.bot.edit_message_text(
-                                    chat_id=job.chat_id,
-                                    message_id=job.progress_message_id,
-                                    text=f"❌ Не удалось сгенерировать видео после нескольких попыток.{refund_note}"
-                                )
-                            except Exception:
-                                try:
-                                    await self.bot.send_message(
-                                        chat_id=job.chat_id,
-                                        text=f"❌ Не удалось сгенерировать видео после нескольких попыток.{refund_note}"
-                                    )
-                                except Exception:
-                                    pass
+    async def retry_timeout_waiting_jobs(self):
+        """Retry jobs that timed out initially."""
+        try:
+            # Snapshot the batch in a short-lived session, then release it so
+            # each job gets its own isolated session (see _process_job_isolated).
+            async with async_session_maker() as session:
+                service = VideoJobService(session)
+                timeout_jobs = await service.get_timeout_waiting_jobs(limit=10)
+                # Capture only the plain attributes we need before the session closes.
+                retry_ids = [job.id for job in timeout_jobs[:3] if job.can_retry]
+                exhausted_ids = [job.id for job in timeout_jobs[:3] if not job.can_retry]
 
-                if tasks:
-                    await asyncio.gather(*tasks, return_exceptions=True)
+            if not retry_ids and not exhausted_ids:
+                return
+
+            logger.info(
+                "retrying_timeout_waiting_jobs",
+                retry=len(retry_ids),
+                exhausted=len(exhausted_ids),
+            )
+
+            tasks = [
+                asyncio.create_task(self._process_job_isolated(job_id))
+                for job_id in retry_ids
+            ]
+            tasks += [
+                asyncio.create_task(self._fail_timeout_job_isolated(job_id))
+                for job_id in exhausted_ids
+            ]
+
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
 
         except Exception as e:
             logger.error("retry_timeout_jobs_failed", error=str(e))
