@@ -101,6 +101,41 @@ class OpenAIService(BaseAIProvider):
                 processing_time=time.time() - start_time
             )
 
+    async def translate_to_english(self, text: str) -> Optional[str]:
+        """
+        Translate an arbitrary prompt to English for image/video models.
+
+        Returns the translated string, or ``None`` if translation is not
+        needed / failed (callers fall back to the original prompt). Reference
+        tokens such as @Image1, @Image2, @Video1 are preserved verbatim — Kling
+        O1 relies on them to bind media to the prompt.
+        """
+        if not text or not text.strip():
+            return None
+
+        system_prompt = (
+            "You are a translation engine for AI image/video generation prompts. "
+            "Translate the user's text into natural English. "
+            "Output ONLY the translated text, with no quotes, labels or commentary. "
+            "Preserve verbatim any reference tokens of the form @Image1, @Image2, "
+            "@Video1 (do not translate or alter them). "
+            "If the text is already in English, return it unchanged."
+        )
+
+        response = await self.generate_text(
+            prompt=text,
+            model="gpt-4o-mini",
+            system_prompt=system_prompt,
+            temperature=0,
+            max_tokens=1000,
+        )
+
+        if response.success and response.content:
+            return response.content.strip()
+
+        logger.warning("openai_translate_to_english_failed", error=response.error)
+        return None
+
     async def generate_image(
         self,
         prompt: str,

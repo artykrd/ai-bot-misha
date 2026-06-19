@@ -403,6 +403,20 @@ async def kling_o1_continue(callback: CallbackQuery, state: FSMContext, user: Us
 
     await state.set_state(MediaState.kling_o1_waiting_for_prompt)
 
+    if not images and not video_url:
+        # Nothing was uploaded — guide the user instead of silently asking for a
+        # prompt (this is what made "Продолжить" look like it did nothing).
+        await callback.answer(
+            "Сначала прикрепите фото или видео.", show_alert=True
+        )
+        try:
+            await callback.message.edit_reply_markup(
+                reply_markup=kling_o1_main_keyboard(has_media=False)
+            )
+        except Exception:
+            pass
+        return
+
     text = (
         "✅ Медиафайлы загружены.\n\n"
         f"📁 Загружено:\n{media_summary}\n\n"
@@ -413,11 +427,16 @@ async def kling_o1_continue(callback: CallbackQuery, state: FSMContext, user: Us
         "Пример: «Замените человека в @Video1 на персонажа с @Image1»"
     )
 
+    # Drop the keyboard on the old (now scrolled-up) message so the button
+    # can't be pressed again, and post the instruction as a FRESH message at
+    # the bottom of the chat — otherwise the edit lands out of view and the
+    # user thinks nothing happened.
     try:
-        await callback.message.edit_text(text, reply_markup=kling_o1_main_keyboard(has_media=True))
+        await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
-        await callback.message.answer(text, reply_markup=kling_o1_main_keyboard(has_media=True))
-    await callback.answer()
+        pass
+    await callback.message.answer(text, reply_markup=kling_o1_main_keyboard(has_media=True))
+    await callback.answer("Теперь отправьте текстовое описание")
 
 
 @router.callback_query(F.data == "kling_o1.clear_media")
