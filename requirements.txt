@@ -42,13 +42,17 @@ openai==1.109.1
 anthropic==0.111.0
 # Two Google SDKs: the legacy `google.generativeai` (text/vision) and the new
 # `google.genai` Client (Imagen/Veo via API key). The code falls back between them.
-# google-genai>=1.3.0 is required — generate_videos was added in that release.
-# Pinned to 1.3.0: it is the minimum with generate_videos AND still works with
-# pydantic==2.5.0 / aiogram (pydantic<2.13). Newer google-genai (>=1.37) pulls
-# pydantic>=2.13 which conflicts with aiogram 3.27 — do not bump without also
-# upgrading aiogram and re-testing pydantic models.
+# Pinned to 1.37.0: the minimum version exposing the FULL Veo 3.1 API the code
+# uses — generate_videos(image=...) for image-to-video, generate_videos(video=...)
+# for video extension, types.VideoGenerationReferenceImage, and the
+# GenerateVideosConfig last_frame / reference_images fields. Older 1.3.0 only had
+# generate_videos(model, prompt, config), so image-to-video failed with
+# "unexpected keyword argument 'image'". google-genai declares pydantic>=2.0,<3
+# (NOT >=2.13 as previously noted) and imports cleanly on our pinned pydantic==2.5.0
+# (aiogram needs pydantic<2.13). All transitive deps (anyio/websockets/typing-ext/
+# tenacity/google-auth/httpx 0.28.1) are already satisfied by the rest of the stack.
 google-generativeai>=0.8.0,<1.0
-google-genai==1.3.0
+google-genai==1.37.0
 PyJWT==2.12.0  # CVE-2026-32597 fix
 
 # Payment

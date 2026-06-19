@@ -153,6 +153,35 @@
 
 ---
 
+### #A3 Регрессия: Veo image-to-video / extension сломаны (`generate_videos(image=...)`)
+**Причина:** в Спринте 1 (#2) `google-genai` был запинан на `1.3.0` — это минимальная версия с
+`generate_videos`, НО её сигнатура: `generate_videos(model, prompt, config)` — без `image`,
+`video`, без `types.VideoGenerationReferenceImage` и без полей `last_frame`/`reference_images`
+в `GenerateVideosConfig`. Код `veo_service.py` написан под современный API. Итог: text-to-video
+работал, а image-to-video падал с `Models.generate_videos() got an unexpected keyword argument
+'image'`; extension/reference/last-frame — тоже. Kling/прочие видео не затронуты.
+**Обнаружено:** пользователь сообщил «veo перестал работать, люди жалуются»; в логах
+`veo_video_generation_failed ... unexpected keyword argument 'image'` (14:26), списания токенов
+не было (actual_tokens=0 — авто-возврат сработал).
+**Разбор пина:** прежняя заметка «google-genai ≥1.37 тянет pydantic≥2.13 и конфликтует с aiogram»
+оказалась НЕВЕРНОЙ. Фактически 1.4.0–2.9.0 объявляют `pydantic>=2.0,<3` (не ≥2.13). aiogram
+3.27 требует `pydantic>=2.4.1,<2.13`. Полный набор фич Veo 3.1 (image+video+RefImg+last_frame+
+reference_images) появляется в **1.37.0**, и она чисто импортируется на нашем `pydantic==2.5.0`
+(только безвредные UserWarning о shadowing полей в `Operation`).
+**Фикс:** `google-genai==1.3.0 → 1.37.0`. Dry-run показал: все транзитивные зависимости
+(anyio 4.11/websockets 14.2/typing-ext 4.15/tenacity 9.1.2/google-auth 2.55/httpx 0.28.1) уже
+удовлетворены — меняется ТОЛЬКО сам пакет. `pip check` чист.
+**Проверка:** сигнатура `generate_videos` = `[model, prompt, image, video, source, config]`,
+`VideoGenerationReferenceImage` есть, `last_frame`/`reference_images` в конфиге есть; импорт
+veo_service/executor/main OK; после рестарта — 0 ошибок, polling + video_worker(8s) активны,
+`/health`=200.
+**Урок:** при даунпине ради «минимальной версии с фичей X» сверять ПОЛНУЮ сигнатуру всех
+используемых вызовов, а не только наличие метода; не доверять заметкам о конфликте без проверки
+объявленных constraints.
+**Статус:** ✅ Сделано
+
+---
+
 ## БЭКЛОГ — НИЗКИЙ
 
 - [ ] 13.1 Чистка репозитория: файл `=`, дубли `*.md`, логи из рабочей копии.
