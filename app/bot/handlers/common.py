@@ -150,32 +150,15 @@ async def promocode_from_menu(message: Message, state: FSMContext, user: User):
 
 @router.message(Command("veo"))
 async def cmd_veo(message: Message, state):
-    """Veo 3.1 command - directly open Veo interface."""
+    """Veo 3.1 command - temporarily disabled (Google Gemini quota exhausted)."""
     from app.bot.keyboards.inline import back_to_main_keyboard
-    from app.bot.handlers.media_handler import MediaState
-    from app.core.billing_config import get_video_model_billing, format_token_amount
+    from app.bot.handlers.media_handler import VEO_UNAVAILABLE_TEXT
 
-    veo_billing = get_video_model_billing("veo-3.1-fast")
-    text = (
-        "🌊 **Veo 3.1 - Video Generation**\n\n"
-        "Google Veo создаёт реалистичные HD видео по вашему описанию.\n\n"
-        "📊 **Параметры:**\n"
-        "• Длительность: 8 секунд\n"
-        "• Разрешение: 720p\n"
-        "• Форматы: 16:9, 9:16, 1:1, 4:3, 3:4\n\n"
-        f"💰 **Стоимость:** {format_token_amount(veo_billing.tokens_per_generation)} токенов за видео\n\n"
-        "✏️ **Отправьте описание видео**\n"
-        "_Чем детальнее описание, тем лучше результат!_\n\n"
-        "**Примеры:**\n"
-        "• \"Золотой ретривер играет в поле подсолнухов\"\n"
-        "• \"Чашка кофе на деревянном столе, утренний свет\"\n"
-        "• \"Ночной город с потоками света машин\""
+    await message.answer(
+        VEO_UNAVAILABLE_TEXT,
+        reply_markup=back_to_main_keyboard(),
+        parse_mode=ParseMode.MARKDOWN,
     )
-
-    await state.set_state(MediaState.waiting_for_video_prompt)
-    await state.update_data(service="veo")
-
-    await message.answer(text, reply_markup=back_to_main_keyboard(), parse_mode=ParseMode.MARKDOWN)
 
 
 @router.message(Command("nano"))

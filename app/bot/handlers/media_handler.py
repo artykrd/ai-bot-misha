@@ -106,6 +106,20 @@ _grok_similar_meta: dict = {}
 router = Router(name="media")
 
 
+# Shown when a user reaches Veo via a cached button / old command after it was
+# disabled (Google Gemini Veo quota exhausted). See start_veo for context.
+VEO_UNAVAILABLE_TEXT = (
+    "🌊 **Veo 3.1 временно недоступен**\n\n"
+    "Модель отключена из-за исчерпания лимитов провайдера. "
+    "Мы работаем над её возвращением.\n\n"
+    "А пока для генерации видео доступны другие модели:\n"
+    "• 🎞 Kling\n"
+    "• ⚡ Kling 3 / 🧠 Kling O1\n"
+    "• 🎥 Hailuo\n"
+    "• 📹 Luma"
+)
+
+
 # ======================
 # UTILITY FUNCTIONS
 # ======================
@@ -334,31 +348,12 @@ def resize_image_if_needed(image_path: str, max_size_mb: float = 2.0, max_dimens
 
 @router.callback_query(F.data == "bot.veo")
 async def start_veo(callback: CallbackQuery, state: FSMContext, user: User):
-    # Get user's total tokens
-    total_tokens = await get_available_tokens(user.id)
-    veo_billing = get_video_model_billing("veo-3.1-fast")
-    videos_available = int(total_tokens / veo_billing.tokens_per_generation) if total_tokens > 0 else 0
-
-    text = (
-        "🌊 **Veo 3.1 · лучший генератор видео**\n\n"
-        "✏️ Нейросеть создает качественные 8 секундные видео, может имитировать голоса, "
-        "сопровождать видео звуковой дорожкой и учитывать ваши пожелания.\n\n"
-        "📸 При желании можно прикрепить 1 фото с промптом и создать видео на его основе.\n\n"
-        "📷 1️⃣:2️⃣ (начальный кадр / завершающий кадр). Прикрепите два фото в одном запросе "
-        "и получите видео на их основе. При желании можете прикрепить описание.\n\n"
-        "#️⃣ Изучите гайд для того, чтобы создавать качественные видео и получать предсказуемые результаты.\n\n"
-        "⚙️ **Параметры**\n"
-        "Модель: Veo 3.1 Fast\n"
-        "Формат: 16:9\n"
-        "Сид: 0\n\n"
-        f"🔹 Баланса хватит на {videos_available} видео. 1 видео = {format_token_amount(veo_billing.tokens_per_generation)} токенов."
-    )
-
-    await state.set_state(MediaState.waiting_for_video_prompt)
-    await state.update_data(service="veo", image_path=None, photo_caption_prompt=None)
-
-    await callback.message.answer(text, reply_markup=back_to_main_keyboard())
-    await callback.answer()
+    # Veo 3.1 temporarily disabled: Google Gemini API quota exhausted (429
+    # RESOURCE_EXHAUSTED). Button removed from menus; this guard covers cached
+    # buttons. Re-enable by restoring the handler body once quota/billing is fixed
+    # or the model is re-routed to another provider.
+    await callback.message.answer(VEO_UNAVAILABLE_TEXT, reply_markup=back_to_main_keyboard())
+    await callback.answer("Veo 3.1 временно недоступен", show_alert=True)
 
 
 @router.callback_query(F.data == "bot.luma")
@@ -5641,11 +5636,8 @@ async def handle_photo_action_choice(callback: CallbackQuery, state: FSMContext)
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [
-                InlineKeyboardButton(text="🌊 Veo 3.1", callback_data="photo_video:veo"),
+                InlineKeyboardButton(text="✨ Kling AI", callback_data="photo_video:kling"),
                 InlineKeyboardButton(text="🌙 Luma", callback_data="photo_video:luma")
-            ],
-            [
-                InlineKeyboardButton(text="✨ Kling AI", callback_data="photo_video:kling")
             ],
             [
                 InlineKeyboardButton(text="◀️ Назад", callback_data="photo_action:back")
@@ -5654,9 +5646,8 @@ async def handle_photo_action_choice(callback: CallbackQuery, state: FSMContext)
 
         caption_text = (
             f"🎬 Выберите модель для генерации видео:\n\n"
-            f"• Veo 3.1 - Google, HD качество ({format_token_amount(veo_billing.tokens_per_generation)} токенов)\n"
-            f"• Luma - Dream Machine ({format_token_amount(luma_billing.tokens_per_generation)} токенов)\n"
-            f"• Kling AI - Высокое качество ({format_token_amount(kling_billing.tokens_per_generation)} токенов)"
+            f"• Kling AI - Высокое качество ({format_token_amount(kling_billing.tokens_per_generation)} токенов)\n"
+            f"• Luma - Dream Machine ({format_token_amount(luma_billing.tokens_per_generation)} токенов)"
         )
 
         try:
@@ -5823,6 +5814,12 @@ async def handle_photo_action_choice(callback: CallbackQuery, state: FSMContext)
 async def handle_photo_video_model_choice(callback: CallbackQuery, state: FSMContext):
     """Handle video model choice after photo upload."""
     model = callback.data.split(":")[1]
+
+    # Veo 3.1 disabled (Google quota exhausted) — guard cached buttons.
+    if model == "veo":
+        await callback.message.answer(VEO_UNAVAILABLE_TEXT, reply_markup=back_to_main_keyboard())
+        await callback.answer("Veo 3.1 временно недоступен", show_alert=True)
+        return
 
     data = await state.get_data()
     saved_photo_path = data.get("saved_photo_path")

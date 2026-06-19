@@ -14,7 +14,6 @@ MENU_BUTTONS = [
     ("Nano Banana", "bot.nano"),
     ("Nano Banana 2", "bot.nano_banana_2"),
     ("Midjourney", "bot.midjourney"),
-    ("Veo 3.1", "bot.veo"),
     ("Kling", "bot.kling_main"),
     ("Kling 3", "bot.kling3"),
     ("Kling O1", "bot.kling_o1"),
@@ -310,11 +309,10 @@ def create_video_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
     builder.row(
-        InlineKeyboardButton(text="🌊 Veo 3.1", callback_data="bot.veo"),
+        InlineKeyboardButton(text="🎞 Kling", callback_data="bot.kling_main"),
         InlineKeyboardButton(text="🎥 Hailuo", callback_data="bot.hailuo")
     )
     builder.row(
-        InlineKeyboardButton(text="🎞 Kling", callback_data="bot.kling_main"),
         InlineKeyboardButton(text="📹 Luma", callback_data="bot.luma")
     )
     builder.row(
