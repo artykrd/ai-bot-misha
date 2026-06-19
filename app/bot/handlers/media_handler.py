@@ -6420,26 +6420,58 @@ async def kling_mc_receive_video_file(message: Message, state: FSMContext, user:
         )
         return
 
+    status_msg = None
     try:
         file = await message.bot.get_file(video.file_id)
 
-        # Construct direct Telegram file URL
-        video_url = f"https://api.telegram.org/file/bot{message.bot.token}/{file.file_path}"
+        # Telegram file URLs (api.telegram.org/file/bot<token>/...) are NOT
+        # fetchable by Kling's servers — Motion Control rejects them with error
+        # 1201 ("couldn't get the contents of the file"). Re-host the video on
+        # the Kie.ai public file host (already trusted by Kling for images) and
+        # pass that URL instead.
+        status_msg = await message.answer("⏳ Загружаю видео...")
+
+        downloaded = await message.bot.download_file(file.file_path)
+        video_bytes = downloaded.read()
+
+        from app.services.file.kie_upload import upload_bytes_to_kie
+        filename = Path(file.file_path).name or f"{video.file_id}.mp4"
+        video_url = await upload_bytes_to_kie(
+            file_bytes=video_bytes,
+            filename=filename,
+            content_type="video/mp4",
+            upload_path="kling-motion-control",
+        )
 
         await state.update_data(kling_mc_video_url=video_url)
         await state.set_state(MediaState.kling_mc_waiting_for_prompt)
 
-        await message.answer(
+        text = (
             "✅ Видео получено!\n\n"
             "📝 Отправьте текстовый промпт (необязательно).\n"
             "Промпт поможет добавить элементы и эффекты движения.\n\n"
             "Или отправьте /skip чтобы пропустить промпт и начать генерацию."
         )
+        if status_msg:
+            try:
+                await status_msg.edit_text(text)
+            except Exception:
+                await message.answer(text)
+        else:
+            await message.answer(text)
     except Exception as e:
         logger.error("kling_mc_video_upload_failed", error=str(e))
-        await message.answer(
-            "⚠️ Не удалось обработать видео. Попробуйте отправить ссылку (URL) на видео."
+        err_text = (
+            "⚠️ Не удалось загрузить видео. Попробуйте ещё раз или отправьте "
+            "прямую ссылку (URL) на видео."
         )
+        if status_msg:
+            try:
+                await status_msg.edit_text(err_text)
+            except Exception:
+                await message.answer(err_text)
+        else:
+            await message.answer(err_text)
 
 
 # ======================
