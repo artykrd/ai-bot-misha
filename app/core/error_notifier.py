@@ -34,9 +34,13 @@ class ErrorNotifier:
         """Initialize admin bot using admin bot token from settings."""
         try:
             if settings.telegram_admin_bot_token:
-                # Force IPv4 to avoid broken IPv6 routing to api.telegram.org
-                connector = aiohttp.TCPConnector(family=socket.AF_INET)
-                session = AiohttpSession(connector=connector)
+                # Force IPv4 to avoid broken IPv6 routing to api.telegram.org.
+                # aiogram 3.x builds its own TCPConnector from `_connector_init`;
+                # AiohttpSession does NOT accept a `connector=` kwarg (doing so
+                # raised "unexpected keyword argument 'connector'" and silently
+                # disabled admin error notifications).
+                session = AiohttpSession()
+                session._connector_init["family"] = socket.AF_INET
                 self.bot = Bot(token=settings.telegram_admin_bot_token, session=session)
                 logging.info("Error notifier initialized with admin bot")
         except Exception as e:
